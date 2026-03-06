@@ -20,6 +20,9 @@ FROM ${BASE_IMAGE} AS builder
 USER root
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
+# git is required for uv to fetch git-sourced dependencies (app-framework, atlan-loader)
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy project files for dependency resolution
@@ -29,7 +32,9 @@ COPY src/ src/
 # Install the connector package and its dependencies into the existing venv.
 # Framework packages (app-framework, atlan-loader) already present in base image
 # are reused — only new connector-specific dependencies are added.
-RUN uv sync --frozen --no-dev --no-editable
+RUN --mount=type=secret,id=GIT_AUTH_TOKEN \
+    git config --global url."https://$(cat /run/secrets/GIT_AUTH_TOKEN)@github.com/".insteadOf "https://github.com/" && \
+    uv sync --frozen --no-dev --no-editable
 
 # Stage 2: Final image — copy only new/updated packages from builder
 FROM ${BASE_IMAGE}
