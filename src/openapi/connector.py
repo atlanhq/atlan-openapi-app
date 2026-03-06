@@ -568,10 +568,9 @@ class OpenAPIConnector(App):
             )
         )
 
-        # Total scanned = 1 APISpec + N APIPath + 1 Connection
-        total_scanned = (
-            extract_result.api_spec_count + extract_result.api_path_count + 1
-        )
+        # Total scanned = APISpec + APIPath records (Connection is always emitted
+        # unconditionally and is not subject to change detection)
+        total_scanned = extract_result.api_spec_count + extract_result.api_path_count
 
         # ================================================================
         # Step 2: Change detection (if checkpoint_dir provided)
