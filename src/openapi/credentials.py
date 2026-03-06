@@ -29,7 +29,12 @@ from app_framework.credentials.registry import (
 )
 
 if TYPE_CHECKING:
+    from app_framework.app.base import StateAccessor
     from app_framework.credentials.types import ValidationResult
+
+# Well-known key for handing the resolved auth header from validate() to
+# extract_spec, avoiding a second DAPR credential lookup in the task.
+VALIDATED_AUTH_HEADER_KEY = "_validated_openapi_auth_header"
 
 
 @dataclass(frozen=True)
@@ -51,14 +56,27 @@ class OpenAPICredential:
     def credential_type(self) -> str:
         return "openapi"
 
-    def validate(self, state: "Any | None" = None) -> "ValidationResult":
-        """Validate — always succeeds since no auth is required for public specs."""
+    async def validate(
+        self,
+        state: "StateAccessor | None" = None,
+    ) -> "ValidationResult":
+        """Validate the OpenAPI credential and store auth_header in app state.
+
+        Always succeeds — public specs need no auth. For private specs, stores
+        the auth_header under VALIDATED_AUTH_HEADER_KEY so extract_spec can
+        claim it without a second DAPR credential lookup.
+
+        If state is None (standalone validation), nothing is stored.
+        """
         from app_framework.credentials.types import ValidationResult
+
+        if state is not None and self.auth_header:
+            state.set(VALIDATED_AUTH_HEADER_KEY, self.auth_header)
 
         return ValidationResult(
             success=True,
-            message="OpenAPI credential valid (public spec, no auth required)",
-            identity="openapi:public",
+            message="OpenAPI credential valid",
+            identity="openapi:authenticated" if self.auth_header else "openapi:public",
         )
 
 
