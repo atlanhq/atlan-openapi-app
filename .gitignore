@@ -60,6 +60,9 @@ crash.*.log
 vault-password*
 .vault_pass*
 
+# ─── Local test artefacts ────────────────────────────────────────────────────
+storage/
+
 # ─── Python ─────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
@@ -95,3 +98,4 @@ logs/
 *.tgz
 *.rar
 *.7z
+
