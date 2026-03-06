@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Code quality checks (run in parallel) ──────────────────────────────────
+
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run ruff check
+        run: uvx ruff check src/ tests/
+      - name: Run ruff format check
+        run: uvx ruff format --check src/ tests/
+
+  typecheck:
+    name: Type check (ty)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Configure git credentials for private deps
+        run: git config --global url."https://${{ secrets.ORG_PAT_GITHUB }}@github.com/".insteadOf "https://github.com/"
+      - name: Install dependencies
+        run: uv sync --frozen --all-groups
+      - name: Run ty
+        run: uv run --with ty ty check src/
+
+  # ── Tests (run in parallel) ────────────────────────────────────────────────
+
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Configure git credentials for private deps
+        run: git config --global url."https://${{ secrets.ORG_PAT_GITHUB }}@github.com/".insteadOf "https://github.com/"
+      - name: Install dependencies
+        run: uv sync --frozen --all-groups
+      - name: Run unit tests
+        run: uv run pytest tests/openapi/ -v
+
+  replay-tests:
+    name: Replay tests (Temporal)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Configure git credentials for private deps
+        run: git config --global url."https://${{ secrets.ORG_PAT_GITHUB }}@github.com/".insteadOf "https://github.com/"
+      - name: Install dependencies
+        run: uv sync --frozen --all-groups
+      - name: Install Temporal CLI
+        run: |
+          curl -sSf https://temporal.download/cli.sh | sh
+          echo "$HOME/.temporalio/bin" >> "$GITHUB_PATH"
+      - name: Start Temporal dev server
+        run: |
+          temporal server start-dev \
+            --dynamic-config-value frontend.WorkerHeartbeatsEnabled=true \
+            --headless &
+          # Wait until the server accepts connections
+          for i in $(seq 1 30); do
+            temporal workflow list --namespace default 2>/dev/null && break
+            sleep 1
+          done
+      - name: Run replay tests
+        run: uv run pytest tests/replay/ -v
