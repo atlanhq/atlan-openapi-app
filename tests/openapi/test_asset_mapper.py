@@ -142,67 +142,165 @@ def _sample_spec_record(**kwargs) -> OpenAPISpecRecord:
 
 class TestMapApiSpec:
     def test_returns_api_spec_instance(self) -> None:
-        result = map_api_spec(_sample_spec_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_spec(
+            _sample_spec_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert isinstance(result, APISpec)
 
     def test_correct_qualified_name(self) -> None:
-        result = map_api_spec(_sample_spec_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_spec(
+            _sample_spec_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.qualified_name == f"{CONN_QN}/Petstore"
 
     def test_correct_name(self) -> None:
-        result = map_api_spec(_sample_spec_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_spec(
+            _sample_spec_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.name == "Petstore"
 
     def test_correct_connector_name(self) -> None:
-        result = map_api_spec(_sample_spec_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_spec(
+            _sample_spec_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.connector_name == CONNECTOR_NAME
 
     def test_correct_connection_qualified_name(self) -> None:
-        result = map_api_spec(_sample_spec_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_spec(
+            _sample_spec_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.connection_qualified_name == CONN_QN
 
     def test_source_url_set(self) -> None:
-        result = map_api_spec(_sample_spec_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_spec(
+            _sample_spec_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.source_url == "https://petstore3.swagger.io/api/v3/openapi.json"
 
     def test_api_spec_type_set(self) -> None:
-        result = map_api_spec(_sample_spec_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_spec(
+            _sample_spec_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.api_spec_type == "3.0.4"
 
     def test_description_set_when_present(self) -> None:
-        result = map_api_spec(_sample_spec_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_spec(
+            _sample_spec_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.description == "A pet store API"
 
     def test_terms_of_service_set(self) -> None:
-        result = map_api_spec(_sample_spec_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_spec(
+            _sample_spec_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.api_spec_terms_of_service_url == "https://example.com/tos"
 
     def test_spec_version_set(self) -> None:
-        result = map_api_spec(_sample_spec_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_spec(
+            _sample_spec_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.api_spec_version == "1.0.0"
 
     def test_contact_email_set(self) -> None:
-        result = map_api_spec(_sample_spec_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_spec(
+            _sample_spec_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.api_spec_contact_email == "support@example.com"
 
     def test_contact_name_set(self) -> None:
-        result = map_api_spec(_sample_spec_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_spec(
+            _sample_spec_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.api_spec_contact_name == "Support"
 
     def test_contact_url_set(self) -> None:
-        result = map_api_spec(_sample_spec_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_spec(
+            _sample_spec_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.api_spec_contact_url == "https://example.com/contact"
 
     def test_license_name_set(self) -> None:
-        result = map_api_spec(_sample_spec_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_spec(
+            _sample_spec_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.api_spec_license_name == "Apache 2.0"
 
     def test_license_url_set(self) -> None:
-        result = map_api_spec(_sample_spec_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
-        assert result.api_spec_license_url == "https://www.apache.org/licenses/LICENSE-2.0"
+        result = map_api_spec(
+            _sample_spec_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
+        assert (
+            result.api_spec_license_url == "https://www.apache.org/licenses/LICENSE-2.0"
+        )
 
     def test_external_docs_set(self) -> None:
-        result = map_api_spec(_sample_spec_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_spec(
+            _sample_spec_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.api_external_docs == {
             "url": "https://docs.example.com",
             "description": "Full documentation",
@@ -216,11 +314,22 @@ class TestMapApiSpec:
             description="",
             spec_url="",
         )
-        result = map_api_spec(record, CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_spec(
+            record, CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS
+        )
         # These should not be set (None or UNSET) when the record fields are empty
         from msgspec import UNSET
-        assert result.api_spec_type is None or result.api_spec_type is UNSET or result.api_spec_type == ""
-        assert result.description is None or result.description is UNSET or result.description == ""
+
+        assert (
+            result.api_spec_type is None
+            or result.api_spec_type is UNSET
+            or result.api_spec_type == ""
+        )
+        assert (
+            result.description is None
+            or result.description is UNSET
+            or result.description == ""
+        )
 
     def test_contact_not_set_when_all_contact_fields_empty(self) -> None:
         """Contact fields should not be set when all contact fields are empty."""
@@ -230,9 +339,16 @@ class TestMapApiSpec:
             contact_email="",
             contact_url="",
         )
-        result = map_api_spec(record, CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_spec(
+            record, CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS
+        )
         from msgspec import UNSET
-        assert result.api_spec_contact_email is None or result.api_spec_contact_email is UNSET or result.api_spec_contact_email == ""
+
+        assert (
+            result.api_spec_contact_email is None
+            or result.api_spec_contact_email is UNSET
+            or result.api_spec_contact_email == ""
+        )
 
 
 # =============================================================================
@@ -259,76 +375,166 @@ def _sample_path_record(**kwargs) -> OpenAPIPathRecord:
 
 class TestMapApiPath:
     def test_returns_api_path_instance(self) -> None:
-        result = map_api_path(_sample_path_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_path(
+            _sample_path_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert isinstance(result, APIPath)
 
     def test_correct_qualified_name(self) -> None:
-        result = map_api_path(_sample_path_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_path(
+            _sample_path_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.qualified_name == f"{SPEC_QN}/pet/{{petId}}"
 
     def test_correct_name(self) -> None:
         """name is the path_url."""
-        result = map_api_path(_sample_path_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_path(
+            _sample_path_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.name == "/pet/{petId}"
 
     def test_correct_connector_name(self) -> None:
-        result = map_api_path(_sample_path_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_path(
+            _sample_path_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.connector_name == CONNECTOR_NAME
 
     def test_correct_connection_qualified_name(self) -> None:
-        result = map_api_path(_sample_path_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_path(
+            _sample_path_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.connection_qualified_name == CONN_QN
 
     def test_api_spec_name_set(self) -> None:
-        result = map_api_path(_sample_path_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_path(
+            _sample_path_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.api_spec_name == "Petstore"
 
     def test_api_spec_qualified_name_set(self) -> None:
-        result = map_api_path(_sample_path_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_path(
+            _sample_path_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.api_spec_qualified_name == SPEC_QN
 
     def test_api_path_raw_uri_set(self) -> None:
-        result = map_api_path(_sample_path_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_path(
+            _sample_path_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.api_path_raw_uri == "/pet/{petId}"
 
     def test_api_path_is_templated_true(self) -> None:
-        result = map_api_path(_sample_path_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_path(
+            _sample_path_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.api_path_is_templated is True
 
     def test_api_path_is_templated_false(self) -> None:
         record = _sample_path_record(path_url="/pets", is_templated=False)
-        result = map_api_path(record, CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_path(
+            record, CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS
+        )
         assert result.api_path_is_templated is False
 
     def test_api_path_summary_set_when_present(self) -> None:
-        result = map_api_path(_sample_path_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_path(
+            _sample_path_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.api_path_summary == "Find pet by ID"
 
     def test_api_path_available_operations_set(self) -> None:
-        result = map_api_path(_sample_path_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_path(
+            _sample_path_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.api_path_available_operations == ["GET", "POST", "DELETE"]
 
     def test_description_set_when_present(self) -> None:
-        result = map_api_path(_sample_path_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_path(
+            _sample_path_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert result.description is not None
         assert "GET" in result.description
 
     def test_api_spec_relationship_set(self) -> None:
         """api_spec relationship should point to the parent spec."""
         from pyatlan.models.api_related import RelatedAPISpec
-        result = map_api_path(_sample_path_record(), CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+
+        result = map_api_path(
+            _sample_path_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
         assert isinstance(result.api_spec, RelatedAPISpec)
         assert result.api_spec.unique_attributes == {"qualifiedName": SPEC_QN}
 
     def test_non_templated_path(self) -> None:
         record = _sample_path_record(path_url="/store/inventory", is_templated=False)
-        result = map_api_path(record, CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_path(
+            record, CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS
+        )
         assert result.qualified_name == f"{SPEC_QN}/store/inventory"
         assert result.api_path_is_templated is False
 
     def test_empty_operations_not_set(self) -> None:
         """When available_operations is empty, it should not be set."""
         record = _sample_path_record(available_operations=[])
-        result = map_api_path(record, CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        result = map_api_path(
+            record, CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS
+        )
         from msgspec import UNSET
-        assert result.api_path_available_operations is None or result.api_path_available_operations is UNSET or result.api_path_available_operations == []
+
+        assert (
+            result.api_path_available_operations is None
+            or result.api_path_available_operations is UNSET
+            or result.api_path_available_operations == []
+        )
