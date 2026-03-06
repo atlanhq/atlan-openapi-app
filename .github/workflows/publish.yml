@@ -1,0 +1,46 @@
+name: Publish
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Uncomment if connector has custom typedefs (Pkl model bundle)
+      # - uses: astral-sh/setup-uv@v5
+      # - run: uv sync --frozen --no-dev && make model-bundle
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/atlanhq/${{ github.event.repository.name }}:latest
+            ghcr.io/atlanhq/${{ github.event.repository.name }}:${{ github.sha }}
+          build-args: |
+            APP_MODULE=openapi.connector:OpenAPIConnector
+          secrets: |
+            GIT_AUTH_TOKEN=${{ secrets.ORG_PAT_GITHUB }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
