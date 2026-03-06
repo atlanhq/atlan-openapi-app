@@ -40,13 +40,13 @@ _METADATA_PATH = (
 )
 _METADATA = json.loads(_METADATA_PATH.read_text())
 
-# The connector's total_scanned = api_spec_count + api_path_count + 1 (Connection).
+# The connector's total_scanned = api_spec_count + api_path_count (Connection is emitted
+# unconditionally and is not subject to change detection, so it is excluded).
 # metadata.json entity_types records the spec-level records (APISpec + APIPath = 14 for Petstore).
-# total_scanned adds +1 for the Connection asset.
 _EXPECTED_SPEC_RECORDS = sum(
     v["records"] for v in _METADATA["entity_types"].values()
 )  # 14
-_EXPECTED_TOTAL = _EXPECTED_SPEC_RECORDS + 1  # +1 for Connection = 15
+_EXPECTED_TOTAL = _EXPECTED_SPEC_RECORDS  # 14
 
 # No pytestmark skip — replay tests never require source credentials.
 # Public Petstore spec URL is read from metadata.json.
@@ -172,8 +172,8 @@ class TestReplayExtraction:
     ) -> None:
         """APISpec count should be 1; APIPath count should be the remainder minus Connection."""
         assert extraction_result.api_spec_count == 1
-        # total = 1 APISpec + N APIPath + 1 Connection, so api_path_count = total - 2
-        assert extraction_result.api_path_count == _EXPECTED_TOTAL - 2
+        # total = 1 APISpec + N APIPath (Connection excluded), so api_path_count = total - 1
+        assert extraction_result.api_path_count == _EXPECTED_TOTAL - 1
 
     async def test_qualified_names_follow_convention(
         self, extraction_result: OpenAPIConnectorOutput
@@ -247,9 +247,8 @@ class TestReplayCheckpoint:
         self, first_run_result: OpenAPIConnectorOutput
     ) -> None:
         """First run with checkpoint should mark all records as NEW."""
-        # The ChangeDetector only tracks APISpec + APIPath (not Connection),
-        # so new_count = total_scanned - 1.
-        assert first_run_result.new_count == first_run_result.total_scanned - 1
+        # Connection is excluded from total_scanned, so new_count == total_scanned.
+        assert first_run_result.new_count == first_run_result.total_scanned
         assert first_run_result.unchanged_count == 0
         assert first_run_result.total_scanned == _EXPECTED_TOTAL
         assert first_run_result.atlan_validated_count > 0
