@@ -155,49 +155,55 @@ def format_result(result: OpenAPITestResult, connection_name: str) -> str:
             else:
                 lines.append(f"    {name:.<30} {format_duration(dur)}")
 
-    lines.extend([
-        "",
-        "--- Assets ---",
-        f"  APISpec count: {result.api_spec_count}",
-        f"  APIPath count: {result.api_path_count}",
-        f"  Total scanned: {result.total_scanned}",
-        "",
-        "--- Atlan Loading ---",
-        f"  Loaded:   {result.atlan_loaded_count}",
-        f"  Created:  {result.atlan_created_count}",
-        f"  Updated:  {result.atlan_updated_count}",
-        "",
-        "--- Diff Validation (Second Pass) ---",
-        f"  Unchanged: {result.pass2_unchanged_count}",
-        f"  New:       {result.pass2_new_count}",
-        f"  Changed:   {result.pass2_changed_count}",
-        f"  Passed:    {result.diff_validation_passed}",
-        "",
-        "--- Validation ---",
-        f"  Expected assets:    {result.expected_asset_count}",
-        f"  Actual created:     {result.actual_asset_count}",
-        f"  Success rate:       {result.creation_success_rate:.1f}%",
-        f"  Validation passed:  {result.validation_passed}",
-        "",
-        "--- Atlan Asset Verification ---",
-    ])
+    lines.extend(
+        [
+            "",
+            "--- Assets ---",
+            f"  APISpec count: {result.api_spec_count}",
+            f"  APIPath count: {result.api_path_count}",
+            f"  Total scanned: {result.total_scanned}",
+            "",
+            "--- Atlan Loading ---",
+            f"  Loaded:   {result.atlan_loaded_count}",
+            f"  Created:  {result.atlan_created_count}",
+            f"  Updated:  {result.atlan_updated_count}",
+            "",
+            "--- Diff Validation (Second Pass) ---",
+            f"  Unchanged: {result.pass2_unchanged_count}",
+            f"  New:       {result.pass2_new_count}",
+            f"  Changed:   {result.pass2_changed_count}",
+            f"  Passed:    {result.diff_validation_passed}",
+            "",
+            "--- Validation ---",
+            f"  Expected assets:    {result.expected_asset_count}",
+            f"  Actual created:     {result.actual_asset_count}",
+            f"  Success rate:       {result.creation_success_rate:.1f}%",
+            f"  Validation passed:  {result.validation_passed}",
+            "",
+            "--- Atlan Asset Verification ---",
+        ]
+    )
     for type_name, count in result.atlan_verification_type_counts.items():
         lines.append(f"  {type_name + ':':<40} {count}")
-    lines.extend([
-        f"  Unexpected 'Asset' type:             {result.atlan_verification_unexpected_asset_count}",
-        f"  Passed:                              {result.atlan_verification_passed}",
-    ])
+    lines.extend(
+        [
+            f"  Unexpected 'Asset' type:             {result.atlan_verification_unexpected_asset_count}",
+            f"  Passed:                              {result.atlan_verification_passed}",
+        ]
+    )
     for warn in result.atlan_verification_warnings:
         lines.append(f"  [WARNING] {warn}")
     for fail in result.atlan_verification_failures:
         lines.append(f"  [FAILED]  {fail}")
-    lines.extend([
-        "",
-        "--- Cleanup ---",
-        f"  Deletion ran:         {result.deletion_ran}",
-        f"  Assets deleted:       {result.total_assets_deleted}",
-        f"  Connection deleted:   {result.connection_deleted}",
-    ])
+    lines.extend(
+        [
+            "",
+            "--- Cleanup ---",
+            f"  Deletion ran:         {result.deletion_ran}",
+            f"  Assets deleted:       {result.total_assets_deleted}",
+            f"  Connection deleted:   {result.connection_deleted}",
+        ]
+    )
 
     if result.errors:
         lines.append("")
@@ -280,7 +286,9 @@ class OpenAPITestRunner:
             # Step 2: Run second pass (incremental diff)
             # ============================================================
             print("\n[Step 2] Running second pass (incremental diff)...")
-            pass2_result, _, pass2_corr_id = await run_workflow(OPENAPI_APP, connector_input)
+            pass2_result, _, pass2_corr_id = await run_workflow(
+                OPENAPI_APP, connector_input
+            )
             if log_collector:
                 log_collector.record(OPENAPI_APP, pass2_corr_id, "pass2-incremental")
             result.pass2_unchanged_count = pass2_result.get("unchanged_count", 0)
@@ -296,12 +304,16 @@ class OpenAPITestRunner:
             # ============================================================
             print("\n[Step 3] Validating asset creation...")
             result.expected_asset_count = result.total_scanned
-            result.validation_passed, result.creation_success_rate = validate_asset_creation(
-                result.expected_asset_count,
-                result.atlan_created_count,
-                result.atlan_updated_count,
+            result.validation_passed, result.creation_success_rate = (
+                validate_asset_creation(
+                    result.expected_asset_count,
+                    result.atlan_created_count,
+                    result.atlan_updated_count,
+                )
             )
-            result.actual_asset_count = result.atlan_created_count + result.atlan_updated_count
+            result.actual_asset_count = (
+                result.atlan_created_count + result.atlan_updated_count
+            )
             print(f"  Success rate: {result.creation_success_rate:.1f}%")
             if not result.validation_passed:
                 result.errors.append(
@@ -314,10 +326,14 @@ class OpenAPITestRunner:
             # ============================================================
             print("\n[Step 4] Verifying assets in Atlan...")
             connection_qn = f"default/api/{connection_name}"
-            verification = await verify_atlan_assets(connection_qn, OPENAPI_EXPECTED_TYPES)
+            verification = await verify_atlan_assets(
+                connection_qn, OPENAPI_EXPECTED_TYPES
+            )
             result.atlan_verification_passed = verification.passed
             result.atlan_verification_type_counts = verification.type_counts
-            result.atlan_verification_unexpected_asset_count = verification.unexpected_asset_count
+            result.atlan_verification_unexpected_asset_count = (
+                verification.unexpected_asset_count
+            )
             result.atlan_verification_failures = verification.failures
             result.atlan_verification_warnings = verification.warnings
             if not verification.passed:
@@ -351,10 +367,16 @@ class OpenAPITestRunner:
                         checkpoint_refs=refs,
                     )
                     if log_collector:
-                        log_collector.record(DELETE_APP, delete_corr_id, "delete-cleanup")
+                        log_collector.record(
+                            DELETE_APP, delete_corr_id, "delete-cleanup"
+                        )
                     result.deletion_ran = True
-                    result.total_assets_deleted = delete_result.get("total_assets_deleted", 0)
-                    result.connection_deleted = delete_result.get("connection_deleted", False)
+                    result.total_assets_deleted = delete_result.get(
+                        "total_assets_deleted", 0
+                    )
+                    result.connection_deleted = delete_result.get(
+                        "connection_deleted", False
+                    )
                     warn = validate_deletion(
                         result.total_assets_deleted, result.actual_asset_count
                     )
@@ -375,6 +397,7 @@ class OpenAPITestRunner:
         except Exception as e:
             result.errors.append(f"Test failed: {e}")
             import traceback
+
             traceback.print_exc()
 
         result.completed_at = datetime.now(UTC).isoformat()

@@ -23,7 +23,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from app_framework.credentials.ref import CredentialRef
-from app_framework.credentials.registry import CredentialTypeRegistry, register_credential_type
+from app_framework.credentials.registry import (
+    CredentialTypeRegistry,
+    register_credential_type,
+)
 
 if TYPE_CHECKING:
     from app_framework.credentials.types import ValidationResult
@@ -83,7 +86,9 @@ def _register_openapi_credential_type() -> None:
     """Register OpenAPI credential type with the global registry."""
     registry = CredentialTypeRegistry.get_instance()
     if registry.get("openapi") is None:
-        register_credential_type("openapi", OpenAPICredential, _parse_openapi_credential)
+        register_credential_type(
+            "openapi", OpenAPICredential, _parse_openapi_credential
+        )
 
 
 # Register on import
