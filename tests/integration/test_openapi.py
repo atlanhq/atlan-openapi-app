@@ -23,7 +23,6 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from app_framework.credentials.ref import CredentialRef
 from pyatlan.models.connection import Connection
 from openapi.connector import OpenAPIConnector
 from openapi.contracts import (
