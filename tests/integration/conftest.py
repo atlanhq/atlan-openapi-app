@@ -286,12 +286,12 @@ def openapi_worker(
 
 @pytest.fixture(scope="session")
 def openapi_executor(
-    temporal_client: Client,
+    temporal_client_msgspec: Client,
     openapi_worker: subprocess.Popen[bytes],  # noqa: ARG001
 ) -> AppExecutor:
     """Executor for OpenAPI connector integration tests."""
     backend = TemporalExecutorBackend(
-        client=temporal_client,
+        client=temporal_client_msgspec,
         task_queue="openapi-queue",
     )
     return AppExecutor(backend=backend)
