@@ -243,9 +243,18 @@ class TestOpenAPIPathRecordRoundTrip:
     def test_multiple_path_records_round_trip(self, tmp_path: Path) -> None:
         """Write multiple OpenAPIPathRecords and read them all back."""
         records = [
-            OpenAPIPathRecord(path_url="/pets", spec_title="API", spec_qualified_name=SPEC_QN),
-            OpenAPIPathRecord(path_url="/pet/{id}", spec_title="API", spec_qualified_name=SPEC_QN, is_templated=True),
-            OpenAPIPathRecord(path_url="/orders", spec_title="API", spec_qualified_name=SPEC_QN),
+            OpenAPIPathRecord(
+                path_url="/pets", spec_title="API", spec_qualified_name=SPEC_QN
+            ),
+            OpenAPIPathRecord(
+                path_url="/pet/{id}",
+                spec_title="API",
+                spec_qualified_name=SPEC_QN,
+                is_templated=True,
+            ),
+            OpenAPIPathRecord(
+                path_url="/orders", spec_title="API", spec_qualified_name=SPEC_QN
+            ),
         ]
         file_path = tmp_path / "api_path.jsonl"
 

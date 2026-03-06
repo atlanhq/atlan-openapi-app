@@ -79,7 +79,9 @@ async def main() -> None:
 
     credential_stores = {"default": InMemorySecretStore(secrets)}
 
-    spec_url = os.environ.get("OPENAPI_SPEC_URL", "https://petstore3.swagger.io/api/v3/openapi.json")
+    spec_url = os.environ.get(
+        "OPENAPI_SPEC_URL", "https://petstore3.swagger.io/api/v3/openapi.json"
+    )
 
     await run_dev_server(
         OpenAPIConnector,
