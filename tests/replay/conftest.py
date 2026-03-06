@@ -59,7 +59,9 @@ def _load_spec_url() -> str:
     metadata_path = _EXTRACTS_DIR / "metadata.json"
     if metadata_path.exists():
         with open(metadata_path) as f:
-            return json.load(f).get("base_url", "https://petstore3.swagger.io/api/v3/openapi.json")
+            return json.load(f).get(
+                "base_url", "https://petstore3.swagger.io/api/v3/openapi.json"
+            )
     return "https://petstore3.swagger.io/api/v3/openapi.json"
 
 
@@ -101,9 +103,7 @@ def mock_openapi_spec() -> Generator[respx.MockRouter, None, None]:
     body, header_info = _load_spec_response()
 
     response_headers = {
-        k: v
-        for k, v in header_info.get("headers", {}).items()
-        if isinstance(v, str)
+        k: v for k, v in header_info.get("headers", {}).items() if isinstance(v, str)
     }
     status_code = header_info.get("status_code", 200)
 

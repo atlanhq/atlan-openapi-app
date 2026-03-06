@@ -33,7 +33,9 @@ class OpenAPIApiClient:
             auth_header: Optional HTTP Authorization header value for private
                 spec endpoints (e.g. 'Bearer my-token'). Empty for public specs.
         """
-        headers: dict[str, str] = {"Accept": "application/json, application/yaml, text/yaml, */*"}
+        headers: dict[str, str] = {
+            "Accept": "application/json, application/yaml, text/yaml, */*"
+        }
         if auth_header:
             headers["Authorization"] = auth_header
 
@@ -88,9 +90,7 @@ class OpenAPIApiClient:
     def _parse_body(self, content: bytes, content_type: str, url: str) -> dict:
         """Parse JSON or YAML bytes into a dict."""
         is_yaml = (
-            "yaml" in content_type
-            or url.endswith(".yaml")
-            or url.endswith(".yml")
+            "yaml" in content_type or url.endswith(".yaml") or url.endswith(".yml")
         )
         if is_yaml:
             import yaml
@@ -106,18 +106,32 @@ class OpenAPIApiClient:
         specs: list[dict] = []
         with zipfile.ZipFile(io.BytesIO(content)) as zf:
             for name in zf.namelist():
-                if not (name.endswith(".json") or name.endswith(".yaml") or name.endswith(".yml")):
+                if not (
+                    name.endswith(".json")
+                    or name.endswith(".yaml")
+                    or name.endswith(".yml")
+                ):
                     continue
                 with zf.open(name) as f:
                     raw = f.read()
-                content_type = "application/yaml" if (name.endswith(".yaml") or name.endswith(".yml")) else "application/json"
+                content_type = (
+                    "application/yaml"
+                    if (name.endswith(".yaml") or name.endswith(".yml"))
+                    else "application/json"
+                )
                 try:
                     spec = self._parse_body(raw, content_type, name)
-                    if isinstance(spec, dict) and "openapi" in spec or "swagger" in spec:
+                    if (
+                        isinstance(spec, dict)
+                        and "openapi" in spec
+                        or "swagger" in spec
+                    ):
                         logger.info("extracted spec from ZIP", extra={"file": name})
                         specs.append(spec)
                 except Exception as exc:
-                    logger.warning("skipping file in ZIP", extra={"file": name, "error": str(exc)})
+                    logger.warning(
+                        "skipping file in ZIP", extra={"file": name, "error": str(exc)}
+                    )
         if not specs:
             raise ValueError(f"No valid OpenAPI specs found in ZIP from {source_url}")
         return specs

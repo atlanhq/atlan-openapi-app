@@ -24,7 +24,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.ORG_PAT_GITHUB }}
 
       # Uncomment if connector has custom typedefs (Pkl model bundle)
       # - uses: astral-sh/setup-uv@v5

@@ -23,14 +23,19 @@ from openapi.api_client import OpenAPIApiClient
 # =============================================================================
 
 
-PETSTORE_JSON = json.dumps({
-    "openapi": "3.0.4",
-    "info": {"title": "Petstore", "version": "1.0.0"},
-    "paths": {
-        "/pets": {"get": {"summary": "List pets"}},
-        "/pet/{petId}": {"get": {"summary": "Get pet"}, "delete": {"summary": "Delete pet"}},
-    },
-}).encode()
+PETSTORE_JSON = json.dumps(
+    {
+        "openapi": "3.0.4",
+        "info": {"title": "Petstore", "version": "1.0.0"},
+        "paths": {
+            "/pets": {"get": {"summary": "List pets"}},
+            "/pet/{petId}": {
+                "get": {"summary": "Get pet"},
+                "delete": {"summary": "Delete pet"},
+            },
+        },
+    }
+).encode()
 
 PETSTORE_YAML = b"""
 openapi: "3.0.4"
@@ -64,7 +69,9 @@ class TestFetchSpecJson:
     async def test_returns_list_with_one_dict(self) -> None:
         """fetch_spec should return a list containing one parsed dict."""
         respx.get("https://example.com/api.json").mock(
-            return_value=httpx.Response(200, content=PETSTORE_JSON, headers={"content-type": "application/json"})
+            return_value=httpx.Response(
+                200, content=PETSTORE_JSON, headers={"content-type": "application/json"}
+            )
         )
         client = OpenAPIApiClient()
         result = await client.fetch_spec("https://example.com/api.json")
@@ -79,7 +86,9 @@ class TestFetchSpecJson:
     @respx.mock
     async def test_paths_are_present(self) -> None:
         respx.get("https://example.com/api.json").mock(
-            return_value=httpx.Response(200, content=PETSTORE_JSON, headers={"content-type": "application/json"})
+            return_value=httpx.Response(
+                200, content=PETSTORE_JSON, headers={"content-type": "application/json"}
+            )
         )
         client = OpenAPIApiClient()
         result = await client.fetch_spec("https://example.com/api.json")
@@ -112,7 +121,9 @@ class TestFetchSpecYaml:
     async def test_yaml_content_type_parsed(self) -> None:
         """YAML content-type triggers YAML parsing."""
         respx.get("https://example.com/api").mock(
-            return_value=httpx.Response(200, content=PETSTORE_YAML, headers={"content-type": "application/yaml"})
+            return_value=httpx.Response(
+                200, content=PETSTORE_YAML, headers={"content-type": "application/yaml"}
+            )
         )
         client = OpenAPIApiClient()
         result = await client.fetch_spec("https://example.com/api")
@@ -125,7 +136,11 @@ class TestFetchSpecYaml:
     async def test_yaml_url_extension_triggers_yaml_parsing(self) -> None:
         """URL ending in .yaml triggers YAML parsing even with generic content-type."""
         respx.get("https://example.com/openapi.yaml").mock(
-            return_value=httpx.Response(200, content=PETSTORE_YAML, headers={"content-type": "application/octet-stream"})
+            return_value=httpx.Response(
+                200,
+                content=PETSTORE_YAML,
+                headers={"content-type": "application/octet-stream"},
+            )
         )
         client = OpenAPIApiClient()
         result = await client.fetch_spec("https://example.com/openapi.yaml")
@@ -138,7 +153,9 @@ class TestFetchSpecYaml:
     async def test_yml_extension_triggers_yaml_parsing(self) -> None:
         """.yml extension also triggers YAML parsing."""
         respx.get("https://example.com/openapi.yml").mock(
-            return_value=httpx.Response(200, content=PETSTORE_YAML, headers={"content-type": "text/plain"})
+            return_value=httpx.Response(
+                200, content=PETSTORE_YAML, headers={"content-type": "text/plain"}
+            )
         )
         client = OpenAPIApiClient()
         result = await client.fetch_spec("https://example.com/openapi.yml")
@@ -159,7 +176,9 @@ class TestFetchSpecZip:
         """ZIP containing a single JSON spec returns one parsed dict."""
         zip_bytes = _make_zip_bytes({"openapi.json": PETSTORE_JSON})
         respx.get("https://example.com/bundle.zip").mock(
-            return_value=httpx.Response(200, content=zip_bytes, headers={"content-type": "application/zip"})
+            return_value=httpx.Response(
+                200, content=zip_bytes, headers={"content-type": "application/zip"}
+            )
         )
         client = OpenAPIApiClient()
         result = await client.fetch_spec("https://example.com/bundle.zip")
@@ -174,7 +193,11 @@ class TestFetchSpecZip:
         """URL ending in .zip triggers ZIP parsing."""
         zip_bytes = _make_zip_bytes({"api.json": PETSTORE_JSON})
         respx.get("https://example.com/bundle.zip").mock(
-            return_value=httpx.Response(200, content=zip_bytes, headers={"content-type": "application/octet-stream"})
+            return_value=httpx.Response(
+                200,
+                content=zip_bytes,
+                headers={"content-type": "application/octet-stream"},
+            )
         )
         client = OpenAPIApiClient()
         result = await client.fetch_spec("https://example.com/bundle.zip")
@@ -186,13 +209,17 @@ class TestFetchSpecZip:
     @respx.mock
     async def test_zip_skips_non_spec_files(self) -> None:
         """ZIP files that aren't .json/.yaml/.yml are skipped."""
-        zip_bytes = _make_zip_bytes({
-            "openapi.json": PETSTORE_JSON,
-            "README.txt": b"just a readme",
-            "data.csv": b"col1,col2",
-        })
+        zip_bytes = _make_zip_bytes(
+            {
+                "openapi.json": PETSTORE_JSON,
+                "README.txt": b"just a readme",
+                "data.csv": b"col1,col2",
+            }
+        )
         respx.get("https://example.com/bundle.zip").mock(
-            return_value=httpx.Response(200, content=zip_bytes, headers={"content-type": "application/zip"})
+            return_value=httpx.Response(
+                200, content=zip_bytes, headers={"content-type": "application/zip"}
+            )
         )
         client = OpenAPIApiClient()
         result = await client.fetch_spec("https://example.com/bundle.zip")
@@ -206,7 +233,9 @@ class TestFetchSpecZip:
         """ZIP with no valid spec files raises ValueError."""
         zip_bytes = _make_zip_bytes({"README.txt": b"no specs here"})
         respx.get("https://example.com/bundle.zip").mock(
-            return_value=httpx.Response(200, content=zip_bytes, headers={"content-type": "application/zip"})
+            return_value=httpx.Response(
+                200, content=zip_bytes, headers={"content-type": "application/zip"}
+            )
         )
         client = OpenAPIApiClient()
         with pytest.raises(ValueError, match="No valid OpenAPI specs found"):

@@ -23,7 +23,6 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from app_framework.credentials.ref import CredentialRef
 from pyatlan.models.connection import Connection
 from openapi.connector import OpenAPIConnector
 from openapi.contracts import (
@@ -72,7 +71,9 @@ class TestOpenAPIConnectorExtraction:
             await openapi_executor.execute_app(
                 OpenAPIConnector,
                 OpenAPIConnectorInput(
-                    connection=Connection(qualified_name=CONNECTION_QN, name=CONNECTION_NAME),
+                    connection=Connection(
+                        qualified_name=CONNECTION_QN, name=CONNECTION_NAME
+                    ),
                     spec_url=_SPEC_URL,
                     output_dir=str(output_dir / "run1"),
                     checkpoint_dir="",
@@ -192,7 +193,9 @@ class TestOpenAPIConnectorCheckpoint:
             await openapi_executor.execute_app(
                 OpenAPIConnector,
                 OpenAPIConnectorInput(
-                    connection=Connection(qualified_name=CONNECTION_QN, name=CONNECTION_NAME),
+                    connection=Connection(
+                        qualified_name=CONNECTION_QN, name=CONNECTION_NAME
+                    ),
                     spec_url=_SPEC_URL,
                     output_dir=str(output_dir / "run1"),
                     checkpoint_dir=str(checkpoint_dir),
@@ -222,6 +225,7 @@ class TestOpenAPIConnectorCheckpoint:
     ) -> None:
         """Second run with same spec should mark all records as UNCHANGED."""
         import time
+
         time.sleep(1.5)
 
         checkpoint_dir = tmp_dir_class / "checkpoint"
@@ -232,7 +236,9 @@ class TestOpenAPIConnectorCheckpoint:
             await openapi_executor.execute_app(
                 OpenAPIConnector,
                 OpenAPIConnectorInput(
-                    connection=Connection(qualified_name=CONNECTION_QN, name=CONNECTION_NAME),
+                    connection=Connection(
+                        qualified_name=CONNECTION_QN, name=CONNECTION_NAME
+                    ),
                     spec_url=_SPEC_URL,
                     output_dir=str(output_dir / "run2"),
                     checkpoint_dir=str(checkpoint_dir),

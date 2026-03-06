@@ -122,7 +122,9 @@ class OpenAPIConnectorOutput(Output):
     atlan_updated_count: int = 0
     atlan_validated_count: int = 0
     atlan_error_count: int = 0
-    atlan_errors: Annotated[list[LoadError], MaxItems(100)] = field(default_factory=list)
+    atlan_errors: Annotated[list[LoadError], MaxItems(100)] = field(
+        default_factory=list
+    )
 
 
 # =============================================================================
