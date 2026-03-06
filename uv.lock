@@ -174,7 +174,7 @@ wheels = [
 [[package]]
 name = "app-framework"
 version = "0.1.0"
-source = { git = "https://github.com/atlanhq/experimental-app-sdk?subdirectory=packages%2Fapp-framework#ab77a29157fe2547ef8f14f86a7b5e79f7f0ceb5" }
+source = { git = "https://github.com/atlanhq/experimental-app-sdk?subdirectory=packages%2Fapp-framework#7107e31e67d40fe552aae7de78a5a1fcd2f5b22e" }
 dependencies = [
     { name = "aiofiles" },
     { name = "dapr" },
@@ -204,7 +204,7 @@ atlan = [
 [[package]]
 name = "atlan-loader"
 version = "0.1.0"
-source = { git = "https://github.com/atlanhq/experimental-app-sdk?subdirectory=examples%2Fatlan_loader#ab77a29157fe2547ef8f14f86a7b5e79f7f0ceb5" }
+source = { git = "https://github.com/atlanhq/experimental-app-sdk?subdirectory=examples%2Fatlan_loader#7107e31e67d40fe552aae7de78a5a1fcd2f5b22e" }
 dependencies = [
     { name = "app-framework", extra = ["atlan"] },
 ]
@@ -1644,7 +1644,7 @@ wheels = [
 [[package]]
 name = "pyatlan"
 version = "0.1.0"
-source = { git = "https://github.com/atlanhq/experimental-app-sdk?subdirectory=packages%2Fpyatlan#ab77a29157fe2547ef8f14f86a7b5e79f7f0ceb5" }
+source = { git = "https://github.com/atlanhq/experimental-app-sdk?subdirectory=packages%2Fpyatlan#7107e31e67d40fe552aae7de78a5a1fcd2f5b22e" }
 dependencies = [
     { name = "httpx" },
     { name = "msgspec" },
