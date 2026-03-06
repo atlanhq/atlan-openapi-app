@@ -23,14 +23,12 @@ import os
 import shutil
 import sys
 import time
-import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
 from tests.e2e.local_infra import (
     LOADER_LOCAL,
     OPENAPI_LOCAL,
-    LocalAppConfig,
     LocalProcessManager,
     create_local_argument_parser,
     prepare_dapr_components,
@@ -69,19 +67,23 @@ def _build_dapr_secrets() -> dict[str, str]:
     # Atlan API token (for dry-run validation)
     atlan_key = os.environ.get("ATLAN_API_KEY", "")
     if atlan_key:
-        secrets["atlan"] = json.dumps({
-            "type": "atlan_api_token",
-            "token": atlan_key,
-            "base_url": os.environ.get("ATLAN_BASE_URL", ""),
-        })
+        secrets["atlan"] = json.dumps(
+            {
+                "type": "atlan_api_token",
+                "token": atlan_key,
+                "base_url": os.environ.get("ATLAN_BASE_URL", ""),
+            }
+        )
 
     # OpenAPI credential (optional — only needed for private spec endpoints)
     openapi_auth_header = os.environ.get("OPENAPI_AUTH_HEADER", "")
     if openapi_auth_header:
-        secrets["openapi"] = json.dumps({
-            "type": "openapi",
-            "auth_header": openapi_auth_header,
-        })
+        secrets["openapi"] = json.dumps(
+            {
+                "type": "openapi",
+                "auth_header": openapi_auth_header,
+            }
+        )
 
     return secrets
 
@@ -144,6 +146,7 @@ async def run_openapi_test(mgr: LocalProcessManager) -> LocalTestResult:
         result.status = "FAIL"
         result.errors.append(str(e))
         import traceback
+
         traceback.print_exc()
     finally:
         mgr.stop_app(OPENAPI_LOCAL.name)
@@ -174,21 +177,27 @@ def _format_result_text(results: list[LocalTestResult]) -> str:
         "=" * 70,
     ]
     for r in results:
-        icon = {"PASS": "✓", "FAIL": "✗", "SKIPPED": "-", "PENDING": "?"}.get(r.status, "?")
+        icon = {"PASS": "✓", "FAIL": "✗", "SKIPPED": "-", "PENDING": "?"}.get(
+            r.status, "?"
+        )
         lines.append(f"  {icon} {r.name:<20} {r.status:<10} {r.duration_s:.1f}s")
         if r.assets_extracted:
-            lines.append(f"      assets_extracted={r.assets_extracted} validated={r.dry_run_validated}")
+            lines.append(
+                f"      assets_extracted={r.assets_extracted} validated={r.dry_run_validated}"
+            )
         for err in r.errors:
             lines.append(f"      ERROR: {err}")
 
     passed = sum(1 for r in results if r.status == "PASS")
     failed = sum(1 for r in results if r.status == "FAIL")
     skipped = sum(1 for r in results if r.status == "SKIPPED")
-    lines.extend([
-        "",
-        f"  Total: {len(results)}  Passed: {passed}  Failed: {failed}  Skipped: {skipped}",
-        "=" * 70,
-    ])
+    lines.extend(
+        [
+            "",
+            f"  Total: {len(results)}  Passed: {passed}  Failed: {failed}  Skipped: {skipped}",
+            "=" * 70,
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -267,6 +276,7 @@ async def main() -> int:
 
     if args.output:
         from pathlib import Path
+
         Path(args.output).write_text(output_text)
         print(f"\nResults written to {args.output}")
     else:
