@@ -38,16 +38,16 @@ class TestParseOpenAPICredential:
         with pytest.raises(AttributeError):
             cred.auth_header = "Bearer new-token"  # type: ignore[misc]
 
-    def test_validate_always_succeeds(self) -> None:
+    async def test_validate_always_succeeds(self) -> None:
         """validate() always returns success (public specs don't need auth)."""
         cred = OpenAPICredential()
-        result = cred.validate()
+        result = await cred.validate()
         assert result.success is True
         assert result.identity is not None
 
-    def test_validate_succeeds_with_auth_header(self) -> None:
+    async def test_validate_succeeds_with_auth_header(self) -> None:
         cred = OpenAPICredential(auth_header="Bearer some-token")
-        result = cred.validate()
+        result = await cred.validate()
         assert result.success is True
 
 

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 import msgspec
 from temporalio import workflow
@@ -51,6 +51,7 @@ from openapi.contracts import (
     TransformInput,
     TransformOutput,
 )
+from openapi.credentials import VALIDATED_AUTH_HEADER_KEY
 
 T = TypeVar("T")
 
@@ -432,14 +433,24 @@ class OpenAPIConnector(App):
         if not input.spec_url:
             raise ValueError("spec_url is required for extract_spec")
 
-        # Resolve optional credential for auth_header
-        auth_header = ""
-        if input.openapi_credential is not None:
+        # Claim the auth_header that validate() stored in app state, avoiding a
+        # second DAPR credential lookup. Falls back to resolve_credential() if
+        # state was not populated (e.g. standalone / test execution).
+        auth_header = cast("str | None", self.get_app_state(VALIDATED_AUTH_HEADER_KEY))
+        if auth_header is not None:
+            self.set_app_state(VALIDATED_AUTH_HEADER_KEY, None)  # claim ownership
+            self.logger.debug("using pre-validated auth_header from validate()")
+        elif input.openapi_credential is not None:
             from openapi.credentials import OpenAPICredential
 
             credential = await self.resolve_credential(input.openapi_credential)
-            if isinstance(credential, OpenAPICredential):
-                auth_header = credential.auth_header
+            auth_header = (
+                credential.auth_header
+                if isinstance(credential, OpenAPICredential)
+                else ""
+            )
+        else:
+            auth_header = ""
 
         spec_file, path_file, spec_count, path_count = await _extract_spec_async(
             spec_url=input.spec_url,
@@ -568,10 +579,9 @@ class OpenAPIConnector(App):
             )
         )
 
-        # Total scanned = 1 APISpec + N APIPath + 1 Connection
-        total_scanned = (
-            extract_result.api_spec_count + extract_result.api_path_count + 1
-        )
+        # Total scanned = APISpec + APIPath records (Connection is always emitted
+        # unconditionally and is not subject to change detection)
+        total_scanned = extract_result.api_spec_count + extract_result.api_path_count
 
         # ================================================================
         # Step 2: Change detection (if checkpoint_dir provided)
