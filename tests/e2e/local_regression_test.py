@@ -23,14 +23,12 @@ import os
 import shutil
 import sys
 import time
-import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
 from tests.e2e.local_infra import (
     LOADER_LOCAL,
     OPENAPI_LOCAL,
-    LocalAppConfig,
     LocalProcessManager,
     create_local_argument_parser,
     prepare_dapr_components,
