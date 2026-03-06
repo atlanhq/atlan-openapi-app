@@ -101,7 +101,9 @@ class TestOpenAPIConnectorInput:
 
     def test_round_trip_openapi_credential_ref_fields(self) -> None:
         """CredentialRef fields (name, credential_type, store_name) must survive."""
-        ref = CredentialRef(name="my-openapi-cred", credential_type="openapi", store_name="vault")
+        ref = CredentialRef(
+            name="my-openapi-cred", credential_type="openapi", store_name="vault"
+        )
         original = OpenAPIConnectorInput(openapi_credential=ref)
         decoded = _round_trip(original, OpenAPIConnectorInput)
         assert decoded.openapi_credential is not None
@@ -111,7 +113,9 @@ class TestOpenAPIConnectorInput:
 
     def test_round_trip_atlan_credential_ref_fields(self) -> None:
         """Atlan CredentialRef fields must survive round-trip."""
-        ref = CredentialRef(name="atlan-cred", credential_type="atlan_api_token", store_name="default")
+        ref = CredentialRef(
+            name="atlan-cred", credential_type="atlan_api_token", store_name="default"
+        )
         original = OpenAPIConnectorInput(atlan_credential=ref)
         decoded = _round_trip(original, OpenAPIConnectorInput)
         assert decoded.atlan_credential is not None
@@ -330,7 +334,10 @@ class TestDiffContracts:
         )
         decoded = _round_trip(original, DiffOutput)
         assert decoded.changed_api_spec_file is not None
-        assert decoded.changed_api_spec_file.local_path == "/tmp/diff/changed_api_spec.jsonl"
+        assert (
+            decoded.changed_api_spec_file.local_path
+            == "/tmp/diff/changed_api_spec.jsonl"
+        )
         assert decoded.changed_api_path_file is not None
         assert decoded.new_count == 5
         assert decoded.changed_count == 2
@@ -372,7 +379,10 @@ class TestTransformContracts:
         )
         decoded = _round_trip(original, TransformInput)
         assert decoded.changed_api_spec_file is not None
-        assert decoded.changed_api_spec_file.local_path == "/tmp/diff/changed_api_spec.jsonl"
+        assert (
+            decoded.changed_api_spec_file.local_path
+            == "/tmp/diff/changed_api_spec.jsonl"
+        )
         assert decoded.changed_api_path_file is not None
         assert decoded.connection is not None
         assert decoded.connection.qualified_name == "default/api/conn"

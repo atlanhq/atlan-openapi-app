@@ -43,12 +43,16 @@ _METADATA = json.loads(_METADATA_PATH.read_text())
 # The connector's total_scanned = api_spec_count + api_path_count + 1 (Connection).
 # metadata.json entity_types records the spec-level records (APISpec + APIPath = 14 for Petstore).
 # total_scanned adds +1 for the Connection asset.
-_EXPECTED_SPEC_RECORDS = sum(v["records"] for v in _METADATA["entity_types"].values())  # 14
+_EXPECTED_SPEC_RECORDS = sum(
+    v["records"] for v in _METADATA["entity_types"].values()
+)  # 14
 _EXPECTED_TOTAL = _EXPECTED_SPEC_RECORDS + 1  # +1 for Connection = 15
 
 # No pytestmark skip — replay tests never require source credentials.
 # Public Petstore spec URL is read from metadata.json.
-_SPEC_URL = _METADATA.get("base_url", "https://petstore3.swagger.io/api/v3/openapi.json")
+_SPEC_URL = _METADATA.get(
+    "base_url", "https://petstore3.swagger.io/api/v3/openapi.json"
+)
 
 CONNECTION_NAME = "test-openapi-replay"
 CONNECTION_QN = f"default/api/{CONNECTION_NAME}"
@@ -81,7 +85,9 @@ class TestReplayExtraction:
             await replay_executor.execute_app(
                 OpenAPIConnector,
                 OpenAPIConnectorInput(
-                    connection=Connection(qualified_name=CONNECTION_QN, name=CONNECTION_NAME),
+                    connection=Connection(
+                        qualified_name=CONNECTION_QN, name=CONNECTION_NAME
+                    ),
                     spec_url=_SPEC_URL,
                     openapi_credential=None,
                     output_dir=str(output_dir / "run1"),
@@ -221,7 +227,9 @@ class TestReplayCheckpoint:
             await replay_executor.execute_app(
                 OpenAPIConnector,
                 OpenAPIConnectorInput(
-                    connection=Connection(qualified_name=CONNECTION_QN, name=CONNECTION_NAME),
+                    connection=Connection(
+                        qualified_name=CONNECTION_QN, name=CONNECTION_NAME
+                    ),
                     spec_url=_SPEC_URL,
                     openapi_credential=None,
                     output_dir=str(output_dir / "run1"),
@@ -266,7 +274,9 @@ class TestReplayCheckpoint:
             await replay_executor.execute_app(
                 OpenAPIConnector,
                 OpenAPIConnectorInput(
-                    connection=Connection(qualified_name=CONNECTION_QN, name=CONNECTION_NAME),
+                    connection=Connection(
+                        qualified_name=CONNECTION_QN, name=CONNECTION_NAME
+                    ),
                     spec_url=_SPEC_URL,
                     openapi_credential=None,
                     output_dir=str(output_dir / "run2"),
@@ -290,4 +300,6 @@ class TestReplayCheckpoint:
         assert second_run_result.new_count == 0
         assert second_run_result.changed_count == 0
         assert second_run_result.deleted_count == 0
-        assert second_run_result.output_file is None  # No changes to transform — loader has nothing to validate
+        assert (
+            second_run_result.output_file is None
+        )  # No changes to transform — loader has nothing to validate

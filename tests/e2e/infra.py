@@ -182,7 +182,11 @@ async def kube_http_call(
             return response
         except (RuntimeError, OSError) as exc:
             _kill_proc(proc)
-            kubectl_stderr = (proc.stderr.read().decode(errors="replace").strip() if proc.stderr else "")
+            kubectl_stderr = (
+                proc.stderr.read().decode(errors="replace").strip()
+                if proc.stderr
+                else ""
+            )
             detail = f" | kubectl: {kubectl_stderr}" if kubectl_stderr else ""
             last_error = RuntimeError(f"{exc}{detail}")
             remaining = deadline - time.monotonic()
@@ -235,26 +239,28 @@ class MultiAppDeployer:
         if app.values_file is not None:
             helm_cmd.extend(["--set-string", f"image.tag={self.image_tag}"])
 
-        helm_cmd.extend([
-            "--set",
-            f"imagePullSecret.username={os.environ['GH_USERNAME']}",
-            "--set",
-            f"imagePullSecret.password={os.environ['APP_PKG_GH_PAT']}",
-            "--set",
-            "worker.storage.size=10Gi",
-            "--set",
-            "worker.storage.maxSize=50Gi",
-            "--set",
-            "worker.resources.requests.memory=512Mi",
-            "--set",
-            f"worker.resources.limits.memory={memory_limit}",
-            "--namespace",
-            app.namespace,
-            "--create-namespace",
-            "--wait",
-            "--timeout",
-            "300s",
-        ])
+        helm_cmd.extend(
+            [
+                "--set",
+                f"imagePullSecret.username={os.environ['GH_USERNAME']}",
+                "--set",
+                f"imagePullSecret.password={os.environ['APP_PKG_GH_PAT']}",
+                "--set",
+                "worker.storage.size=10Gi",
+                "--set",
+                "worker.storage.maxSize=50Gi",
+                "--set",
+                "worker.resources.requests.memory=512Mi",
+                "--set",
+                f"worker.resources.limits.memory={memory_limit}",
+                "--namespace",
+                app.namespace,
+                "--create-namespace",
+                "--wait",
+                "--timeout",
+                "300s",
+            ]
+        )
 
         for item in extra_helm_sets or []:
             helm_cmd.extend(["--set", item])
@@ -263,7 +269,9 @@ class MultiAppDeployer:
 
         if result.returncode != 0:
             print(f"Deploy failed:\n{result.stderr}")
-            raise RuntimeError(f"Deploy of {app.name} failed with code {result.returncode}")
+            raise RuntimeError(
+                f"Deploy of {app.name} failed with code {result.returncode}"
+            )
 
         print(f"  {app.name} deployed successfully")
 
@@ -302,7 +310,9 @@ class MultiAppDeployer:
 
     async def undeploy_all(self) -> None:
         """Remove all app deployments in parallel."""
-        await asyncio.gather(*(asyncio.to_thread(self.undeploy_app, app) for app in self.apps))
+        await asyncio.gather(
+            *(asyncio.to_thread(self.undeploy_app, app) for app in self.apps)
+        )
 
 
 # =============================================================================
@@ -370,9 +380,13 @@ async def run_workflow(
     timeout_minutes: float = 30.0,
 ) -> tuple[dict[str, Any], str, str]:
     """POST ``/start``, poll ``/result``, return ``(result, workflow_id, correlation_id)``."""
-    response = await kube_http_call(app, "POST", "/workflows/v1/start", json_body=input_data)
+    response = await kube_http_call(
+        app, "POST", "/workflows/v1/start", json_body=input_data
+    )
     if response.status_code >= 400:
-        print(f"    POST /workflows/v1/start returned {response.status_code}: {response.text}")
+        print(
+            f"    POST /workflows/v1/start returned {response.status_code}: {response.text}"
+        )
     response.raise_for_status()
 
     run_response = response.json()
@@ -427,7 +441,9 @@ async def run_delete_workflow(
     if checkpoint_refs:
         post_data["checkpoint_refs"] = checkpoint_refs
 
-    response = await kube_http_call(app, "POST", "/workflows/v1/start", json_body=post_data)
+    response = await kube_http_call(
+        app, "POST", "/workflows/v1/start", json_body=post_data
+    )
     response.raise_for_status()
 
     run_response = response.json()
@@ -458,10 +474,14 @@ async def run_delete_workflow(
     return result, workflow_id, correlation_id
 
 
-async def get_timing(app: AppConfig, workflow_id: str) -> tuple[float, list[dict[str, Any]]]:
+async def get_timing(
+    app: AppConfig, workflow_id: str
+) -> tuple[float, list[dict[str, Any]]]:
     """Fetch timing breakdown from the handler."""
     try:
-        response = await kube_http_call(app, "GET", f"/workflows/v1/timing/{workflow_id}")
+        response = await kube_http_call(
+            app, "GET", f"/workflows/v1/timing/{workflow_id}"
+        )
         if response.status_code == 200:
             data = response.json()
             return (
@@ -490,7 +510,9 @@ async def run_workflow_local(
     async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, read=None)) as client:
         response = await client.post(f"{base_url}/workflows/v1/start", json=input_data)
         if response.status_code >= 400:
-            print(f"    POST /workflows/v1/start returned {response.status_code}: {response.text}")
+            print(
+                f"    POST /workflows/v1/start returned {response.status_code}: {response.text}"
+            )
         response.raise_for_status()
 
         run_response = response.json()
@@ -613,7 +635,11 @@ async def verify_atlan_assets(
                             "bool": {
                                 "must": [
                                     {"term": {"__typeName.keyword": spec.type_name}},
-                                    {"term": {"connectionQualifiedName": connection_qn}},
+                                    {
+                                        "term": {
+                                            "connectionQualifiedName": connection_qn
+                                        }
+                                    },
                                 ]
                             }
                         },
@@ -632,7 +658,9 @@ async def verify_atlan_assets(
                 else:
                     for asset in response.assets[:2]:
                         if asset.name is UNSET or not asset.name:
-                            failures.append(f"{spec.type_name}: sample asset has empty name")
+                            failures.append(
+                                f"{spec.type_name}: sample asset has empty name"
+                            )
                         conn_qn_val = asset.connection_qualified_name
                         if conn_qn_val is not UNSET and conn_qn_val != connection_qn:
                             failures.append(
@@ -719,7 +747,9 @@ class LogCollector:
     def record(self, app: AppConfig, correlation_id: str, label: str) -> None:
         """Record a workflow run for later structured log collection."""
         if correlation_id:
-            self._refs.append(WorkflowLogRef(app=app, correlation_id=correlation_id, label=label))
+            self._refs.append(
+                WorkflowLogRef(app=app, correlation_id=correlation_id, label=label)
+            )
 
     async def collect_all(self) -> None:
         """Collect all logs. Best-effort — never raises."""
@@ -737,7 +767,9 @@ class LogCollector:
         for app in self._apps:
             kubectl_dir = self._output_dir / "kubectl" / app.name
             kubectl_dir.mkdir(parents=True, exist_ok=True)
-            kubectl_tasks.append(asyncio.to_thread(self._collect_kubectl_logs, app, kubectl_dir))
+            kubectl_tasks.append(
+                asyncio.to_thread(self._collect_kubectl_logs, app, kubectl_dir)
+            )
         await asyncio.gather(*kubectl_tasks, return_exceptions=True)
 
         if self._refs:
@@ -753,10 +785,17 @@ class LogCollector:
         try:
             pods_result = subprocess.run(
                 [
-                    "kubectl", "get", "pods", "-n", app.namespace,
-                    "-o", "jsonpath={.items[*].metadata.name}",
+                    "kubectl",
+                    "get",
+                    "pods",
+                    "-n",
+                    app.namespace,
+                    "-o",
+                    "jsonpath={.items[*].metadata.name}",
                 ],
-                capture_output=True, text=True, timeout=30,
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             if pods_result.returncode != 0 or not pods_result.stdout.strip():
                 return
@@ -765,9 +804,19 @@ class LogCollector:
             for pod in pods:
                 try:
                     containers_result = subprocess.run(
-                        ["kubectl", "get", "pod", pod, "-n", app.namespace,
-                         "-o", "jsonpath={.spec.containers[*].name}"],
-                        capture_output=True, text=True, timeout=30,
+                        [
+                            "kubectl",
+                            "get",
+                            "pod",
+                            pod,
+                            "-n",
+                            app.namespace,
+                            "-o",
+                            "jsonpath={.spec.containers[*].name}",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
                     )
                     if containers_result.returncode != 0:
                         continue
@@ -778,18 +827,33 @@ class LogCollector:
                 for container in containers:
                     try:
                         logs = subprocess.run(
-                            ["kubectl", "logs", "-n", app.namespace, pod, "-c", container, "--tail=10000"],
-                            capture_output=True, text=True, timeout=120,
+                            [
+                                "kubectl",
+                                "logs",
+                                "-n",
+                                app.namespace,
+                                pod,
+                                "-c",
+                                container,
+                                "--tail=10000",
+                            ],
+                            capture_output=True,
+                            text=True,
+                            timeout=120,
                         )
                         if logs.returncode == 0 and logs.stdout:
-                            (kubectl_dir / f"{container}-{pod}.log").write_text(logs.stdout)
+                            (kubectl_dir / f"{container}-{pod}.log").write_text(
+                                logs.stdout
+                            )
                     except Exception:
                         pass
 
         except Exception as e:
             print(f"  [log-collect] WARNING: kubectl logs for {app.name}: {e}")
 
-    async def _collect_structured_logs(self, ref: WorkflowLogRef, structured_dir: Path) -> None:
+    async def _collect_structured_logs(
+        self, ref: WorkflowLogRef, structured_dir: Path
+    ) -> None:
         """Download structured OTEL logs for a workflow run via handler API."""
         try:
             corr_prefix = ref.correlation_id[:8]

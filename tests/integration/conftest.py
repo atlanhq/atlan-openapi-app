@@ -114,15 +114,24 @@ def _start_worker(
     dapr_app_id = f"test-{task_queue}"
 
     cmd = [
-        "dapr", "run",
-        "--app-id", dapr_app_id,
-        "--app-port", str(health_port),
-        "--dapr-http-port", str(dapr_http_port),
-        "--dapr-grpc-port", str(dapr_grpc_port),
-        "--resources-path", dapr_components_path,
-        "--log-level", "warn",
-        "--placement-host-address", "",
-        "--scheduler-host-address", "",
+        "dapr",
+        "run",
+        "--app-id",
+        dapr_app_id,
+        "--app-port",
+        str(health_port),
+        "--dapr-http-port",
+        str(dapr_http_port),
+        "--dapr-grpc-port",
+        str(dapr_grpc_port),
+        "--resources-path",
+        dapr_components_path,
+        "--log-level",
+        "warn",
+        "--placement-host-address",
+        "",
+        "--scheduler-host-address",
+        "",
         "--",
         sys.executable,
         "-m",
@@ -186,19 +195,23 @@ def dapr_components_dir() -> Generator[str, None, None]:
     # Atlan API token (for tests that load to Atlan)
     atlan_key = os.environ.get("ATLAN_API_KEY", "")
     if atlan_key:
-        secrets["atlan"] = json.dumps({
-            "type": "atlan_api_token",
-            "token": atlan_key,
-            "base_url": os.environ.get("ATLAN_BASE_URL", ""),
-        })
+        secrets["atlan"] = json.dumps(
+            {
+                "type": "atlan_api_token",
+                "token": atlan_key,
+                "base_url": os.environ.get("ATLAN_BASE_URL", ""),
+            }
+        )
 
     # OpenAPI credential (optional — only needed for private spec endpoints)
     openapi_auth_header = os.environ.get("OPENAPI_AUTH_HEADER", "")
     if openapi_auth_header:
-        secrets["openapi"] = json.dumps({
-            "type": "openapi",
-            "auth_header": openapi_auth_header,
-        })
+        secrets["openapi"] = json.dumps(
+            {
+                "type": "openapi",
+                "auth_header": openapi_auth_header,
+            }
+        )
 
     tmp_dir = _prepare_dapr_components(secrets)
     yield os.path.join(tmp_dir, "components")
@@ -219,7 +232,9 @@ async def temporal_client_msgspec() -> Client:
         get_msgspec_payload_converter,
     )
 
-    data_converter = create_data_converter(additional_converters=[get_msgspec_payload_converter()])
+    data_converter = create_data_converter(
+        additional_converters=[get_msgspec_payload_converter()]
+    )
     return await Client.connect("127.0.0.1:7233", data_converter=data_converter)
 
 

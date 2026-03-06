@@ -68,7 +68,9 @@ def map_connection(connection: Connection) -> Connection:
     _qn = connection.qualified_name
     conn_qn: str = _qn if isinstance(_qn, str) else ""
     _name = connection.name
-    conn_name: str = _name if isinstance(_name, str) and _name else conn_qn.rsplit("/", 1)[-1]
+    conn_name: str = (
+        _name if isinstance(_name, str) and _name else conn_qn.rsplit("/", 1)[-1]
+    )
     return Connection(
         qualified_name=conn_qn,
         name=conn_name,

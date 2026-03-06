@@ -137,14 +137,30 @@ async def _extract_spec_async(
                 openapi_version=spec.get("openapi", spec.get("swagger", "")),
                 description=info.get("description", ""),
                 terms_of_service=info.get("termsOfService", ""),
-                contact_name=info.get("contact", {}).get("name", "") if info.get("contact") else "",
-                contact_email=info.get("contact", {}).get("email", "") if info.get("contact") else "",
-                contact_url=info.get("contact", {}).get("url", "") if info.get("contact") else "",
-                license_name=info.get("license", {}).get("name", "") if info.get("license") else "",
-                license_url=info.get("license", {}).get("url", "") if info.get("license") else "",
+                contact_name=info.get("contact", {}).get("name", "")
+                if info.get("contact")
+                else "",
+                contact_email=info.get("contact", {}).get("email", "")
+                if info.get("contact")
+                else "",
+                contact_url=info.get("contact", {}).get("url", "")
+                if info.get("contact")
+                else "",
+                license_name=info.get("license", {}).get("name", "")
+                if info.get("license")
+                else "",
+                license_url=info.get("license", {}).get("url", "")
+                if info.get("license")
+                else "",
                 spec_version=info.get("version", ""),
-                external_docs_url=spec.get("externalDocs", {}).get("url", "") if spec.get("externalDocs") else "",
-                external_docs_description=spec.get("externalDocs", {}).get("description", "") if spec.get("externalDocs") else "",
+                external_docs_url=spec.get("externalDocs", {}).get("url", "")
+                if spec.get("externalDocs")
+                else "",
+                external_docs_description=spec.get("externalDocs", {}).get(
+                    "description", ""
+                )
+                if spec.get("externalDocs")
+                else "",
                 spec_url=spec_url,
             )
             spec_f.write(_encoder.encode(spec_record) + b"\n")
@@ -158,9 +174,7 @@ async def _extract_spec_async(
 
                 # Collect available operations (uppercase methods) — matches Kotlin's addOperationDetails
                 operations: list[str] = [
-                    m.upper()
-                    for m in _TRACKED_METHODS
-                    if path_item.get(m) is not None
+                    m.upper() for m in _TRACKED_METHODS if path_item.get(m) is not None
                 ]
 
                 # Build markdown description table (format matches Kotlin exactly)
@@ -170,7 +184,9 @@ async def _extract_spec_async(
                     for method in _TRACKED_METHODS:
                         op = path_item.get(method)
                         if op is not None:
-                            op_summary = op.get("summary", "") if isinstance(op, dict) else ""
+                            op_summary = (
+                                op.get("summary", "") if isinstance(op, dict) else ""
+                            )
                             rows.append(f"| `{method.upper()}` |{op_summary} |")
                     description = "\n".join(rows)
 
@@ -226,7 +242,10 @@ def _diff_blocking(
         if isinstance(record, OpenAPISpecRecord):
             return RecordKey("APISpec", build_api_spec_qn(conn_qn, record.title))
         if isinstance(record, OpenAPIPathRecord):
-            return RecordKey("APIPath", build_api_path_qn(record.spec_qualified_name, record.path_url))
+            return RecordKey(
+                "APIPath",
+                build_api_path_qn(record.spec_qualified_name, record.path_url),
+            )
         raise NotImplementedError(f"unknown record type: {type(record)}")
 
     def _get_content(record: Any) -> dict[str, Any]:
@@ -342,20 +361,28 @@ def _transform_blocking(
 
         # Emit APISpec records
         for record in _iter_jsonl(input.changed_api_spec_file, OpenAPISpecRecord):
-            asset = map_api_spec(record, conn_qn, workflow_id, workflow_type, workflow_run_at_ms)
+            asset = map_api_spec(
+                record, conn_qn, workflow_id, workflow_type, workflow_run_at_ms
+            )
             out_f.write(asset.to_nested_bytes() + b"\n")
             api_spec_count += 1
 
         # Emit APIPath records
         for record in _iter_jsonl(input.changed_api_path_file, OpenAPIPathRecord):
-            asset = map_api_path(record, conn_qn, workflow_id, workflow_type, workflow_run_at_ms)
+            asset = map_api_path(
+                record, conn_qn, workflow_id, workflow_type, workflow_run_at_ms
+            )
             out_f.write(asset.to_nested_bytes() + b"\n")
             api_path_count += 1
 
     total = api_spec_count + api_path_count
     logger.info(
         "transform complete",
-        extra={"api_spec_count": api_spec_count, "api_path_count": api_path_count, "total": total},
+        extra={
+            "api_spec_count": api_spec_count,
+            "api_path_count": api_path_count,
+            "total": total,
+        },
     )
 
     return TransformOutput(
@@ -533,14 +560,18 @@ class OpenAPIConnector(App):
         extract_result = await self.extract_spec(
             ExtractSpecInput(
                 spec_url=input.spec_url,
-                connection_qualified_name=connection.qualified_name if isinstance(connection.qualified_name, str) else "",
+                connection_qualified_name=connection.qualified_name
+                if isinstance(connection.qualified_name, str)
+                else "",
                 output_dir=f"{output_dir}/raw",
                 openapi_credential=input.openapi_credential,
             )
         )
 
         # Total scanned = 1 APISpec + N APIPath + 1 Connection
-        total_scanned = extract_result.api_spec_count + extract_result.api_path_count + 1
+        total_scanned = (
+            extract_result.api_spec_count + extract_result.api_path_count + 1
+        )
 
         # ================================================================
         # Step 2: Change detection (if checkpoint_dir provided)
