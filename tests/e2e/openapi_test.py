@@ -24,6 +24,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from app_framework.credentials import CredentialRef
+from pyatlan.models.connection import Connection
+
+from openapi.contracts import OpenAPIConnectorInput
 from tests.e2e.infra import (
     DELETE_APP,
     LOADER_APP,
@@ -247,21 +251,26 @@ class OpenAPITestRunner:
             # Step 1: Run connector with Atlan loading
             # ============================================================
             print("\n[Step 1] Running OpenAPI connector (with Atlan loading)...")
-            connector_input: dict[str, Any] = {
-                "connection": {
-                    "typeName": "Connection",
-                    "qualifiedName": f"default/api/{connection_name}",
-                    "name": connection_name,
-                },
-                "spec_url": spec_url,
-                "load_to_atlan": True,
-                "atlan_credential": atlan_credential,
-                "checkpoint_dir": f"/tmp/openapi/checkpoint/{connection_name}",
-            }
+            connector_input = OpenAPIConnectorInput(
+                connection=Connection(
+                    qualified_name=f"default/api/{connection_name}",
+                    name=connection_name,
+                    category="API",
+                    admin_groups=["admins"],
+                ),
+                spec_url=spec_url,
+                load_to_atlan=True,
+                atlan_credential=CredentialRef(
+                    name="atlan",
+                    credential_type="atlan_api_token",
+                    store_name="default",
+                ),
+                checkpoint_dir=f"/tmp/openapi/checkpoint/{connection_name}",
+            )
             if batch_size is not None:
-                connector_input["loader_batch_size"] = batch_size
+                connector_input.loader_batch_size = batch_size
             if save_timeout is not None:
-                connector_input["loader_save_timeout"] = save_timeout
+                connector_input.loader_save_timeout = save_timeout
 
             connector_result, workflow_id, correlation_id = await run_workflow(
                 OPENAPI_APP, connector_input
