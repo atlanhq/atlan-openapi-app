@@ -26,6 +26,10 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from app_framework.credentials import CredentialRef
+from pyatlan.models.connection import Connection
+
+from openapi.contracts import OpenAPIConnectorInput
 from tests.e2e.local_infra import (
     LOADER_LOCAL,
     OPENAPI_LOCAL,
@@ -107,21 +111,22 @@ async def run_openapi_test(mgr: LocalProcessManager) -> LocalTestResult:
         mgr.start_app(OPENAPI_LOCAL)
 
         _conn_name = f"local-openapi-{int(time.time())}"
-        connector_input: dict[str, Any] = {
-            "connection": {
-                "typeName": "Connection",
-                "qualifiedName": f"default/api/{_conn_name}",
-                "name": _conn_name,
-            },
-            "spec_url": spec_url,
-            "load_to_atlan": True,
-            "atlan_credential": {
-                "name": "atlan",
-                "credential_type": "atlan_api_token",
-                "store_name": "default",
-            },
-            "loader_dry_run": True,
-        }
+        connector_input = OpenAPIConnectorInput(
+            connection=Connection(
+                qualified_name=f"default/api/{_conn_name}",
+                name=_conn_name,
+                category="API",
+                admin_groups=["admins"],
+            ),
+            spec_url=spec_url,
+            load_to_atlan=True,
+            atlan_credential=CredentialRef(
+                name="atlan",
+                credential_type="atlan_api_token",
+                store_name="default",
+            ),
+            loader_dry_run=True,
+        )
 
         base_url = mgr.get_handler_url(OPENAPI_LOCAL.name)
         wf_result, _workflow_id, _ = await run_workflow_local(base_url, connector_input)
