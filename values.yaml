@@ -3,7 +3,7 @@ appModule: openapi.connector:OpenAPIConnector
 
 image:
   # Bare repo name only — the chart prepends ghcr.io/atlanhq/ automatically.
-  repository: openapi
+  repository: atlan-openapi-app
 
 # Credentials (set values at deploy time via --set)
 connectorCredentials:

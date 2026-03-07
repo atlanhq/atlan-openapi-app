@@ -77,7 +77,9 @@ class TestBuildApiPathQN:
 
 
 def _make_connection(qn: str = CONN_QN, name: str = "test-conn") -> Connection:
-    return Connection(qualified_name=qn, name=name)
+    return Connection(
+        qualified_name=qn, name=name, category="API", admin_groups=["admins"]
+    )
 
 
 class TestMapConnection:
@@ -110,7 +112,11 @@ class TestMapConnection:
 
     def test_name_falls_back_to_last_segment(self) -> None:
         """When connection.name is not set, fall back to last QN segment."""
-        bare_conn = Connection(qualified_name="default/api/fallback-name")
+        bare_conn = Connection(
+            qualified_name="default/api/fallback-name",
+            category="API",
+            admin_groups=["admins"],
+        )
         result = map_connection(bare_conn)
         assert result.name == "fallback-name"
 
