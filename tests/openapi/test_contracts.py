@@ -68,7 +68,12 @@ class TestOpenAPIConnectorInput:
         """All non-default values must survive round-trip."""
         atlan_ref = CredentialRef(name="atlan", credential_type="atlan_api_token")
         openapi_ref = CredentialRef(name="openapi", credential_type="openapi")
-        conn = Connection(qualified_name="default/api/test-conn", name="test-conn")
+        conn = Connection(
+            qualified_name="default/api/test-conn",
+            name="test-conn",
+            category="API",
+            admin_groups=["admins"],
+        )
         original = OpenAPIConnectorInput(
             connection=conn,
             import_type="CLOUD",
@@ -283,7 +288,12 @@ class TestDiffContracts:
     def test_input_round_trip_with_values(self) -> None:
         spec_ref = _sample_file_ref("/tmp/raw/api_spec.jsonl")
         path_ref = _sample_file_ref("/tmp/raw/api_path.jsonl")
-        conn = Connection(qualified_name="default/api/conn", name="conn")
+        conn = Connection(
+            qualified_name="default/api/conn",
+            name="conn",
+            category="API",
+            admin_groups=["admins"],
+        )
         original = DiffInput(
             api_spec_file=spec_ref,
             api_path_file=path_ref,
@@ -367,7 +377,12 @@ class TestTransformContracts:
     def test_input_round_trip_with_values(self) -> None:
         spec_ref = _sample_file_ref("/tmp/diff/changed_api_spec.jsonl")
         path_ref = _sample_file_ref("/tmp/diff/changed_api_path.jsonl")
-        conn = Connection(qualified_name="default/api/conn", name="conn")
+        conn = Connection(
+            qualified_name="default/api/conn",
+            name="conn",
+            category="API",
+            admin_groups=["admins"],
+        )
         original = TransformInput(
             changed_api_spec_file=spec_ref,
             changed_api_path_file=path_ref,

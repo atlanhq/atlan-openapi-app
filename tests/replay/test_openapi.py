@@ -86,7 +86,10 @@ class TestReplayExtraction:
                 OpenAPIConnector,
                 OpenAPIConnectorInput(
                     connection=Connection(
-                        qualified_name=CONNECTION_QN, name=CONNECTION_NAME
+                        qualified_name=CONNECTION_QN,
+                        name=CONNECTION_NAME,
+                        category="API",
+                        admin_groups=["admins"],
                     ),
                     spec_url=_SPEC_URL,
                     openapi_credential=None,
@@ -228,7 +231,10 @@ class TestReplayCheckpoint:
                 OpenAPIConnector,
                 OpenAPIConnectorInput(
                     connection=Connection(
-                        qualified_name=CONNECTION_QN, name=CONNECTION_NAME
+                        qualified_name=CONNECTION_QN,
+                        name=CONNECTION_NAME,
+                        category="API",
+                        admin_groups=["admins"],
                     ),
                     spec_url=_SPEC_URL,
                     openapi_credential=None,
@@ -274,7 +280,10 @@ class TestReplayCheckpoint:
                 OpenAPIConnector,
                 OpenAPIConnectorInput(
                     connection=Connection(
-                        qualified_name=CONNECTION_QN, name=CONNECTION_NAME
+                        qualified_name=CONNECTION_QN,
+                        name=CONNECTION_NAME,
+                        category="API",
+                        admin_groups=["admins"],
                     ),
                     spec_url=_SPEC_URL,
                     openapi_credential=None,
