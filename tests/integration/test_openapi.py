@@ -72,7 +72,10 @@ class TestOpenAPIConnectorExtraction:
                 OpenAPIConnector,
                 OpenAPIConnectorInput(
                     connection=Connection(
-                        qualified_name=CONNECTION_QN, name=CONNECTION_NAME
+                        qualified_name=CONNECTION_QN,
+                        name=CONNECTION_NAME,
+                        category="API",
+                        admin_groups=["admins"],
                     ),
                     spec_url=_SPEC_URL,
                     output_dir=str(output_dir / "run1"),
@@ -194,7 +197,10 @@ class TestOpenAPIConnectorCheckpoint:
                 OpenAPIConnector,
                 OpenAPIConnectorInput(
                     connection=Connection(
-                        qualified_name=CONNECTION_QN, name=CONNECTION_NAME
+                        qualified_name=CONNECTION_QN,
+                        name=CONNECTION_NAME,
+                        category="API",
+                        admin_groups=["admins"],
                     ),
                     spec_url=_SPEC_URL,
                     output_dir=str(output_dir / "run1"),
@@ -237,7 +243,10 @@ class TestOpenAPIConnectorCheckpoint:
                 OpenAPIConnector,
                 OpenAPIConnectorInput(
                     connection=Connection(
-                        qualified_name=CONNECTION_QN, name=CONNECTION_NAME
+                        qualified_name=CONNECTION_QN,
+                        name=CONNECTION_NAME,
+                        category="API",
+                        admin_groups=["admins"],
                     ),
                     spec_url=_SPEC_URL,
                     output_dir=str(output_dir / "run2"),
