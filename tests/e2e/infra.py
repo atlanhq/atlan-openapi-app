@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
 import socket
 import subprocess
@@ -26,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import msgspec
 
 # Repo root: tests/e2e/infra.py -> e2e -> tests -> repo_root
 REPO_ROOT = Path(__file__).parent.parent.parent
@@ -34,6 +36,7 @@ HELM_CHART = os.environ.get(
     "HELM_CHART_REF",
     "oci://ghcr.io/atlanhq/charts/atlan-app",
 )
+HELM_CHART_VERSION = os.environ.get("HELM_CHART_VERSION", "0.1.3")
 
 
 @dataclass
@@ -228,6 +231,8 @@ class MultiAppDeployer:
             "install",
             app.name,
             str(HELM_CHART),
+            "--version",
+            HELM_CHART_VERSION,
         ]
 
         if app.values_file is not None:
@@ -372,16 +377,28 @@ def cleanup_in_cluster(app: AppConfig, paths: list[str]) -> None:
 # =============================================================================
 
 
+def _to_json_dict(obj: Any) -> dict[str, Any]:
+    """Serialize a contract Input dataclass (or plain dict) to a JSON-compatible dict.
+
+    Uses msgspec so that pyatlan Connection objects and other non-trivial
+    dataclass fields are encoded correctly — the same way Temporal's
+    DataConverter would encode them.
+    """
+    if isinstance(obj, dict):
+        return obj
+    return json.loads(msgspec.json.encode(obj))
+
+
 async def run_workflow(
     app: AppConfig,
-    input_data: dict[str, Any],
+    input_data: Any,
     *,
     poll_interval: float = 5.0,
     timeout_minutes: float = 30.0,
 ) -> tuple[dict[str, Any], str, str]:
     """POST ``/start``, poll ``/result``, return ``(result, workflow_id, correlation_id)``."""
     response = await kube_http_call(
-        app, "POST", "/workflows/v1/start", json_body=input_data
+        app, "POST", "/workflows/v1/start", json_body=_to_json_dict(input_data)
     )
     if response.status_code >= 400:
         print(
@@ -501,14 +518,16 @@ async def get_timing(
 
 async def run_workflow_local(
     base_url: str,
-    input_data: dict[str, Any],
+    input_data: Any,
     *,
     poll_interval: float = 5.0,
     timeout_minutes: float = 30.0,
 ) -> tuple[dict[str, Any], str, str]:
     """POST ``/start``, poll ``/result``, return ``(result, workflow_id, correlation_id)``."""
     async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, read=None)) as client:
-        response = await client.post(f"{base_url}/workflows/v1/start", json=input_data)
+        response = await client.post(
+            f"{base_url}/workflows/v1/start", json=_to_json_dict(input_data)
+        )
         if response.status_code >= 400:
             print(
                 f"    POST /workflows/v1/start returned {response.status_code}: {response.text}"
