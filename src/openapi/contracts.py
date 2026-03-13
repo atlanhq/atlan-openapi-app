@@ -51,6 +51,26 @@ class OpenAPIConnectorInput(Input):
     """URL to the OpenAPI spec JSON/YAML document. Required when import_type='URL'.
     For import_type='CLOUD', use the presigned URL here."""
 
+    # === Connection selection (from UI radio swap) ===
+    connection_usage: str = "REUSE"
+    """'CREATE' to make a new connection, 'REUSE' to pick an existing one."""
+
+    connection_qualified_name: str = ""
+    """QN of existing connection (when connection_usage='REUSE')."""
+
+    # === Cloud import fields (when import_type='CLOUD') ===
+    spec_prefix: str = ""
+    """Object store directory path."""
+
+    spec_key: str = ""
+    """Object key (filename) in the object store."""
+
+    cloud_source: str = ""
+    """Credential GUID for csa-connectors-objectstore."""
+
+    spec_file: FileReference | None = None
+    """Uploaded file reference (import_type='DIRECT')."""
+
     # === Optional credential (for private specs with auth) ===
     openapi_credential: CredentialRef | None = None
     """Optional credential for private OpenAPI specs. Not needed for public specs."""
@@ -181,8 +201,8 @@ class DiffInput(Input):
     api_path_file: FileReference | None = None
     """FileReference to api_path.jsonl from extract_spec."""
 
-    connection: Connection | None = None
-    """Atlan connection object. Provides the qualified name for change detection keys."""
+    connection_qualified_name: str = ""
+    """Connection QN — used to build change detection keys for APISpec records."""
 
     checkpoint_dir: str = ""
     """Directory for checkpoint database."""
@@ -227,7 +247,13 @@ class TransformInput(Input):
     """FileReference to (changed) api_path records."""
 
     connection: Connection | None = None
-    """Atlan connection object. Provides the qualified name and display name."""
+    """Atlan connection object (CREATE path). When set, the Connection entity is emitted
+    in the output. When None (REUSE path), connection_qualified_name is used for QN
+    derivation and no Connection entity is written."""
+
+    connection_qualified_name: str = ""
+    """Connection QN (REUSE path). Used for APISpec/APIPath QN derivation when
+    connection is None."""
 
     output_dir: str = ""
     """Directory for output file."""

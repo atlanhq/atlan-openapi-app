@@ -228,8 +228,7 @@ def _diff_blocking(
     out_dir = Path(input.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    _raw_qn = input.connection.qualified_name if input.connection else None
-    conn_qn: str = _raw_qn if isinstance(_raw_qn, str) else ""
+    conn_qn: str = input.connection_qualified_name
 
     total_new = 0
     total_changed = 0
@@ -343,11 +342,15 @@ def _transform_blocking(
     output_file = out_dir / "openapi_metadata.jsonl"
 
     connection = input.connection
-    if connection is None:
-        raise ValueError("connection is required for transform")
-
-    _raw_conn_qn = connection.qualified_name
-    conn_qn: str = _raw_conn_qn if isinstance(_raw_conn_qn, str) else ""
+    if connection is not None:
+        _raw_conn_qn = connection.qualified_name
+        conn_qn: str = _raw_conn_qn if isinstance(_raw_conn_qn, str) else ""
+    else:
+        conn_qn = input.connection_qualified_name
+    if not conn_qn:
+        raise ValueError(
+            "connection or connection_qualified_name is required for transform"
+        )
     workflow_id = input.workflow_id
     workflow_type = input.workflow_type
     workflow_run_at_ms = input.workflow_run_at_ms
@@ -356,9 +359,10 @@ def _transform_blocking(
     api_path_count = 0
 
     with output_file.open("wb") as out_f:
-        # Always emit Connection first (no sync metadata on Connection)
-        conn_asset = map_connection(connection)
-        out_f.write(conn_asset.to_nested_bytes() + b"\n")
+        # Emit Connection only on CREATE — REUSE means the connection already exists
+        if connection is not None:
+            conn_asset = map_connection(connection)
+            out_f.write(conn_asset.to_nested_bytes() + b"\n")
 
         # Emit APISpec records
         for record in _iter_jsonl(input.changed_api_spec_file, OpenAPISpecRecord):
@@ -521,7 +525,30 @@ class OpenAPIConnector(App):
         5. load — sync to Atlan (if load_to_atlan=True and there are changes)
         6. commit checkpoint (after all stages succeed)
         """
-        connection = self.require(input.connection, "connection")
+        if input.connection_usage == "REUSE":
+            if not input.connection_qualified_name:
+                raise ValueError(
+                    "connection_qualified_name required when connection_usage='REUSE'"
+                )
+            conn_qn = input.connection_qualified_name
+            connection = None
+        else:
+            connection = self.require(input.connection, "connection")
+            conn_qn = (
+                connection.qualified_name
+                if isinstance(connection.qualified_name, str)
+                else ""
+            )
+
+        if input.import_type == "CLOUD":
+            if not input.cloud_source or not input.spec_key:
+                raise ValueError(
+                    "cloud_source and spec_key required when import_type='CLOUD'"
+                )
+            raise NotImplementedError(
+                "CLOUD import_type not yet implemented in App Framework. "
+                "Use import_type='URL' with a direct spec URL instead."
+            )
 
         if input.import_type == "DIRECT":
             raise ValueError(
@@ -535,7 +562,7 @@ class OpenAPIConnector(App):
 
         self.logger.info(
             "openapi connector starting",
-            connection_qualified_name=connection.qualified_name,
+            connection_qualified_name=conn_qn,
             spec_url=input.spec_url,
             load_to_atlan=input.load_to_atlan,
             checkpoint_enabled=bool(input.checkpoint_dir),
@@ -571,9 +598,7 @@ class OpenAPIConnector(App):
         extract_result = await self.extract_spec(
             ExtractSpecInput(
                 spec_url=input.spec_url,
-                connection_qualified_name=connection.qualified_name
-                if isinstance(connection.qualified_name, str)
-                else "",
+                connection_qualified_name=conn_qn,
                 output_dir=f"{output_dir}/raw",
                 openapi_credential=input.openapi_credential,
             )
@@ -611,7 +636,7 @@ class OpenAPIConnector(App):
                 DiffInput(
                     api_spec_file=extract_result.api_spec_file,
                     api_path_file=extract_result.api_path_file,
-                    connection=connection,
+                    connection_qualified_name=conn_qn,
                     checkpoint_dir=input.checkpoint_dir,
                     output_dir=f"{output_dir}/diff",
                 )
@@ -651,6 +676,7 @@ class OpenAPIConnector(App):
                     changed_api_spec_file=changed_api_spec_file,
                     changed_api_path_file=changed_api_path_file,
                     connection=connection,
+                    connection_qualified_name=conn_qn,
                     output_dir=output_dir,
                     workflow_id=info.workflow_id,
                     workflow_type=info.workflow_type,
@@ -680,7 +706,7 @@ class OpenAPIConnector(App):
             and output_file_path
             and (input.atlan_credential or input.loader_dry_run)
         ):
-            total_assets = api_spec_count + api_path_count + 1  # +1 for Connection
+            total_assets = api_spec_count + api_path_count + (1 if connection else 0)
 
             sync_result = await self.sync_local_to_storage(
                 SyncLocalToStorageInput(
