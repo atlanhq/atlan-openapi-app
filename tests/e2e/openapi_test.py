@@ -24,13 +24,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from app_framework.credentials import CredentialRef
-from pyatlan.models.connection import Connection
+from pyatlan_v9.model.assets import Connection
 
 from openapi.contracts import OpenAPIConnectorInput
 from tests.e2e.infra import (
     DELETE_APP,
-    LOADER_APP,
     AppConfig,
     AssetTypeSpec,
     LogCollector,
@@ -40,11 +38,9 @@ from tests.e2e.infra import (
     delete_helm_creds,
     format_duration,
     get_timing,
-    loader_helm_creds,
     output_result,
     run_delete_workflow,
     run_workflow,
-    validate_asset_creation,
     validate_deletion,
     validate_env_vars,
     verify_atlan_assets,
@@ -102,9 +98,7 @@ class OpenAPITestResult:
     api_spec_count: int = 0
     api_path_count: int = 0
     total_scanned: int = 0
-    atlan_loaded_count: int = 0
-    atlan_created_count: int = 0
-    atlan_updated_count: int = 0
+    publish_completed: bool = False
 
     # Validation results
     expected_asset_count: int = 0
@@ -167,10 +161,8 @@ def format_result(result: OpenAPITestResult, connection_name: str) -> str:
             f"  APIPath count: {result.api_path_count}",
             f"  Total scanned: {result.total_scanned}",
             "",
-            "--- Atlan Loading ---",
-            f"  Loaded:   {result.atlan_loaded_count}",
-            f"  Created:  {result.atlan_created_count}",
-            f"  Updated:  {result.atlan_updated_count}",
+            "--- Publishing ---",
+            f"  publish_completed: {result.publish_completed}",
             "",
             "--- Diff Validation (Second Pass) ---",
             f"  Unchanged: {result.pass2_unchanged_count}",
@@ -248,7 +240,7 @@ class OpenAPITestRunner:
 
         try:
             # ============================================================
-            # Step 1: Run connector with Atlan loading
+            # Step 1: Run connector with Atlan loading (via publish-app)
             # ============================================================
             print("\n[Step 1] Running OpenAPI connector (with Atlan loading)...")
             connector_input = OpenAPIConnectorInput(
@@ -260,17 +252,8 @@ class OpenAPITestRunner:
                 ),
                 spec_url=spec_url,
                 load_to_atlan=True,
-                atlan_credential=CredentialRef(
-                    name="atlan",
-                    credential_type="atlan_api_token",
-                    store_name="default",
-                ),
                 checkpoint_dir=f"/tmp/openapi/checkpoint/{connection_name}",
             )
-            if batch_size is not None:
-                connector_input.loader_batch_size = batch_size
-            if save_timeout is not None:
-                connector_input.loader_save_timeout = save_timeout
 
             connector_result, workflow_id, correlation_id = await run_workflow(
                 OPENAPI_APP, connector_input
@@ -283,13 +266,11 @@ class OpenAPITestRunner:
             result.api_spec_count = connector_result.get("api_spec_count", 0)
             result.api_path_count = connector_result.get("api_path_count", 0)
             result.total_scanned = connector_result.get("total_scanned", 0)
-            result.atlan_loaded_count = connector_result.get("atlan_loaded_count", 0)
-            result.atlan_created_count = connector_result.get("atlan_created_count", 0)
-            result.atlan_updated_count = connector_result.get("atlan_updated_count", 0)
-            print(f"  APISpec count:   {result.api_spec_count}")
-            print(f"  APIPath count:   {result.api_path_count}")
-            print(f"  Total scanned:   {result.total_scanned}")
-            print(f"  Loaded to Atlan: {result.atlan_loaded_count}")
+            result.publish_completed = connector_result.get("publish_completed", False)
+            print(f"  APISpec count:      {result.api_spec_count}")
+            print(f"  APIPath count:      {result.api_path_count}")
+            print(f"  Total scanned:      {result.total_scanned}")
+            print(f"  Publish completed:  {result.publish_completed}")
 
             # ============================================================
             # Step 2: Run second pass (incremental diff)
@@ -309,25 +290,13 @@ class OpenAPITestRunner:
                 result.errors.append("Second pass should detect unchanged assets")
 
             # ============================================================
-            # Step 3: Validate asset creation
+            # Step 3: Validate publish completed
             # ============================================================
-            print("\n[Step 3] Validating asset creation...")
-            result.expected_asset_count = result.total_scanned
-            result.validation_passed, result.creation_success_rate = (
-                validate_asset_creation(
-                    result.expected_asset_count,
-                    result.atlan_created_count,
-                    result.atlan_updated_count,
-                )
-            )
-            result.actual_asset_count = (
-                result.atlan_created_count + result.atlan_updated_count
-            )
-            print(f"  Success rate: {result.creation_success_rate:.1f}%")
+            print("\n[Step 3] Validating publish-app was called...")
+            result.validation_passed = result.publish_completed
             if not result.validation_passed:
                 result.errors.append(
-                    f"Asset creation validation FAILED: {result.creation_success_rate:.1f}% "
-                    f"({result.actual_asset_count}/{result.expected_asset_count}). Min: 90.0%"
+                    "publish-app was not called (publish_completed=False)"
                 )
 
             # ============================================================
@@ -397,7 +366,7 @@ class OpenAPITestRunner:
                 print("\n[Step 6] Skipping cleanup (--skip-cleanup)")
 
             result.success = (
-                result.atlan_loaded_count > 0
+                result.publish_completed
                 and result.validation_passed
                 and result.diff_validation_passed
                 and result.atlan_verification_passed
@@ -451,7 +420,7 @@ async def main() -> int:
         print("ERROR: ATLAN_BASE_URL and ATLAN_API_KEY are required")
         return 1
 
-    all_apps = [OPENAPI_APP, CUSTOM_TYPEDEFS_APP, LOADER_APP, DELETE_APP]
+    all_apps = [OPENAPI_APP, CUSTOM_TYPEDEFS_APP, DELETE_APP]
     deployer = MultiAppDeployer(apps=all_apps, image_tag=args.image_tag)
 
     log_collector = LogCollector(
@@ -473,7 +442,6 @@ async def main() -> int:
             await deployer.deploy_all(
                 credentials={
                     OPENAPI_APP.name: openapi_creds,
-                    LOADER_APP.name: loader_helm_creds(),
                     DELETE_APP.name: delete_helm_creds(),
                 }
             )
@@ -504,10 +472,8 @@ async def main() -> int:
                     "api_path_count": result.api_path_count,
                     "total_scanned": result.total_scanned,
                 },
-                "loading": {
-                    "loaded": result.atlan_loaded_count,
-                    "created": result.atlan_created_count,
-                    "updated": result.atlan_updated_count,
+                "publishing": {
+                    "publish_completed": result.publish_completed,
                 },
                 "diff_validation": {
                     "pass2_unchanged_count": result.pass2_unchanged_count,

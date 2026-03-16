@@ -5,13 +5,11 @@ description = "OpenAPI Spec Loader connector"
 requires-python = ">=3.11"
 dependencies = [
     "app-framework[atlan]",
-    "atlan-loader",
     "PyYAML>=6.0",
 ]
 
 [tool.uv.sources]
 app-framework = { git = "https://github.com/atlanhq/experimental-app-sdk", subdirectory = "packages/app-framework" }
-atlan-loader = { git = "https://github.com/atlanhq/experimental-app-sdk", subdirectory = "examples/atlan_loader" }
 
 [build-system]
 requires = ["hatchling"]

@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from pyatlan.models.connection import Connection
+from pyatlan_v9.model.assets import Connection
 from openapi.connector import OpenAPIConnector
 from openapi.contracts import (
     OpenAPIConnectorInput,
@@ -95,9 +95,7 @@ class TestReplayExtraction:
                     openapi_credential=None,
                     output_dir=str(output_dir / "run1"),
                     checkpoint_dir="",
-                    load_to_atlan=True,
-                    loader_dry_run=True,
-                    atlan_credential=None,
+                    load_to_atlan=False,
                 ),
                 execution_id_prefix="test-openapi-replay-extraction",
             ),
@@ -128,18 +126,9 @@ class TestReplayExtraction:
         assert extraction_result.changed_count == 0
         assert extraction_result.deleted_count == 0
 
-    async def test_dry_run_validation_passed(
-        self, extraction_result: OpenAPIConnectorOutput
-    ) -> None:
-        """Atlan-loader should validate all extracted assets in dry-run mode."""
-        assert extraction_result.atlan_validated_count > 0
-        assert extraction_result.atlan_error_count == 0
-
-    async def test_no_actual_loading(
-        self, extraction_result: OpenAPIConnectorOutput
-    ) -> None:
-        """Dry-run should not load any assets to Atlan."""
-        assert extraction_result.atlan_loaded_count == 0
+    async def test_no_publish(self, extraction_result: OpenAPIConnectorOutput) -> None:
+        """With load_to_atlan=False, publish-app should not be called."""
+        assert extraction_result.publish_completed is False
 
     async def test_output_file_exists(
         self, extraction_result: OpenAPIConnectorOutput
@@ -240,9 +229,7 @@ class TestReplayCheckpoint:
                     openapi_credential=None,
                     output_dir=str(output_dir / "run1"),
                     checkpoint_dir=str(checkpoint_dir),
-                    load_to_atlan=True,
-                    loader_dry_run=True,
-                    atlan_credential=None,
+                    load_to_atlan=False,
                 ),
                 execution_id_prefix="test-openapi-replay-checkpoint-run1",
             ),
@@ -257,7 +244,6 @@ class TestReplayCheckpoint:
         assert first_run_result.new_count == first_run_result.total_scanned
         assert first_run_result.unchanged_count == 0
         assert first_run_result.total_scanned == _EXPECTED_TOTAL
-        assert first_run_result.atlan_validated_count > 0
 
     @pytest.fixture(scope="class")
     async def second_run_result(
@@ -289,9 +275,7 @@ class TestReplayCheckpoint:
                     openapi_credential=None,
                     output_dir=str(output_dir / "run2"),
                     checkpoint_dir=str(checkpoint_dir),
-                    load_to_atlan=True,
-                    loader_dry_run=True,
-                    atlan_credential=None,
+                    load_to_atlan=False,
                 ),
                 execution_id_prefix="test-openapi-replay-checkpoint-run2",
             ),
