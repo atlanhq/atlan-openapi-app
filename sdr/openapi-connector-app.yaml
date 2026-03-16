@@ -1,0 +1,3 @@
+app_name: openapi-connector
+app_image: ghcr.io/atlanhq/atlan-openapi-app:latest
+app_port: 8080
