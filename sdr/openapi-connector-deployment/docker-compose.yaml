@@ -1,0 +1,16 @@
+services:
+  atlan-app:
+    image: ghcr.io/atlanhq/atlan-openapi-app:latest
+    ports:
+      - "8080:8080"
+      - "3100:3100"
+    volumes:
+      - ./components:/app/components
+    tmpfs:
+      - /app/storage
+    environment:
+      - ATLAN_APP_HTTP_PORT=8080
+      - ATLAN_APP_HTTP_HOST=0.0.0.0
+      - ATLAN_APPLICATION_NAME=openapi-connector
+    env_file:
+      - .env
