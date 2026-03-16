@@ -6,9 +6,8 @@ transforms it to JSONL format compatible with publish-app.
 The connector:
 1. Fetches the OpenAPI spec document via a single HTTP GET
 2. Parses the spec into APISpec (1) and APIPath (N) records — bundled in one task
-3. Runs per-type change detection (if checkpoint_dir provided)
-4. Transforms to Atlan asset format using pyatlan built-in types
-5. Uploads NDJSON to object storage and calls publish-app (if requested)
+3. Transforms to Atlan asset format using pyatlan built-in types
+4. Uploads NDJSON to object storage and calls publish-app (if requested)
 
 Extraction pattern: per-scope-item bundled (indivisible API — one GET returns
 both APISpec and APIPath data; splitting would require downloading twice).
@@ -25,24 +24,15 @@ import msgspec
 from temporalio import workflow
 
 from app_framework.app import App, FileReference, Logger, task
-from app_framework.app.contracts import (
-    CommitCheckpointInput,
-    PrepareCheckpointInput,
-    SyncLocalToStorageInput,
-    UploadStagedCheckpointInput,
-)
-from app_framework.change_detection import ChangeDetector, ChangeType, RecordKey
+from app_framework.app.contracts import SyncLocalToStorageInput
 from openapi.api_types import OpenAPIPathRecord, OpenAPISpecRecord
 from openapi.asset_mapper import (
-    build_api_path_qn,
     build_api_spec_qn,
     map_api_path,
     map_api_spec,
     map_connection,
 )
 from openapi.contracts import (
-    DiffInput,
-    DiffOutput,
     ExtractSpecInput,
     ExtractSpecOutput,
     OpenAPIConnectorInput,
@@ -218,118 +208,6 @@ async def _extract_spec_async(
 
 
 # =============================================================================
-# Diff helper
-# =============================================================================
-
-
-def _diff_blocking(
-    input: DiffInput,
-    logger: Logger,
-) -> DiffOutput:
-    """Run change detection across APISpec and APIPath records."""
-    out_dir = Path(input.output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    conn_qn: str = input.connection_qualified_name
-
-    total_new = 0
-    total_changed = 0
-    total_unchanged = 0
-    total_deleted = 0
-    total_scanned = 0
-
-    logger.info("starting change detection", checkpoint_dir=input.checkpoint_dir)
-
-    def _get_key(record: Any) -> RecordKey:
-        if isinstance(record, OpenAPISpecRecord):
-            return RecordKey("APISpec", build_api_spec_qn(conn_qn, record.title))
-        if isinstance(record, OpenAPIPathRecord):
-            return RecordKey(
-                "APIPath",
-                build_api_path_qn(record.spec_qualified_name, record.path_url),
-            )
-        raise NotImplementedError(f"unknown record type: {type(record)}")
-
-    def _get_content(record: Any) -> dict[str, Any]:
-        if isinstance(record, OpenAPISpecRecord):
-            return {
-                "name": record.title,
-                "api_spec_type": record.openapi_version,
-                "api_spec_version": record.spec_version,
-                "description": record.description,
-            }
-        if isinstance(record, OpenAPIPathRecord):
-            return {
-                "name": record.path_url,
-                "api_path_raw_uri": record.path_url,
-                "api_path_summary": record.summary,
-                "api_path_available_operations": sorted(record.available_operations),
-                "api_path_is_templated": record.is_templated,
-            }
-        raise NotImplementedError(f"unknown record type: {type(record)}")
-
-    def _all_records() -> Any:
-        yield from _iter_jsonl(input.api_spec_file, OpenAPISpecRecord)
-        yield from _iter_jsonl(input.api_path_file, OpenAPIPathRecord)
-
-    detector: ChangeDetector[Any] = ChangeDetector(
-        checkpoint_dir=input.checkpoint_dir,
-        get_key=_get_key,
-        get_content=_get_content,
-    )
-
-    api_spec_path = out_dir / "changed_api_spec.jsonl"
-    api_path_path = out_dir / "changed_api_path.jsonl"
-
-    try:
-        with api_spec_path.open("wb") as spec_f, api_path_path.open("wb") as path_f:
-            for change in detector.stream_changes(_all_records()):
-                total_scanned += 1
-                if change.change_type == ChangeType.NEW:
-                    total_new += 1
-                elif change.change_type == ChangeType.CHANGED:
-                    total_changed += 1
-                else:
-                    total_unchanged += 1
-                    continue
-                record = change.record
-                if isinstance(record, OpenAPISpecRecord):
-                    spec_f.write(_encoder.encode(record) + b"\n")
-                elif isinstance(record, OpenAPIPathRecord):
-                    path_f.write(_encoder.encode(record) + b"\n")
-
-        for _ in detector.detect_deletions():
-            total_deleted += 1
-
-        detector.stage()
-    except Exception:
-        detector.rollback()
-        raise
-
-    logger.info(
-        "change detection complete",
-        extra={
-            "new": total_new,
-            "changed": total_changed,
-            "unchanged": total_unchanged,
-            "deleted": total_deleted,
-            "total": total_scanned,
-        },
-    )
-
-    return DiffOutput(
-        changed_api_spec_file=FileReference.from_local(api_spec_path),
-        changed_api_path_file=FileReference.from_local(api_path_path),
-        new_count=total_new,
-        changed_count=total_changed,
-        unchanged_count=total_unchanged,
-        deleted_count=total_deleted,
-        total_scanned=total_scanned,
-        checkpoint_new_path=str(detector.staged_dir),
-    )
-
-
-# =============================================================================
 # Transform helper
 # =============================================================================
 
@@ -367,7 +245,7 @@ def _transform_blocking(
             out_f.write(conn_asset.to_nested_bytes() + b"\n")
 
         # Emit APISpec records
-        for record in _iter_jsonl(input.changed_api_spec_file, OpenAPISpecRecord):
+        for record in _iter_jsonl(input.api_spec_file, OpenAPISpecRecord):
             asset = map_api_spec(
                 record, conn_qn, workflow_id, workflow_type, workflow_run_at_ms
             )
@@ -375,7 +253,7 @@ def _transform_blocking(
             api_spec_count += 1
 
         # Emit APIPath records
-        for record in _iter_jsonl(input.changed_api_path_file, OpenAPIPathRecord):
+        for record in _iter_jsonl(input.api_path_file, OpenAPIPathRecord):
             asset = map_api_path(
                 record, conn_qn, workflow_id, workflow_type, workflow_run_at_ms
             )
@@ -408,19 +286,15 @@ class OpenAPIConnector(App):
     """OpenAPI Spec Loader connector app.
 
     Extracts APISpec + APIPath metadata from an OpenAPI spec document and
-    transforms it to JSONL format compatible with the Atlan Loader.
+    transforms it to JSONL format compatible with publish-app.
 
     Extraction is bundled in a single task (indivisible API: one GET returns
     both APISpec and APIPath data in the same response).
 
     Tasks:
     1. extract_spec — fetch spec URL, emit api_spec.jsonl + api_path.jsonl
-    2. diff — change detection (if checkpoint_dir provided)
-    3. transform — map to Atlan Atlas entity format
-    4. publish — upload NDJSON to object storage and call publish-app (if load_to_atlan=True)
-
-    Supports incremental extraction via change detection when checkpoint_dir
-    is provided.
+    2. transform — map to Atlan Atlas entity format
+    3. publish — upload NDJSON to object storage and call publish-app (if load_to_atlan=True)
     """
 
     name = "openapi"
@@ -483,26 +357,6 @@ class OpenAPIConnector(App):
         heartbeat_timeout_seconds=120,
         auto_heartbeat_seconds=30,
     )
-    async def diff(self, input: DiffInput) -> DiffOutput:
-        """Run change detection for APISpec and APIPath records."""
-        self.logger.info("diff task starting", checkpoint_dir=input.checkpoint_dir)
-
-        result = await self.run_in_thread(_diff_blocking, input, self.logger)
-
-        self.logger.info(
-            "diff task completed",
-            new=result.new_count,
-            changed=result.changed_count,
-            unchanged=result.unchanged_count,
-            deleted=result.deleted_count,
-        )
-        return result
-
-    @task(
-        timeout_seconds=1800,
-        heartbeat_timeout_seconds=120,
-        auto_heartbeat_seconds=30,
-    )
     async def transform(self, input: TransformInput) -> TransformOutput:
         """Transform OpenAPI records to Atlan Atlas entity format."""
         self.logger.info("transform task starting")
@@ -522,10 +376,8 @@ class OpenAPIConnector(App):
         Orchestration:
         1. Validate required fields
         2. extract_spec — fetch and parse the OpenAPI spec
-        3. diff — change detection (if checkpoint_dir provided)
-        4. transform — map to Atlan Atlas entities (if there are changes)
-        5. load — sync to Atlan (if load_to_atlan=True and there are changes)
-        6. commit checkpoint (after all stages succeed)
+        3. transform — map to Atlan Atlas entities (if records were extracted)
+        4. publish — sync to Atlan via publish-app (if load_to_atlan=True)
         """
         if input.connection_usage == "REUSE":
             if not input.connection_qualified_name:
@@ -567,7 +419,6 @@ class OpenAPIConnector(App):
             connection_qualified_name=conn_qn,
             spec_url=input.spec_url,
             load_to_atlan=input.load_to_atlan,
-            checkpoint_enabled=bool(input.checkpoint_dir),
         )
 
         output_dir = input.output_dir or str(
@@ -586,77 +437,22 @@ class OpenAPIConnector(App):
             )
         )
 
-        # Total scanned = APISpec + APIPath records (Connection is always emitted
-        # unconditionally and is not subject to change detection)
         total_scanned = extract_result.api_spec_count + extract_result.api_path_count
 
         # ================================================================
-        # Step 2: Change detection (if checkpoint_dir provided)
+        # Step 2: Transform to Atlan Atlas entity format
         # ================================================================
-        new_count = 0
-        changed_count = 0
-        unchanged_count = 0
-        deleted_count = 0
-        checkpoint_ref: FileReference | None = None
-        diff_result = None
-
-        # File references passed to transform
-        changed_api_spec_file = extract_result.api_spec_file
-        changed_api_path_file = extract_result.api_path_file
-
-        if input.checkpoint_dir:
-            checkpoint_key = self.checkpoint_storage_key(input)
-
-            await self.prepare_checkpoint(
-                PrepareCheckpointInput(
-                    checkpoint_dir=input.checkpoint_dir,
-                    storage_key=checkpoint_key,
-                )
-            )
-
-            diff_result = await self.diff(
-                DiffInput(
-                    api_spec_file=extract_result.api_spec_file,
-                    api_path_file=extract_result.api_path_file,
-                    connection_qualified_name=conn_qn,
-                    checkpoint_dir=input.checkpoint_dir,
-                    output_dir=f"{output_dir}/diff",
-                )
-            )
-
-            await self.upload_staged_checkpoint(
-                UploadStagedCheckpointInput(
-                    checkpoint_new_path=diff_result.checkpoint_new_path,
-                    storage_key=checkpoint_key,
-                )
-            )
-
-            changed_api_spec_file = diff_result.changed_api_spec_file
-            changed_api_path_file = diff_result.changed_api_path_file
-            new_count = diff_result.new_count
-            changed_count = diff_result.changed_count
-            unchanged_count = diff_result.unchanged_count
-            deleted_count = diff_result.deleted_count
-        else:
-            # No change detection — all records are considered "new"
-            new_count = total_scanned
-
-        # ================================================================
-        # Step 3: Transform to Atlan Atlas entity format
-        # ================================================================
-        has_changes = new_count + changed_count > 0
-
         api_spec_count = 0
         api_path_count = 0
         output_file_ref: FileReference | None = None
 
-        if has_changes:
+        if total_scanned > 0:
             info = workflow.info()
             workflow_run_at_ms = int(info.start_time.timestamp() * 1000)
             transform_result = await self.transform(
                 TransformInput(
-                    changed_api_spec_file=changed_api_spec_file,
-                    changed_api_path_file=changed_api_path_file,
+                    api_spec_file=extract_result.api_spec_file,
+                    api_path_file=extract_result.api_path_file,
                     connection=connection,
                     connection_qualified_name=conn_qn,
                     output_dir=output_dir,
@@ -670,12 +466,12 @@ class OpenAPIConnector(App):
             api_path_count = transform_result.api_path_count
 
         # ================================================================
-        # Step 4: Upload and publish to Atlan (if requested and there are changes)
+        # Step 3: Upload and publish to Atlan (if requested)
         # ================================================================
         publish_completed = False
         output_file_path = output_file_ref.local_path if output_file_ref else ""
 
-        if input.load_to_atlan and has_changes and output_file_path:
+        if input.load_to_atlan and output_file_path:
             upload_prefix = (
                 f"argo-artifacts/{conn_qn}/transformed-metadata/{self.run_id}"
             )
@@ -718,28 +514,11 @@ class OpenAPIConnector(App):
             publish_completed = True
             self.logger.info("publish-app completed")
 
-        # ================================================================
-        # Commit checkpoint (only after all stages succeed)
-        # ================================================================
-        if input.checkpoint_dir and diff_result is not None:
-            commit_result = await self.commit_checkpoint(
-                CommitCheckpointInput(
-                    checkpoint_dir=input.checkpoint_dir,
-                    checkpoint_new_path=diff_result.checkpoint_new_path,
-                    storage_key=checkpoint_key,
-                )
-            )
-            checkpoint_ref = commit_result.checkpoint_ref
-
         self.logger.info(
             "openapi connector completed",
             api_spec_count=api_spec_count,
             api_path_count=api_path_count,
             total_scanned=total_scanned,
-            new=new_count,
-            changed=changed_count,
-            unchanged=unchanged_count,
-            deleted=deleted_count,
             publish_completed=publish_completed,
         )
 
@@ -748,10 +527,5 @@ class OpenAPIConnector(App):
             api_path_count=api_path_count,
             output_file=output_file_ref,
             total_scanned=total_scanned,
-            new_count=new_count,
-            changed_count=changed_count,
-            unchanged_count=unchanged_count,
-            deleted_count=deleted_count,
-            checkpoint_ref=checkpoint_ref,
             publish_completed=publish_completed,
         )
