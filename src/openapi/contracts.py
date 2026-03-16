@@ -66,22 +66,7 @@ class OpenAPIConnectorOutput(Output):
     """FileReference for the output JSONL file."""
 
     total_scanned: int = 0
-    """Total number of assets scanned (before change detection)."""
-
-    new_count: int = 0
-    """Number of NEW assets."""
-
-    changed_count: int = 0
-    """Number of CHANGED assets."""
-
-    unchanged_count: int = 0
-    """Number of UNCHANGED assets (skipped from output)."""
-
-    deleted_count: int = 0
-    """Number of DELETED assets."""
-
-    checkpoint_ref: FileReference | None = None
-    """Reference to the checkpoint file in durable storage."""
+    """Total number of assets scanned."""
 
     atlan_loaded_count: int = 0
     atlan_created_count: int = 0
@@ -134,51 +119,6 @@ class ExtractSpecOutput(Output):
 
 
 # =============================================================================
-# Task-level contracts: diff
-# =============================================================================
-
-
-@dataclass
-class DiffInput(Input):
-    """Input for the diff task."""
-
-    api_spec_file: FileReference | None = None
-    """FileReference to api_spec.jsonl from extract_spec."""
-
-    api_path_file: FileReference | None = None
-    """FileReference to api_path.jsonl from extract_spec."""
-
-    connection_qualified_name: str = ""
-    """Connection QN — used to build change detection keys for APISpec records."""
-
-    checkpoint_dir: str = ""
-    """Directory for checkpoint database."""
-
-    output_dir: str = ""
-    """Directory for changed-records output files."""
-
-
-@dataclass
-class DiffOutput(Output):
-    """Output from the diff task."""
-
-    changed_api_spec_file: FileReference | None = None
-    """FileReference to changed api_spec records."""
-
-    changed_api_path_file: FileReference | None = None
-    """FileReference to changed api_path records."""
-
-    new_count: int = 0
-    changed_count: int = 0
-    unchanged_count: int = 0
-    deleted_count: int = 0
-    total_scanned: int = 0
-
-    checkpoint_new_path: str = ""
-    """Path to the staged (uncommitted) checkpoint directory."""
-
-
-# =============================================================================
 # Task-level contracts: transform
 # =============================================================================
 
@@ -187,11 +127,11 @@ class DiffOutput(Output):
 class TransformInput(Input):
     """Input for the transform task."""
 
-    changed_api_spec_file: FileReference | None = None
-    """FileReference to (changed) api_spec records."""
+    api_spec_file: FileReference | None = None
+    """FileReference to api_spec records from extract_spec."""
 
-    changed_api_path_file: FileReference | None = None
-    """FileReference to (changed) api_path records."""
+    api_path_file: FileReference | None = None
+    """FileReference to api_path records from extract_spec."""
 
     connection: Connection | None = None
     """Atlan connection object (CREATE path). When set, the Connection entity is emitted
