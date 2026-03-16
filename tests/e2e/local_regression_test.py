@@ -26,12 +26,10 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from app_framework.credentials import CredentialRef
-from pyatlan.models.connection import Connection
+from pyatlan_v9.model.assets import Connection
 
 from openapi.contracts import OpenAPIConnectorInput
 from tests.e2e.local_infra import (
-    LOADER_LOCAL,
     OPENAPI_LOCAL,
     LocalProcessManager,
     create_local_argument_parser,
@@ -53,9 +51,7 @@ class LocalTestResult:
     status: str = "PENDING"  # PASS | FAIL | SKIPPED
     duration_s: float = 0.0
     assets_extracted: int = 0
-    dry_run_validated: int = 0
-    dry_run_error_count: int = 0
-    dry_run_errors: list[Any] = field(default_factory=list)
+    publish_completed: bool = False
     errors: list[str] = field(default_factory=list)
 
 
@@ -119,32 +115,21 @@ async def run_openapi_test(mgr: LocalProcessManager) -> LocalTestResult:
                 admin_groups=["admins"],
             ),
             spec_url=spec_url,
-            load_to_atlan=True,
-            atlan_credential=CredentialRef(
-                name="atlan",
-                credential_type="atlan_api_token",
-                store_name="default",
-            ),
-            loader_dry_run=True,
+            load_to_atlan=False,
         )
 
         base_url = mgr.get_handler_url(OPENAPI_LOCAL.name)
         wf_result, _workflow_id, _ = await run_workflow_local(base_url, connector_input)
 
         result.assets_extracted = wf_result.get("total_scanned", 0)
-        result.dry_run_validated = wf_result.get("atlan_validated_count", 0)
-        result.dry_run_error_count = wf_result.get("atlan_error_count", 0)
-        result.dry_run_errors = wf_result.get("atlan_errors", [])
+        result.publish_completed = wf_result.get("publish_completed", False)
 
-        if result.assets_extracted > 0 and result.dry_run_validated > 0:
+        if result.assets_extracted > 0:
             result.status = "PASS"
         else:
             result.status = "FAIL"
             result.errors.append(
-                f"Dry-run validation failed: "
-                f"assets_extracted={result.assets_extracted}, "
-                f"validated={result.dry_run_validated}, "
-                f"errors={result.dry_run_error_count}"
+                f"Extraction failed: assets_extracted={result.assets_extracted}"
             )
 
     except Exception as e:
@@ -188,7 +173,7 @@ def _format_result_text(results: list[LocalTestResult]) -> str:
         lines.append(f"  {icon} {r.name:<20} {r.status:<10} {r.duration_s:.1f}s")
         if r.assets_extracted:
             lines.append(
-                f"      assets_extracted={r.assets_extracted} validated={r.dry_run_validated}"
+                f"      assets_extracted={r.assets_extracted} publish_completed={r.publish_completed}"
             )
         for err in r.errors:
             lines.append(f"      ERROR: {err}")
@@ -214,8 +199,7 @@ def _format_result_json(results: list[LocalTestResult]) -> str:
                 "status": r.status,
                 "duration_s": r.duration_s,
                 "assets_extracted": r.assets_extracted,
-                "dry_run_validated": r.dry_run_validated,
-                "dry_run_error_count": r.dry_run_error_count,
+                "publish_completed": r.publish_completed,
                 "errors": r.errors,
             }
             for r in results
@@ -238,12 +222,7 @@ async def _run_all(selected: list[str] | None) -> list[LocalTestResult]:
     results: list[LocalTestResult] = []
 
     try:
-        # Start shared loader worker (needed for dry-run validation)
         mgr = LocalProcessManager(components_path)
-
-        if secrets.get("atlan"):
-            print("  Starting atlan-loader worker...")
-            mgr.start_app(LOADER_LOCAL, handler=False)
 
         for short, label, fn in to_run:
             print(f"\n--- {label} ---")

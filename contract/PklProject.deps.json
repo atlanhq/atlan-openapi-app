@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "resolvedDependencies": {
+    "package://pkg.pkl-lang.org/github.com/atlanhq/app-contract-toolkit@0": {
+      "type": "local",
+      "uri": "projectpackage://pkg.pkl-lang.org/github.com/atlanhq/app-contract-toolkit@0.2.0",
+      "path": "../../app-contract-toolkit/src"
+    }
+  }
+}
