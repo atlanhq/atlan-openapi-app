@@ -56,14 +56,6 @@ class AppConfig:
     """
 
 
-# Shared app configurations — every connector test uses these two.
-LOADER_APP = AppConfig(
-    name="atlan-loader",
-    module="atlan_loader.loader:AtlanLoader",
-    namespace="app-atlan-loader",
-    task_queue="atlan-loader-queue",
-)
-
 DELETE_APP = AppConfig(
     name="delete-connection",
     module="delete_connection.delete_connection_app:DeleteConnectionApp",
@@ -84,17 +76,6 @@ def atlan_credential_dict() -> dict[str, str]:
         "credential_type": "atlan_api_token",
         "store_name": "default",
     }
-
-
-def loader_helm_creds() -> list[str]:
-    """Helm ``--set`` values for the atlan-loader's Atlan credential."""
-    atlan_api_key = os.environ.get("ATLAN_API_KEY", "")
-    if not atlan_api_key:
-        return []
-    return [
-        f"connectorCredentials.atlan.data.token={atlan_api_key}",
-        "connectorCredentials.atlan.data.base_url=INTERNAL",
-    ]
 
 
 def delete_helm_creds() -> list[str]:

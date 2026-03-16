@@ -6,13 +6,13 @@ inputs and outputs to ensure Temporal serialization works correctly.
 """
 
 from dataclasses import dataclass, field
-from typing import Annotated, ClassVar
 
-from app_framework.app import Input, MaxItems, Output
+from app_framework.app import Input, Output
 from app_framework.app.types import FileReference
 from app_framework.credentials import CredentialRef
-from atlan_loader.contracts import LoadError
-from pyatlan.models.connection import Connection
+from pyatlan_v9.model.assets import Connection
+
+from openapi._generated_input import AppInputContract
 
 # =============================================================================
 # App-level contracts
@@ -20,70 +20,36 @@ from pyatlan.models.connection import Connection
 
 
 @dataclass
-class OpenAPIConnectorInput(Input):
-    """Input for the OpenAPI Connector App.
+class PublishInput(Input):
+    """Input for the publish-app child workflow (platform service).
 
-    Extracts metadata from an OpenAPI spec document (JSON or YAML) accessible
-    via a URL. Creates one APISpec and N APIPath entities in Atlan.
+    Matches the PublishAppConfig Pydantic model in atlan-publish-app.
+    publish-app authenticates via platform-level OAuth2 env vars — no
+    credential reference is needed here.
     """
 
-    _config_hash_exclude: ClassVar[set[str]] = {
-        "output_dir",
-        "checkpoint_dir",
-        "load_to_atlan",
-        "atlan_credential",
-        "loader_batch_size",
-        "loader_chunk_size",
-        "loader_max_chunks_per_execution",
-        "loader_save_timeout",
-        "loader_dry_run",
-    }
+    connection_qualified_name: str = ""
+    transformed_data_prefix: str = ""
+    publish_state_prefix: str = ""
+    current_state_prefix: str = ""
+    connection_creation_enabled: bool = True
+    executor_enabled: bool = True
+    connection_entity: dict = field(default_factory=dict)
 
-    # === Required ===
-    connection: Connection | None = None
-    """Atlan connection object. Required. Provides qualified_name and name."""
 
-    import_type: str = "URL"
-    """How to provide the spec: 'URL' (HTTP fetch), 'CLOUD' (object storage presigned URL).
-    'DIRECT' (UI file upload) is not supported in the App Framework."""
+@dataclass
+class OpenAPIConnectorInput(AppInputContract):
+    """Input for the OpenAPI Connector App.
 
-    spec_url: str = ""
-    """URL to the OpenAPI spec JSON/YAML document. Required when import_type='URL'.
-    For import_type='CLOUD', use the presigned URL here."""
+    Extends the Pkl-generated AppInputContract with app-specific fields
+    not derivable from the UI config.
+    """
 
-    # === Optional credential (for private specs with auth) ===
+    load_to_atlan: bool = False
+    """If True, load extracted metadata to Atlan via publish-app."""
+
     openapi_credential: CredentialRef | None = None
     """Optional credential for private OpenAPI specs. Not needed for public specs."""
-
-    # === Output ===
-    output_dir: str = ""
-    """Directory for output JSONL files. Defaults to /tmp/openapi/{run_id}."""
-
-    # === Change detection ===
-    checkpoint_dir: str = ""
-    """Directory for checkpoint database. If provided, enables incremental extraction."""
-
-    # === Atlan loading ===
-    load_to_atlan: bool = False
-    """If True, load extracted metadata to Atlan via atlan-loader child app."""
-
-    atlan_credential: CredentialRef | None = None
-    """Credential for Atlan API authentication. Required if load_to_atlan=True."""
-
-    loader_batch_size: int = 20
-    """Assets per save() call when loading to Atlan."""
-
-    loader_chunk_size: int = 10000
-    """Records per chunk when loading to Atlan."""
-
-    loader_max_chunks_per_execution: int = 500
-    """Chunks to process before continue-as-new in atlan-loader."""
-
-    loader_save_timeout: float | None = None
-    """Per-request timeout in seconds for atlan-loader save() calls."""
-
-    loader_dry_run: bool = False
-    """When True, validate assets instead of loading."""
 
 
 @dataclass
@@ -100,31 +66,17 @@ class OpenAPIConnectorOutput(Output):
     """FileReference for the output JSONL file."""
 
     total_scanned: int = 0
-    """Total number of assets scanned (before change detection)."""
-
-    new_count: int = 0
-    """Number of NEW assets."""
-
-    changed_count: int = 0
-    """Number of CHANGED assets."""
-
-    unchanged_count: int = 0
-    """Number of UNCHANGED assets (skipped from output)."""
-
-    deleted_count: int = 0
-    """Number of DELETED assets."""
-
-    checkpoint_ref: FileReference | None = None
-    """Reference to the checkpoint file in durable storage."""
+    """Total number of assets scanned."""
 
     atlan_loaded_count: int = 0
     atlan_created_count: int = 0
     atlan_updated_count: int = 0
     atlan_validated_count: int = 0
     atlan_error_count: int = 0
-    atlan_errors: Annotated[list[LoadError], MaxItems(100)] = field(
-        default_factory=list
-    )
+    atlan_errors: list = field(default_factory=list)
+
+    publish_completed: bool = False
+    """True if publish-app was called and completed successfully."""
 
 
 # =============================================================================
@@ -167,51 +119,6 @@ class ExtractSpecOutput(Output):
 
 
 # =============================================================================
-# Task-level contracts: diff
-# =============================================================================
-
-
-@dataclass
-class DiffInput(Input):
-    """Input for the diff task."""
-
-    api_spec_file: FileReference | None = None
-    """FileReference to api_spec.jsonl from extract_spec."""
-
-    api_path_file: FileReference | None = None
-    """FileReference to api_path.jsonl from extract_spec."""
-
-    connection: Connection | None = None
-    """Atlan connection object. Provides the qualified name for change detection keys."""
-
-    checkpoint_dir: str = ""
-    """Directory for checkpoint database."""
-
-    output_dir: str = ""
-    """Directory for changed-records output files."""
-
-
-@dataclass
-class DiffOutput(Output):
-    """Output from the diff task."""
-
-    changed_api_spec_file: FileReference | None = None
-    """FileReference to changed api_spec records."""
-
-    changed_api_path_file: FileReference | None = None
-    """FileReference to changed api_path records."""
-
-    new_count: int = 0
-    changed_count: int = 0
-    unchanged_count: int = 0
-    deleted_count: int = 0
-    total_scanned: int = 0
-
-    checkpoint_new_path: str = ""
-    """Path to the staged (uncommitted) checkpoint directory."""
-
-
-# =============================================================================
 # Task-level contracts: transform
 # =============================================================================
 
@@ -220,14 +127,20 @@ class DiffOutput(Output):
 class TransformInput(Input):
     """Input for the transform task."""
 
-    changed_api_spec_file: FileReference | None = None
-    """FileReference to (changed) api_spec records."""
+    api_spec_file: FileReference | None = None
+    """FileReference to api_spec records from extract_spec."""
 
-    changed_api_path_file: FileReference | None = None
-    """FileReference to (changed) api_path records."""
+    api_path_file: FileReference | None = None
+    """FileReference to api_path records from extract_spec."""
 
     connection: Connection | None = None
-    """Atlan connection object. Provides the qualified name and display name."""
+    """Atlan connection object (CREATE path). When set, the Connection entity is emitted
+    in the output. When None (REUSE path), connection_qualified_name is used for QN
+    derivation and no Connection entity is written."""
+
+    connection_qualified_name: str = ""
+    """Connection QN (REUSE path). Used for APISpec/APIPath QN derivation when
+    connection is None."""
 
     output_dir: str = ""
     """Directory for output file."""

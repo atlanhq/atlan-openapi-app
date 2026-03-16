@@ -15,14 +15,13 @@ Run with:
 
 from __future__ import annotations
 
-import asyncio
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from pyatlan.models.connection import Connection
+from pyatlan_v9.model.assets import Connection
 from openapi.connector import OpenAPIConnector
 from openapi.contracts import (
     OpenAPIConnectorInput,
@@ -85,6 +84,7 @@ class TestReplayExtraction:
             await replay_executor.execute_app(
                 OpenAPIConnector,
                 OpenAPIConnectorInput(
+                    connection_usage="CREATE",
                     connection=Connection(
                         qualified_name=CONNECTION_QN,
                         name=CONNECTION_NAME,
@@ -95,9 +95,7 @@ class TestReplayExtraction:
                     openapi_credential=None,
                     output_dir=str(output_dir / "run1"),
                     checkpoint_dir="",
-                    load_to_atlan=True,
-                    loader_dry_run=True,
-                    atlan_credential=None,
+                    load_to_atlan=False,
                 ),
                 execution_id_prefix="test-openapi-replay-extraction",
             ),
@@ -119,27 +117,9 @@ class TestReplayExtraction:
             f"got {extraction_result.total_scanned}"
         )
 
-    async def test_all_new_without_checkpoint(
-        self, extraction_result: OpenAPIConnectorOutput
-    ) -> None:
-        """Without checkpoint, all records should be NEW."""
-        assert extraction_result.new_count == extraction_result.total_scanned
-        assert extraction_result.unchanged_count == 0
-        assert extraction_result.changed_count == 0
-        assert extraction_result.deleted_count == 0
-
-    async def test_dry_run_validation_passed(
-        self, extraction_result: OpenAPIConnectorOutput
-    ) -> None:
-        """Atlan-loader should validate all extracted assets in dry-run mode."""
-        assert extraction_result.atlan_validated_count > 0
-        assert extraction_result.atlan_error_count == 0
-
-    async def test_no_actual_loading(
-        self, extraction_result: OpenAPIConnectorOutput
-    ) -> None:
-        """Dry-run should not load any assets to Atlan."""
-        assert extraction_result.atlan_loaded_count == 0
+    async def test_no_publish(self, extraction_result: OpenAPIConnectorOutput) -> None:
+        """With load_to_atlan=False, publish-app should not be called."""
+        assert extraction_result.publish_completed is False
 
     async def test_output_file_exists(
         self, extraction_result: OpenAPIConnectorOutput
@@ -199,115 +179,3 @@ class TestReplayExtraction:
                     assert qn.startswith(prefix), (
                         f"qualifiedName '{qn}' does not start with '{prefix}'"
                     )
-
-
-class TestReplayCheckpoint:
-    """Incremental extraction checkpoint test using frozen replay data.
-
-    First run populates checkpoint (all NEW), second run verifies all UNCHANGED.
-    Data is identical on both runs because fixtures are deterministic.
-    """
-
-    @pytest.fixture(scope="class")
-    def tmp_dir_class(self, tmp_path_factory: pytest.TempPathFactory) -> Path:
-        return tmp_path_factory.mktemp("openapi_replay_checkpoint")
-
-    @pytest.fixture(scope="class")
-    async def first_run_result(
-        self,
-        replay_executor: "AppExecutor",
-        mock_openapi_spec,  # noqa: ARG002 — ensures mock is active
-        tmp_dir_class: Path,
-    ) -> OpenAPIConnectorOutput:
-        """Execute first run to populate checkpoint."""
-        checkpoint_dir = tmp_dir_class / "checkpoint"
-        checkpoint_dir.mkdir()
-        output_dir = tmp_dir_class / "output"
-        output_dir.mkdir()
-
-        result = cast(
-            "OpenAPIConnectorOutput",
-            await replay_executor.execute_app(
-                OpenAPIConnector,
-                OpenAPIConnectorInput(
-                    connection=Connection(
-                        qualified_name=CONNECTION_QN,
-                        name=CONNECTION_NAME,
-                        category="API",
-                        admin_groups=["admins"],
-                    ),
-                    spec_url=_SPEC_URL,
-                    openapi_credential=None,
-                    output_dir=str(output_dir / "run1"),
-                    checkpoint_dir=str(checkpoint_dir),
-                    load_to_atlan=True,
-                    loader_dry_run=True,
-                    atlan_credential=None,
-                ),
-                execution_id_prefix="test-openapi-replay-checkpoint-run1",
-            ),
-        )
-        return result
-
-    async def test_first_run_all_new(
-        self, first_run_result: OpenAPIConnectorOutput
-    ) -> None:
-        """First run with checkpoint should mark all records as NEW."""
-        # Connection is excluded from total_scanned, so new_count == total_scanned.
-        assert first_run_result.new_count == first_run_result.total_scanned
-        assert first_run_result.unchanged_count == 0
-        assert first_run_result.total_scanned == _EXPECTED_TOTAL
-        assert first_run_result.atlan_validated_count > 0
-
-    @pytest.fixture(scope="class")
-    async def second_run_result(
-        self,
-        replay_executor: "AppExecutor",
-        mock_openapi_spec,  # noqa: ARG002 — ensures mock is active
-        first_run_result: OpenAPIConnectorOutput,  # noqa: ARG002 — ensures run1 completes first
-        tmp_dir_class: Path,
-    ) -> OpenAPIConnectorOutput:
-        """Execute second run (same frozen data) to verify all records are UNCHANGED."""
-        # Small delay for epoch-based checkpoint tracking — must be non-blocking
-        await asyncio.sleep(1.5)
-
-        checkpoint_dir = tmp_dir_class / "checkpoint"
-        output_dir = tmp_dir_class / "output"
-
-        return cast(
-            "OpenAPIConnectorOutput",
-            await replay_executor.execute_app(
-                OpenAPIConnector,
-                OpenAPIConnectorInput(
-                    connection=Connection(
-                        qualified_name=CONNECTION_QN,
-                        name=CONNECTION_NAME,
-                        category="API",
-                        admin_groups=["admins"],
-                    ),
-                    spec_url=_SPEC_URL,
-                    openapi_credential=None,
-                    output_dir=str(output_dir / "run2"),
-                    checkpoint_dir=str(checkpoint_dir),
-                    load_to_atlan=True,
-                    loader_dry_run=True,
-                    atlan_credential=None,
-                ),
-                execution_id_prefix="test-openapi-replay-checkpoint-run2",
-            ),
-        )
-
-    async def test_second_run_all_unchanged(
-        self,
-        first_run_result: OpenAPIConnectorOutput,
-        second_run_result: OpenAPIConnectorOutput,
-    ) -> None:
-        """Second run with identical frozen data should mark all records as UNCHANGED."""
-        # unchanged_count = new_count from run1 (diff tracks APISpec+APIPath only, not Connection)
-        assert second_run_result.unchanged_count == first_run_result.new_count
-        assert second_run_result.new_count == 0
-        assert second_run_result.changed_count == 0
-        assert second_run_result.deleted_count == 0
-        assert (
-            second_run_result.output_file is None
-        )  # No changes to transform — loader has nothing to validate
