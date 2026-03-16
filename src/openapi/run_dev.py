@@ -46,7 +46,7 @@ import os
 
 # Import credential types to register them with the credential registry
 import openapi.credentials  # noqa: F401 - registers 'openapi' credential type
-from app_framework.handler import run_dev_server
+from app_framework.main import run_dev_combined
 from app_framework.infrastructure.secrets import InMemorySecretStore
 from openapi.connector import OpenAPIConnector
 
@@ -82,7 +82,7 @@ async def main() -> None:
         "OPENAPI_SPEC_URL", "https://petstore3.swagger.io/api/v3/openapi.json"
     )
 
-    await run_dev_server(
+    await run_dev_combined(
         OpenAPIConnector,
         credential_stores=credential_stores,
         example_input={
