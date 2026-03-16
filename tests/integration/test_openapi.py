@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from pyatlan.models.connection import Connection
+from pyatlan_v9.model.assets import Connection
 from openapi.connector import OpenAPIConnector
 from openapi.contracts import (
     OpenAPIConnectorInput,
@@ -81,7 +81,6 @@ class TestOpenAPIConnectorExtraction:
                     output_dir=str(output_dir / "run1"),
                     checkpoint_dir="",
                     load_to_atlan=False,
-                    atlan_credential=None,
                 ),
                 execution_id_prefix="test-openapi-extraction",
             ),
@@ -206,7 +205,6 @@ class TestOpenAPIConnectorCheckpoint:
                     output_dir=str(output_dir / "run1"),
                     checkpoint_dir=str(checkpoint_dir),
                     load_to_atlan=False,
-                    atlan_credential=None,
                 ),
                 execution_id_prefix="test-openapi-checkpoint-run1",
             ),
@@ -252,7 +250,6 @@ class TestOpenAPIConnectorCheckpoint:
                     output_dir=str(output_dir / "run2"),
                     checkpoint_dir=str(checkpoint_dir),
                     load_to_atlan=False,
-                    atlan_credential=None,
                 ),
                 execution_id_prefix="test-openapi-checkpoint-run2",
             ),

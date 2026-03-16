@@ -8,7 +8,7 @@ import msgspec
 
 from app_framework.app.types import FileReference
 from app_framework.credentials import CredentialRef
-from pyatlan.models.connection import Connection
+from pyatlan_v9.model.assets import Connection
 from openapi.contracts import (
     DiffInput,
     DiffOutput,
@@ -16,6 +16,7 @@ from openapi.contracts import (
     ExtractSpecOutput,
     OpenAPIConnectorInput,
     OpenAPIConnectorOutput,
+    PublishInput,
     TransformInput,
     TransformOutput,
 )
@@ -57,16 +58,10 @@ class TestOpenAPIConnectorInput:
         assert decoded.output_dir == ""
         assert decoded.checkpoint_dir == ""
         assert decoded.load_to_atlan is False
-        assert decoded.atlan_credential is None
-        assert decoded.loader_batch_size == 20
-        assert decoded.loader_chunk_size == 10000
-        assert decoded.loader_max_chunks_per_execution == 500
-        assert decoded.loader_save_timeout is None
-        assert decoded.loader_dry_run is False
+        assert decoded.publish_dry_run is False
 
     def test_round_trip_with_values(self) -> None:
         """All non-default values must survive round-trip."""
-        atlan_ref = CredentialRef(name="atlan", credential_type="atlan_api_token")
         openapi_ref = CredentialRef(name="openapi", credential_type="openapi")
         conn = Connection(
             qualified_name="default/api/test-conn",
@@ -82,12 +77,7 @@ class TestOpenAPIConnectorInput:
             output_dir="/tmp/out",
             checkpoint_dir="/tmp/ckpt",
             load_to_atlan=True,
-            atlan_credential=atlan_ref,
-            loader_batch_size=50,
-            loader_chunk_size=5000,
-            loader_max_chunks_per_execution=100,
-            loader_save_timeout=30.0,
-            loader_dry_run=True,
+            publish_dry_run=True,
         )
         decoded = _round_trip(original, OpenAPIConnectorInput)
         assert decoded.connection is not None
@@ -98,11 +88,7 @@ class TestOpenAPIConnectorInput:
         assert decoded.output_dir == "/tmp/out"
         assert decoded.checkpoint_dir == "/tmp/ckpt"
         assert decoded.load_to_atlan is True
-        assert decoded.loader_batch_size == 50
-        assert decoded.loader_chunk_size == 5000
-        assert decoded.loader_max_chunks_per_execution == 100
-        assert decoded.loader_save_timeout == 30.0
-        assert decoded.loader_dry_run is True
+        assert decoded.publish_dry_run is True
 
     def test_round_trip_openapi_credential_ref_fields(self) -> None:
         """CredentialRef fields (name, credential_type, store_name) must survive."""
@@ -116,28 +102,16 @@ class TestOpenAPIConnectorInput:
         assert decoded.openapi_credential.credential_type == "openapi"
         assert decoded.openapi_credential.store_name == "vault"
 
-    def test_round_trip_atlan_credential_ref_fields(self) -> None:
-        """Atlan CredentialRef fields must survive round-trip."""
-        ref = CredentialRef(
-            name="atlan-cred", credential_type="atlan_api_token", store_name="default"
-        )
-        original = OpenAPIConnectorInput(atlan_credential=ref)
-        decoded = _round_trip(original, OpenAPIConnectorInput)
-        assert decoded.atlan_credential is not None
-        assert decoded.atlan_credential.name == "atlan-cred"
-        assert decoded.atlan_credential.credential_type == "atlan_api_token"
-        assert decoded.atlan_credential.store_name == "default"
-
     def test_round_trip_new_fields_defaults(self) -> None:
         """New fields introduced for Pkl contract must have correct defaults."""
         original = OpenAPIConnectorInput()
         decoded = _round_trip(original, OpenAPIConnectorInput)
-        assert decoded.connection_usage == "CREATE"
+        assert decoded.connection_usage == "REUSE"
         assert decoded.connection_qualified_name == ""
         assert decoded.spec_prefix == ""
         assert decoded.spec_key == ""
         assert decoded.cloud_source == ""
-        assert decoded.spec_file == ""
+        assert decoded.spec_file is None
 
     def test_round_trip_connection_usage_reuse(self) -> None:
         """REUSE connection_usage path survives round-trip."""
@@ -182,13 +156,17 @@ class TestOpenAPIConnectorInput:
 
     def test_round_trip_spec_file_field(self) -> None:
         """spec_file field (DIRECT import, unsupported) survives round-trip."""
+        from app_framework.app.types import FileReference
+
+        ref = FileReference(local_path="/tmp/upload/spec.json")
         original = OpenAPIConnectorInput(
             import_type="DIRECT",
-            spec_file="/tmp/upload/spec.json",
+            spec_file=ref,
         )
         decoded = _round_trip(original, OpenAPIConnectorInput)
         assert decoded.import_type == "DIRECT"
-        assert decoded.spec_file == "/tmp/upload/spec.json"
+        assert decoded.spec_file is not None
+        assert decoded.spec_file.local_path == "/tmp/upload/spec.json"
 
 
 # =============================================================================
@@ -216,6 +194,7 @@ class TestOpenAPIConnectorOutput:
         assert decoded.atlan_validated_count == 0
         assert decoded.atlan_error_count == 0
         assert decoded.atlan_errors == []
+        assert decoded.publish_completed is False
 
     def test_round_trip_with_values(self) -> None:
         """Non-default values survive round-trip."""
@@ -514,3 +493,41 @@ class TestTransformContracts:
         original = TransformOutput(api_spec_count=0, api_path_count=0)
         decoded = _round_trip(original, TransformOutput)
         assert decoded.output_file is None
+
+
+# =============================================================================
+# PublishInput
+# =============================================================================
+
+
+class TestPublishInput:
+    def test_round_trip_defaults(self) -> None:
+        original = PublishInput()
+        decoded = _round_trip(original, PublishInput)
+        assert decoded.connection_qualified_name == ""
+        assert decoded.transformed_data_prefix == ""
+        assert decoded.publish_state_prefix == ""
+        assert decoded.current_state_prefix == ""
+        assert decoded.connection_creation_enabled is True
+        assert decoded.executor_enabled is True
+        assert decoded.connection_entity == {}
+
+    def test_round_trip_with_values(self) -> None:
+        original = PublishInput(
+            connection_qualified_name="default/api/my-conn",
+            transformed_data_prefix="argo-artifacts/default/api/my-conn/transformed-metadata/run-1",
+            publish_state_prefix="persistent-artifacts/apps/atlan-publish-app/state/default/api/my-conn/publish-state",
+            current_state_prefix="argo-artifacts/default/api/my-conn/current-state",
+            connection_creation_enabled=False,
+            executor_enabled=False,
+            connection_entity={
+                "typeName": "Connection",
+                "qualifiedName": "default/api/my-conn",
+            },
+        )
+        decoded = _round_trip(original, PublishInput)
+        assert decoded.connection_qualified_name == "default/api/my-conn"
+        assert "transformed-metadata" in decoded.transformed_data_prefix
+        assert decoded.connection_creation_enabled is False
+        assert decoded.executor_enabled is False
+        assert decoded.connection_entity.get("typeName") == "Connection"

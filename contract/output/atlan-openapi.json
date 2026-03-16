@@ -11,17 +11,19 @@
           "widget": "radio",
           "label": "Import type",
           "hidden": false,
-          "help": "",
+          "help": "How to provide the spec: 'URL' (HTTP fetch), 'CLOUD' (object storage), 'DIRECT' (UI file upload).",
           "grid": 8
         },
         "default": "URL",
         "enum": [
           "URL",
-          "CLOUD"
+          "CLOUD",
+          "DIRECT"
         ],
         "enumNames": [
           "URL",
-          "Cloud"
+          "Cloud",
+          "Direct"
         ]
       },
       "spec_url": {
@@ -31,7 +33,7 @@
           "widget": "input",
           "label": "Spec URL",
           "hidden": false,
-          "help": "",
+          "help": "URL to the OpenAPI spec JSON/YAML document. Required when import_type='URL'.",
           "placeholder": "https://petstore3.swagger.io/api/v3/openapi.json",
           "grid": 8
         }
@@ -43,7 +45,7 @@
           "widget": "fileUpload",
           "label": "Spec file",
           "hidden": true,
-          "help": "",
+          "help": "Uploaded file reference. Required when import_type='DIRECT'.",
           "placeholder": "",
           "grid": 8,
           "accept": [
@@ -62,7 +64,7 @@
           "widget": "input",
           "label": "Object store path",
           "hidden": false,
-          "help": "",
+          "help": "Object store directory path. Required when import_type='CLOUD'.",
           "placeholder": "path/to/file",
           "grid": 4
         }
@@ -74,7 +76,7 @@
           "widget": "input",
           "label": "Object key",
           "hidden": false,
-          "help": "",
+          "help": "Object key (filename) in the object store. Required when import_type='CLOUD'.",
           "placeholder": "openapi.json",
           "grid": 4
         }
@@ -86,7 +88,7 @@
           "widget": "credential",
           "label": "Cloud source",
           "hidden": false,
-          "help": "",
+          "help": "Cloud storage credential (csa-connectors-objectstore). Required when import_type='CLOUD'.",
           "grid": 8,
           "credentialType": "csa-connectors-objectstore",
           "isTestAuthenticationDisabled": true
@@ -99,7 +101,7 @@
           "widget": "radio",
           "label": "Connection usage",
           "hidden": false,
-          "help": "",
+          "help": "'CREATE' to make a new connection, 'REUSE' to pick an existing one.",
           "grid": 8
         },
         "default": "REUSE",
@@ -119,7 +121,7 @@
           "widget": "connection",
           "label": "Connection",
           "hidden": false,
-          "help": "",
+          "help": "Atlan connection to create. Required when connection_usage='CREATE'.",
           "grid": 8
         }
       },
@@ -130,7 +132,7 @@
           "widget": "connectionSelector",
           "label": "Connection",
           "hidden": false,
-          "help": "",
+          "help": "Existing connection qualified name. Required when connection_usage='REUSE'.",
           "grid": 4,
           "mode": "",
           "start": 1,

@@ -17,10 +17,7 @@ if TYPE_CHECKING:
     from openapi.api_types import OpenAPIPathRecord, OpenAPISpecRecord
 
 from app_framework.atlan import apply_sync_metadata
-from pyatlan.models.api_path import APIPath
-from pyatlan.models.api_related import RelatedAPISpec
-from pyatlan.models.api_spec import APISpec
-from pyatlan.models.connection import Connection
+from pyatlan_v9.model.assets import APIPath, APISpec, Connection, RelatedAPISpec
 
 # Connector name constant — matches connector_name in the Connection asset
 CONNECTOR_NAME = "api"
