@@ -85,6 +85,7 @@ class TestReplayExtraction:
             await replay_executor.execute_app(
                 OpenAPIConnector,
                 OpenAPIConnectorInput(
+                    connection_usage="CREATE",
                     connection=Connection(
                         qualified_name=CONNECTION_QN,
                         name=CONNECTION_NAME,
@@ -219,6 +220,7 @@ class TestReplayCheckpoint:
             await replay_executor.execute_app(
                 OpenAPIConnector,
                 OpenAPIConnectorInput(
+                    connection_usage="CREATE",
                     connection=Connection(
                         qualified_name=CONNECTION_QN,
                         name=CONNECTION_NAME,
@@ -265,6 +267,7 @@ class TestReplayCheckpoint:
             await replay_executor.execute_app(
                 OpenAPIConnector,
                 OpenAPIConnectorInput(
+                    connection_usage="CREATE",
                     connection=Connection(
                         qualified_name=CONNECTION_QN,
                         name=CONNECTION_NAME,
