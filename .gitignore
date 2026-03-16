@@ -97,6 +97,11 @@ logs/
 *.cache
 *.pid
 
+# ─── SDR local deployment (generated / secrets) ─────────────────────────────
+sdr/openapi-connector-deployment/components/
+sdr/openapi-connector-deployment/.env
+sdr/config.yaml
+
 # ─── Package / Archive Files ────────────────────────────────────────────────
 *.zip
 *.tar
