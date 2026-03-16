@@ -3,9 +3,8 @@
 Sets up in-process Temporal workers backed by scraped replay fixtures from
 extracts/openapi/replay/. No source credentials or DAPR required.
 
-Two workers are started:
+One worker is started:
   1. connector worker on "openapi-replay-queue"
-  2. atlan-loader worker on "atlan-loader-queue" (for dry-run validation)
 
 Requires:
     - Temporal dev server at 127.0.0.1:7233
@@ -29,7 +28,6 @@ import respx
 from temporalio.client import Client
 from temporalio.worker import UnsandboxedWorkflowRunner, Worker
 
-import temporalio.activity as _ta
 from app_framework.execution._temporal.activities import get_all_task_activities
 from app_framework.execution._temporal.backend import TemporalExecutorBackend
 from app_framework.execution._temporal.converter import create_data_converter
@@ -40,12 +38,6 @@ from app_framework.execution.executor import AppExecutor
 # Import connector module — triggers @app/@task registration
 # ---------------------------------------------------------------------------
 import openapi.connector  # noqa: F401
-
-# ---------------------------------------------------------------------------
-# Import atlan-loader module — triggers its @app/@task registration so the
-# second in-process worker can serve the atlan-loader-queue.
-# ---------------------------------------------------------------------------
-import atlan_loader.loader  # noqa: F401
 
 # ---------------------------------------------------------------------------
 # Replay extracts directory
@@ -128,7 +120,7 @@ async def temporal_client() -> Client:
     """Connect to Temporal dev server at 127.0.0.1:7233.
 
     Uses the msgspec data converter so pyatlan Asset objects serialise
-    correctly when passed through Temporal to the atlan-loader worker.
+    correctly when passed through Temporal to the connector worker.
     """
     data_converter = create_data_converter()
     return await Client.connect("127.0.0.1:7233", data_converter=data_converter)
@@ -138,24 +130,19 @@ async def temporal_client() -> Client:
 async def replay_worker(
     temporal_client: Client,
 ) -> AsyncGenerator[Worker, None]:
-    """In-process Temporal workers for both the connector and atlan-loader.
+    """In-process Temporal worker for the connector.
 
-    Unlike the subprocess-based integration worker, these workers run in the
+    Unlike the subprocess-based integration worker, this worker runs in the
     same process as the test — enabling respx intercepts to work inside activities.
-
-    Two nested workers:
-    - connector worker on "openapi-replay-queue"
-    - loader worker on "atlan-loader-queue" (handles dry-run validation calls)
     """
-    workflows = get_all_app_workflows()
+    from temporalio import activity as _activity
 
-    # Deduplicate activities by name — both connector and atlan-loader import
-    # shared framework activities (commit_checkpoint, merge_files, etc.) which
-    # get registered twice when both modules are imported in the same process.
+    workflows = get_all_app_workflows()
     _seen: set[str] = set()
     activities = []
     for act in get_all_task_activities():
-        name = _ta._Definition.must_from_callable(act).name
+        defn = _activity._Definition.from_callable(act)
+        name = defn.name if defn else act.__name__
         if name not in _seen:
             _seen.add(name)
             activities.append(act)
@@ -167,14 +154,7 @@ async def replay_worker(
         activities=activities,
         workflow_runner=UnsandboxedWorkflowRunner(),
     ) as connector_worker:
-        async with Worker(
-            temporal_client,
-            task_queue="atlan-loader-queue",
-            workflows=workflows,
-            activities=activities,
-            workflow_runner=UnsandboxedWorkflowRunner(),
-        ):
-            yield connector_worker
+        yield connector_worker
 
 
 @pytest_asyncio.fixture(scope="session")

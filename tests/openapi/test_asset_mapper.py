@@ -9,9 +9,7 @@ from openapi.asset_mapper import (
     map_api_spec,
     map_connection,
 )
-from pyatlan.models.api_path import APIPath
-from pyatlan.models.api_spec import APISpec
-from pyatlan.models.connection import Connection
+from pyatlan_v9.model.assets import APIPath, APISpec, Connection, RelatedAPISpec
 
 CONN_QN = "default/api/test-conn"
 WORKFLOW_ID = "test-wf-123"
@@ -511,8 +509,6 @@ class TestMapApiPath:
 
     def test_api_spec_relationship_set(self) -> None:
         """api_spec relationship should point to the parent spec."""
-        from pyatlan.models.api_related import RelatedAPISpec
-
         result = map_api_path(
             _sample_path_record(),
             CONN_QN,
