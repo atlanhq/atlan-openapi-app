@@ -10,8 +10,6 @@ from app_framework.app.types import FileReference
 from app_framework.credentials import CredentialRef
 from pyatlan_v9.model.assets import Connection
 from openapi.contracts import (
-    DiffInput,
-    DiffOutput,
     ExtractSpecInput,
     ExtractSpecOutput,
     OpenAPIConnectorInput,
@@ -183,11 +181,6 @@ class TestOpenAPIConnectorOutput:
         assert decoded.api_path_count == 0
         assert decoded.output_file is None
         assert decoded.total_scanned == 0
-        assert decoded.new_count == 0
-        assert decoded.changed_count == 0
-        assert decoded.unchanged_count == 0
-        assert decoded.deleted_count == 0
-        assert decoded.checkpoint_ref is None
         assert decoded.atlan_loaded_count == 0
         assert decoded.atlan_created_count == 0
         assert decoded.atlan_updated_count == 0
@@ -202,12 +195,7 @@ class TestOpenAPIConnectorOutput:
             api_spec_count=1,
             api_path_count=42,
             output_file=_sample_file_ref("/tmp/out/openapi_metadata.jsonl"),
-            total_scanned=44,
-            new_count=40,
-            changed_count=3,
-            unchanged_count=1,
-            deleted_count=0,
-            checkpoint_ref=_sample_file_ref("/tmp/ckpt/checkpoint.db"),
+            total_scanned=43,
             atlan_loaded_count=43,
             atlan_created_count=40,
             atlan_updated_count=3,
@@ -217,23 +205,17 @@ class TestOpenAPIConnectorOutput:
         decoded = _round_trip(original, OpenAPIConnectorOutput)
         assert decoded.api_spec_count == 1
         assert decoded.api_path_count == 42
-        assert decoded.total_scanned == 44
-        assert decoded.new_count == 40
-        assert decoded.changed_count == 3
-        assert decoded.unchanged_count == 1
-        assert decoded.deleted_count == 0
+        assert decoded.total_scanned == 43
         assert decoded.atlan_loaded_count == 43
         assert decoded.atlan_created_count == 40
         assert decoded.atlan_updated_count == 3
         assert decoded.output_file is not None
         assert decoded.output_file.local_path == "/tmp/out/openapi_metadata.jsonl"
         assert decoded.output_file.size_bytes == 1024
-        assert decoded.checkpoint_ref is not None
-        assert decoded.checkpoint_ref.local_path == "/tmp/ckpt/checkpoint.db"
 
     def test_output_file_none_by_default(self) -> None:
-        """output_file is None when no changes were found."""
-        original = OpenAPIConnectorOutput(unchanged_count=5)
+        """output_file is None when no records were extracted."""
+        original = OpenAPIConnectorOutput()
         decoded = _round_trip(original, OpenAPIConnectorOutput)
         assert decoded.output_file is None
 
@@ -312,86 +294,6 @@ class TestExtractSpecContracts:
 
 
 # =============================================================================
-# DiffInput / DiffOutput
-# =============================================================================
-
-
-class TestDiffContracts:
-    def test_input_round_trip_defaults(self) -> None:
-        original = DiffInput()
-        decoded = _round_trip(original, DiffInput)
-        assert decoded.api_spec_file is None
-        assert decoded.api_path_file is None
-        assert decoded.connection_qualified_name == ""
-        assert decoded.checkpoint_dir == ""
-        assert decoded.output_dir == ""
-
-    def test_input_round_trip_with_values(self) -> None:
-        spec_ref = _sample_file_ref("/tmp/raw/api_spec.jsonl")
-        path_ref = _sample_file_ref("/tmp/raw/api_path.jsonl")
-        original = DiffInput(
-            api_spec_file=spec_ref,
-            api_path_file=path_ref,
-            connection_qualified_name="default/api/conn",
-            checkpoint_dir="/tmp/ckpt",
-            output_dir="/tmp/diff",
-        )
-        decoded = _round_trip(original, DiffInput)
-        assert decoded.api_spec_file is not None
-        assert decoded.api_spec_file.local_path == "/tmp/raw/api_spec.jsonl"
-        assert decoded.api_path_file is not None
-        assert decoded.connection_qualified_name == "default/api/conn"
-        assert decoded.checkpoint_dir == "/tmp/ckpt"
-        assert decoded.output_dir == "/tmp/diff"
-
-    def test_input_file_ref_size_bytes_survives(self) -> None:
-        ref = FileReference(local_path="/tmp/test.jsonl", size_bytes=2048)
-        original = DiffInput(api_spec_file=ref)
-        decoded = _round_trip(original, DiffInput)
-        assert decoded.api_spec_file is not None
-        assert decoded.api_spec_file.size_bytes == 2048
-
-    def test_output_round_trip_defaults(self) -> None:
-        original = DiffOutput()
-        decoded = _round_trip(original, DiffOutput)
-        assert decoded.changed_api_spec_file is None
-        assert decoded.changed_api_path_file is None
-        assert decoded.new_count == 0
-        assert decoded.changed_count == 0
-        assert decoded.unchanged_count == 0
-        assert decoded.deleted_count == 0
-        assert decoded.total_scanned == 0
-        assert decoded.checkpoint_new_path == ""
-
-    def test_output_round_trip_with_values(self) -> None:
-        spec_ref = _sample_file_ref("/tmp/diff/changed_api_spec.jsonl")
-        path_ref = _sample_file_ref("/tmp/diff/changed_api_path.jsonl")
-        original = DiffOutput(
-            changed_api_spec_file=spec_ref,
-            changed_api_path_file=path_ref,
-            new_count=5,
-            changed_count=2,
-            unchanged_count=10,
-            deleted_count=1,
-            total_scanned=18,
-            checkpoint_new_path="/tmp/ckpt/.new",
-        )
-        decoded = _round_trip(original, DiffOutput)
-        assert decoded.changed_api_spec_file is not None
-        assert (
-            decoded.changed_api_spec_file.local_path
-            == "/tmp/diff/changed_api_spec.jsonl"
-        )
-        assert decoded.changed_api_path_file is not None
-        assert decoded.new_count == 5
-        assert decoded.changed_count == 2
-        assert decoded.unchanged_count == 10
-        assert decoded.deleted_count == 1
-        assert decoded.total_scanned == 18
-        assert decoded.checkpoint_new_path == "/tmp/ckpt/.new"
-
-
-# =============================================================================
 # TransformInput / TransformOutput
 # =============================================================================
 
@@ -400,8 +302,8 @@ class TestTransformContracts:
     def test_input_round_trip_defaults(self) -> None:
         original = TransformInput()
         decoded = _round_trip(original, TransformInput)
-        assert decoded.changed_api_spec_file is None
-        assert decoded.changed_api_path_file is None
+        assert decoded.api_spec_file is None
+        assert decoded.api_path_file is None
         assert decoded.connection is None
         assert decoded.connection_qualified_name == ""
         assert decoded.output_dir == ""
@@ -420,8 +322,8 @@ class TestTransformContracts:
             admin_groups=["admins"],
         )
         original = TransformInput(
-            changed_api_spec_file=spec_ref,
-            changed_api_path_file=path_ref,
+            api_spec_file=spec_ref,
+            api_path_file=path_ref,
             connection=conn,
             connection_qualified_name="default/api/conn",
             output_dir="/tmp/out",
@@ -430,12 +332,9 @@ class TestTransformContracts:
             workflow_run_at_ms=1700000000000,
         )
         decoded = _round_trip(original, TransformInput)
-        assert decoded.changed_api_spec_file is not None
-        assert (
-            decoded.changed_api_spec_file.local_path
-            == "/tmp/diff/changed_api_spec.jsonl"
-        )
-        assert decoded.changed_api_path_file is not None
+        assert decoded.api_spec_file is not None
+        assert decoded.api_spec_file.local_path == "/tmp/diff/changed_api_spec.jsonl"
+        assert decoded.api_path_file is not None
         assert decoded.connection is not None
         assert decoded.connection.qualified_name == "default/api/conn"
         assert decoded.connection_qualified_name == "default/api/conn"
@@ -449,8 +348,8 @@ class TestTransformContracts:
         spec_ref = _sample_file_ref("/tmp/diff/changed_api_spec.jsonl")
         path_ref = _sample_file_ref("/tmp/diff/changed_api_path.jsonl")
         original = TransformInput(
-            changed_api_spec_file=spec_ref,
-            changed_api_path_file=path_ref,
+            api_spec_file=spec_ref,
+            api_path_file=path_ref,
             connection=None,
             connection_qualified_name="default/api/existing-conn",
             output_dir="/tmp/out",
@@ -461,8 +360,8 @@ class TestTransformContracts:
         decoded = _round_trip(original, TransformInput)
         assert decoded.connection is None
         assert decoded.connection_qualified_name == "default/api/existing-conn"
-        assert decoded.changed_api_spec_file is not None
-        assert decoded.changed_api_path_file is not None
+        assert decoded.api_spec_file is not None
+        assert decoded.api_path_file is not None
         assert decoded.output_dir == "/tmp/out"
         assert decoded.workflow_id == "wf-abc123"
         assert decoded.workflow_type == "openapi"
