@@ -8,11 +8,10 @@ All processes are wrapped with ``dapr run`` so that DAPR secret stores are
 available, matching the production deployment model.
 
 Usage:
-    from tests.e2e.local_infra import LocalProcessManager, LOADER_LOCAL
+    from tests.e2e.local_infra import LocalProcessManager, OPENAPI_LOCAL
 
-    tmp_dir = prepare_dapr_components({"atlan": '{"type":"atlan_api_token",...}'})
+    tmp_dir = prepare_dapr_components({})
     mgr = LocalProcessManager(os.path.join(tmp_dir, "components"))
-    mgr.start_app(LOADER_LOCAL, handler=False)   # loader: worker only
     mgr.start_app(OPENAPI_LOCAL)                 # connector: worker + handler
     ...
     mgr.stop_all()
@@ -62,14 +61,6 @@ class LocalAppConfig:
 # ---------------------------------------------------------------------------
 # Shared app configurations (every connector test uses these)
 # ---------------------------------------------------------------------------
-
-LOADER_LOCAL = LocalAppConfig(
-    name="atlan-loader",
-    module="atlan_loader.loader:AtlanLoader",
-    task_queue="atlan-loader-queue",
-    handler_port=0,  # No handler needed — called as child workflow
-    worker_health_port=9092,
-)
 
 CUSTOM_TYPEDEFS_LOCAL = LocalAppConfig(
     name="custom-typedefs",

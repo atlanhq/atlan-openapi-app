@@ -238,33 +238,6 @@ async def temporal_client_msgspec() -> Client:
     return await Client.connect("127.0.0.1:7233", data_converter=data_converter)
 
 
-@pytest.fixture(scope="session")
-def atlan_loader_worker(
-    dapr_components_dir: str,
-) -> Generator[subprocess.Popen[bytes], None, None]:
-    """Start the Atlan loader worker."""
-    proc = _start_worker(
-        "atlan_loader.loader:AtlanLoader",
-        "atlan-loader-queue",
-        dapr_components_dir,
-    )
-    yield proc
-    _stop_worker(proc)
-
-
-@pytest.fixture(scope="session")
-def atlan_loader_executor(
-    temporal_client_msgspec: Client,
-    atlan_loader_worker: subprocess.Popen[bytes],  # noqa: ARG001
-) -> AppExecutor:
-    """Executor for atlan-loader tests (uses msgspec converter)."""
-    backend = TemporalExecutorBackend(
-        client=temporal_client_msgspec,
-        task_queue="atlan-loader-queue",
-    )
-    return AppExecutor(backend=backend)
-
-
 # ---------------------------------------------------------------------------
 # OpenAPI connector worker and executor fixtures
 # ---------------------------------------------------------------------------

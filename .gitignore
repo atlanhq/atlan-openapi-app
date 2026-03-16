@@ -60,6 +60,11 @@ crash.*.log
 vault-password*
 .vault_pass*
 
+# ─── Pkl build intermediates ─────────────────────────────────────────────────
+# pkl eval writes input.py here as a side effect; the canonical copy lives at
+# src/openapi/_generated_input.py (tracked) and is kept in sync by make generate.
+contract/output/input.py
+
 # ─── Local test artefacts ────────────────────────────────────────────────────
 storage/
 e2e-logs/

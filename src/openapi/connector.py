@@ -1,15 +1,14 @@
 """OpenAPI Spec Loader Connector App.
 
 Extracts metadata from an OpenAPI v3 spec document (APISpec + APIPath) and
-transforms it to JSONL format compatible with the Atlan Loader.
+transforms it to JSONL format compatible with publish-app.
 
 The connector:
-1. Validates Atlan credentials (if loading)
-2. Fetches the OpenAPI spec document via a single HTTP GET
-3. Parses the spec into APISpec (1) and APIPath (N) records — bundled in one task
-4. Runs per-type change detection (if checkpoint_dir provided)
-5. Transforms to Atlan asset format using pyatlan built-in types
-6. Loads to Atlan via atlan-loader child app (if requested)
+1. Fetches the OpenAPI spec document via a single HTTP GET
+2. Parses the spec into APISpec (1) and APIPath (N) records — bundled in one task
+3. Runs per-type change detection (if checkpoint_dir provided)
+4. Transforms to Atlan asset format using pyatlan built-in types
+5. Uploads NDJSON to object storage and calls publish-app (if requested)
 
 Extraction pattern: per-scope-item bundled (indivisible API — one GET returns
 both APISpec and APIPath data; splitting would require downloading twice).
@@ -17,6 +16,7 @@ both APISpec and APIPath data; splitting would require downloading twice).
 
 from __future__ import annotations
 
+import json
 import tempfile
 from pathlib import Path
 from typing import Any, TypeVar, cast
@@ -32,7 +32,6 @@ from app_framework.app.contracts import (
     UploadStagedCheckpointInput,
 )
 from app_framework.change_detection import ChangeDetector, ChangeType, RecordKey
-from atlan_loader.contracts import AtlanLoaderInput, AtlanLoaderOutput
 from openapi.api_types import OpenAPIPathRecord, OpenAPISpecRecord
 from openapi.asset_mapper import (
     build_api_path_qn,
@@ -48,6 +47,7 @@ from openapi.contracts import (
     ExtractSpecOutput,
     OpenAPIConnectorInput,
     OpenAPIConnectorOutput,
+    PublishInput,
     TransformInput,
     TransformOutput,
 )
@@ -66,6 +66,8 @@ def _enc_hook(obj: Any) -> Any:
 
 
 _encoder = msgspec.json.Encoder(enc_hook=_enc_hook)
+
+_PUBLISH_APP_TASK_QUEUE = "atlan-publish-production"
 
 
 def _iter_jsonl(ref: FileReference | None, cls: type[T]) -> "Any":
@@ -415,7 +417,7 @@ class OpenAPIConnector(App):
     1. extract_spec — fetch spec URL, emit api_spec.jsonl + api_path.jsonl
     2. diff — change detection (if checkpoint_dir provided)
     3. transform — map to Atlan Atlas entity format
-    4. load — sync to Atlan via atlan-loader child app (if load_to_atlan=True)
+    4. publish — upload NDJSON to object storage and call publish-app (if load_to_atlan=True)
 
     Supports incremental extraction via change detection when checkpoint_dir
     is provided.
@@ -573,26 +575,6 @@ class OpenAPIConnector(App):
         )
 
         # ================================================================
-        # Step 0: Pre-check Atlan credentials (skip in dry-run mode)
-        # ================================================================
-        if input.load_to_atlan and not input.loader_dry_run:
-            from app_framework.handler import PreCheckInput
-
-            atlan_credential = self.require(
-                input.atlan_credential, "atlan_credential", "when load_to_atlan=True"
-            )
-            self.logger.debug("validating Atlan credentials")
-            pre_check_result = await self.pre_check(
-                PreCheckInput(credential_refs=[atlan_credential])
-            )
-            self.logger.info(
-                "Atlan credentials validated",
-                identities=pre_check_result.auth_output.identities
-                if pre_check_result.auth_output
-                else None,
-            )
-
-        # ================================================================
         # Step 1: Extract APISpec + APIPath (bundled, one HTTP GET)
         # ================================================================
         extract_result = await self.extract_spec(
@@ -688,78 +670,53 @@ class OpenAPIConnector(App):
             api_path_count = transform_result.api_path_count
 
         # ================================================================
-        # Step 4: Load to Atlan (if requested and there are changes)
+        # Step 4: Upload and publish to Atlan (if requested and there are changes)
         # ================================================================
-        durable_file_ref: FileReference | None = None
-        atlan_loaded = 0
-        atlan_created = 0
-        atlan_updated = 0
-        atlan_validated = 0
-        atlan_error_count = 0
-        atlan_errors: list = []
-
+        publish_completed = False
         output_file_path = output_file_ref.local_path if output_file_ref else ""
 
-        if (
-            input.load_to_atlan
-            and has_changes
-            and output_file_path
-            and (input.atlan_credential or input.loader_dry_run)
-        ):
-            total_assets = api_spec_count + api_path_count + (1 if connection else 0)
+        if input.load_to_atlan and has_changes and output_file_path:
+            upload_prefix = (
+                f"argo-artifacts/{conn_qn}/transformed-metadata/{self.run_id}"
+            )
 
-            sync_result = await self.sync_local_to_storage(
+            await self.sync_local_to_storage(
                 SyncLocalToStorageInput(
                     local_path=output_file_path,
-                    key="openapi_metadata.jsonl",
+                    key=f"{upload_prefix}/metadata/chunk-0-part0.json",
                     content_type="application/x-ndjson",
                 )
             )
-            durable_file_ref = sync_result.ref
 
-            self.logger.info("starting atlan loader", total_assets=total_assets)
-
-            loader_result = await self.call_by_name(
-                "atlan-loader",
-                AtlanLoaderInput(
-                    jsonl_files=[durable_file_ref],
-                    atlan_credential=input.atlan_credential,
-                    output_dir=f"{output_dir}/loader_temp",
-                    batch_size=input.loader_batch_size,
-                    chunk_size=input.loader_chunk_size,
-                    max_chunks_per_execution=input.loader_max_chunks_per_execution,
-                    save_timeout=input.loader_save_timeout,
-                    dry_run=input.loader_dry_run,
-                    dry_run_for_creation=input.loader_dry_run,
-                    jsonl_format="nested",  # to_nested_bytes() produces Atlas JSON format
-                ),
-                output_type=AtlanLoaderOutput,
-                task_queue="atlan-loader-queue",
+            connection_dict = (
+                json.loads(connection.to_json(nested=True)) if connection else {}
             )
 
-            atlan_loaded = loader_result.total_loaded
-            atlan_created = loader_result.created_count
-            atlan_updated = loader_result.updated_count
-            atlan_validated = loader_result.validated_count
-            atlan_error_count = loader_result.error_count
-            atlan_errors = loader_result.errors
+            self.logger.info(
+                "calling publish-app",
+                connection_qualified_name=conn_qn,
+                upload_prefix=upload_prefix,
+                executor_enabled=not input.publish_dry_run,
+            )
 
-            if atlan_errors:
-                first_err = atlan_errors[0]
-                first_error_msg = getattr(first_err, "message", str(first_err))
-                self.logger.warning(
-                    "atlan loader completed with errors",
-                    loaded_count=atlan_loaded,
-                    error_count=atlan_error_count,
-                    first_error=first_error_msg,
-                )
-            else:
-                self.logger.info(
-                    "atlan loader complete",
-                    loaded_count=atlan_loaded,
-                    created_count=atlan_created,
-                    updated_count=atlan_updated,
-                )
+            await self.call_by_name(
+                "PublishWorkflow",
+                PublishInput(
+                    connection_qualified_name=conn_qn,
+                    transformed_data_prefix=upload_prefix,
+                    publish_state_prefix=(
+                        f"persistent-artifacts/apps/atlan-publish-app/state"
+                        f"/{conn_qn}/publish-state"
+                    ),
+                    current_state_prefix=f"argo-artifacts/{conn_qn}/current-state",
+                    connection_creation_enabled=bool(connection),
+                    executor_enabled=not input.publish_dry_run,
+                    connection_entity=connection_dict,
+                ),
+                task_queue=_PUBLISH_APP_TASK_QUEUE,
+            )
+            publish_completed = True
+            self.logger.info("publish-app completed")
 
         # ================================================================
         # Commit checkpoint (only after all stages succeed)
@@ -783,23 +740,18 @@ class OpenAPIConnector(App):
             changed=changed_count,
             unchanged=unchanged_count,
             deleted=deleted_count,
-            atlan_loaded=atlan_loaded,
+            publish_completed=publish_completed,
         )
 
         return OpenAPIConnectorOutput(
             api_spec_count=api_spec_count,
             api_path_count=api_path_count,
-            output_file=durable_file_ref or output_file_ref,
+            output_file=output_file_ref,
             total_scanned=total_scanned,
             new_count=new_count,
             changed_count=changed_count,
             unchanged_count=unchanged_count,
             deleted_count=deleted_count,
             checkpoint_ref=checkpoint_ref,
-            atlan_loaded_count=atlan_loaded,
-            atlan_created_count=atlan_created,
-            atlan_updated_count=atlan_updated,
-            atlan_validated_count=atlan_validated,
-            atlan_error_count=atlan_error_count,
-            atlan_errors=atlan_errors,
+            publish_completed=publish_completed,
         )

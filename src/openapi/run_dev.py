@@ -30,14 +30,13 @@ Usage:
     # 5. Check the result (replace <workflow_id> with value from response["data"]["workflow_id"]):
     curl http://localhost:8080/workflows/v1/result/<workflow_id>
 
-    # 6. Full E2E with Atlan loading (requires ATLAN_API_KEY, ATLAN_BASE_URL):
+    # 6. Full E2E with Atlan loading via publish-app (requires cluster with publish-app):
     curl -X POST http://localhost:8080/workflows/v1/start \\
       -H "Content-Type: application/json" \\
       -d '{
         "connection": {"qualifiedName": "default/api/test-openapi", "name": "test-openapi"},
         "spec_url": "https://petstore3.swagger.io/api/v3/openapi.json",
-        "load_to_atlan": true,
-        "atlan_credential": {"name": "atlan", "credential_type": "atlan_api_token"}
+        "load_to_atlan": true
       }'
 """
 
@@ -93,7 +92,7 @@ async def main() -> None:
             },
             "spec_url": spec_url,
             "load_to_atlan": False,
-            "loader_dry_run": True,
+            "publish_dry_run": False,
         },
     )
 
