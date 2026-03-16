@@ -135,8 +135,17 @@ async def replay_worker(
     Unlike the subprocess-based integration worker, this worker runs in the
     same process as the test — enabling respx intercepts to work inside activities.
     """
+    from temporalio import activity as _activity
+
     workflows = get_all_app_workflows()
-    activities = list(get_all_task_activities())
+    _seen: set[str] = set()
+    activities = []
+    for act in get_all_task_activities():
+        defn = _activity._Definition.from_callable(act)
+        name = defn.name if defn else act.__name__
+        if name not in _seen:
+            _seen.add(name)
+            activities.append(act)
 
     async with Worker(
         temporal_client,
