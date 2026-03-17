@@ -614,8 +614,9 @@ async def verify_atlan_assets(
 ) -> AtlanVerificationResult:
     """Query Atlan directly to verify expected asset types exist in a connection."""
     from msgspec import UNSET
-
-    from pyatlan.client import AsyncAtlanClient, SearchInput
+    from pyatlan_v9.client.aio.atlan import AsyncAtlanClient
+    from pyatlan_v9.model.assets import Asset, Referenceable
+    from pyatlan_v9.model.fluent_search import FluentSearch
 
     if base_url is None:
         base_url = os.environ.get("ATLAN_BASE_URL", "")
@@ -627,27 +628,19 @@ async def verify_atlan_assets(
     warnings: list[str] = []
 
     try:
-        async with AsyncAtlanClient(base_url, api_key=api_key) as client:
+        async with AsyncAtlanClient(base_url=base_url, api_key=api_key) as client:
             for spec in expected_types:
-                response = await client.asset.search(
-                    SearchInput(
-                        query={
-                            "bool": {
-                                "must": [
-                                    {"term": {"__typeName.keyword": spec.type_name}},
-                                    {
-                                        "term": {
-                                            "connectionQualifiedName": connection_qn
-                                        }
-                                    },
-                                ]
-                            }
-                        },
-                        page_size=3,
-                        attributes=["name", "qualifiedName", "connectionQualifiedName"],
-                    )
+                search = (
+                    FluentSearch.select()
+                    .where(Referenceable.TYPE_NAME.eq(spec.type_name))
+                    .where(Asset.CONNECTION_QUALIFIED_NAME.eq(connection_qn))
+                    .page_size(3)
+                    .include_on_results(Asset.NAME)
+                    .include_on_results(Referenceable.QUALIFIED_NAME)
+                    .include_on_results(Asset.CONNECTION_QUALIFIED_NAME)
                 )
-                count = response.total_count
+                response = await search.execute_async(client)
+                count = response.count
                 result.type_counts[spec.type_name] = count
 
                 if count < spec.min_count:
@@ -656,7 +649,7 @@ async def verify_atlan_assets(
                         f"found {count} in connection '{connection_qn}'"
                     )
                 else:
-                    for asset in response.assets[:2]:
+                    for asset in response.current_page()[:2]:
                         if asset.name is UNSET or not asset.name:
                             failures.append(
                                 f"{spec.type_name}: sample asset has empty name"
@@ -669,20 +662,14 @@ async def verify_atlan_assets(
                                 f"expected '{connection_qn}'"
                             )
 
-            plain_response = await client.asset.search(
-                SearchInput(
-                    query={
-                        "bool": {
-                            "must": [
-                                {"term": {"__typeName.keyword": "Asset"}},
-                                {"term": {"connectionQualifiedName": connection_qn}},
-                            ]
-                        }
-                    },
-                    page_size=0,
-                )
+            plain_search = (
+                FluentSearch.select()
+                .where(Referenceable.TYPE_NAME.eq("Asset"))
+                .where(Asset.CONNECTION_QUALIFIED_NAME.eq(connection_qn))
+                .page_size(0)
             )
-            result.unexpected_asset_count = plain_response.total_count
+            plain_response = await plain_search.execute_async(client)
+            result.unexpected_asset_count = plain_response.count
             if result.unexpected_asset_count > 0:
                 warnings.append(
                     f"Found {result.unexpected_asset_count} plain 'Asset' (untyped) "
