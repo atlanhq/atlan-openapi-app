@@ -244,6 +244,7 @@ class OpenAPITestRunner:
             # ============================================================
             print("\n[Step 1] Running OpenAPI connector (with Atlan loading)...")
             connector_input = OpenAPIConnectorInput(
+                connection_usage="CREATE",
                 connection=Connection(
                     qualified_name=f"default/api/{connection_name}",
                     name=connection_name,
