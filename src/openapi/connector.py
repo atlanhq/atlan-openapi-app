@@ -472,17 +472,15 @@ class OpenAPIConnector(App):
         output_file_path = output_file_ref.local_path if output_file_ref else ""
 
         if input.load_to_atlan and output_file_path:
-            upload_prefix = (
-                f"argo-artifacts/{conn_qn}/transformed-metadata/{self.run_id}"
-            )
-
-            await self.sync_local_to_storage(
+            sync_result = await self.sync_local_to_storage(
                 SyncLocalToStorageInput(
                     local_path=output_file_path,
-                    key=f"{upload_prefix}/metadata/chunk-0-part0.json",
+                    key=f"argo-artifacts/{conn_qn}/transformed-metadata/{self.run_id}/metadata/chunk-0-part0.json",
                     content_type="application/x-ndjson",
                 )
             )
+            # Derive the actual prefix from the storage key (strips /metadata/chunk-0-part0.json)
+            upload_prefix = str(Path(sync_result.ref.storage_key).parent.parent)
 
             connection_dict = (
                 json.loads(connection.to_json(nested=True)) if connection else {}
