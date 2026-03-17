@@ -480,6 +480,10 @@ class OpenAPIConnector(App):
                 )
             )
             # Derive the actual prefix from the storage key (strips /metadata/chunk-0-part0.json)
+            if not sync_result.ref.storage_key:
+                raise ValueError(
+                    "sync_result.ref.storage_key is None; cannot derive upload_prefix"
+                )
             upload_prefix = str(Path(sync_result.ref.storage_key).parent.parent)
 
             connection_dict = (
