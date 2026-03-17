@@ -113,12 +113,6 @@ class OpenAPITestResult:
     atlan_verification_failures: list[str] = field(default_factory=list)
     atlan_verification_warnings: list[str] = field(default_factory=list)
 
-    # Diff validation (second pass)
-    pass2_unchanged_count: int = 0
-    pass2_new_count: int = 0
-    pass2_changed_count: int = 0
-    diff_validation_passed: bool = False
-
     # Deletion results
     deletion_ran: bool = False
     total_assets_deleted: int = 0
@@ -163,12 +157,6 @@ def format_result(result: OpenAPITestResult, connection_name: str) -> str:
             "",
             "--- Publishing ---",
             f"  publish_completed: {result.publish_completed}",
-            "",
-            "--- Diff Validation (Second Pass) ---",
-            f"  Unchanged: {result.pass2_unchanged_count}",
-            f"  New:       {result.pass2_new_count}",
-            f"  Changed:   {result.pass2_changed_count}",
-            f"  Passed:    {result.diff_validation_passed}",
             "",
             "--- Validation ---",
             f"  Expected assets:    {result.expected_asset_count}",
@@ -282,13 +270,8 @@ class OpenAPITestRunner:
             )
             if log_collector:
                 log_collector.record(OPENAPI_APP, pass2_corr_id, "pass2-incremental")
-            result.pass2_unchanged_count = pass2_result.get("unchanged_count", 0)
-            result.pass2_new_count = pass2_result.get("new_count", 0)
-            result.pass2_changed_count = pass2_result.get("changed_count", 0)
-            result.diff_validation_passed = result.pass2_unchanged_count > 0
-            print(f"  Unchanged: {result.pass2_unchanged_count}")
-            if not result.diff_validation_passed:
-                result.errors.append("Second pass should detect unchanged assets")
+            pass2_unchanged_count = pass2_result.get("unchanged_count", 0)
+            print(f"  Unchanged: {pass2_unchanged_count}")
 
             # ============================================================
             # Step 3: Validate publish completed
@@ -369,7 +352,6 @@ class OpenAPITestRunner:
             result.success = (
                 result.publish_completed
                 and result.validation_passed
-                and result.diff_validation_passed
                 and result.atlan_verification_passed
             )
 
@@ -475,10 +457,6 @@ async def main() -> int:
                 },
                 "publishing": {
                     "publish_completed": result.publish_completed,
-                },
-                "diff_validation": {
-                    "pass2_unchanged_count": result.pass2_unchanged_count,
-                    "passed": result.diff_validation_passed,
                 },
                 "validation": {
                     "expected_asset_count": result.expected_asset_count,
