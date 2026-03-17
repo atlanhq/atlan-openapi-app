@@ -475,7 +475,7 @@ class OpenAPIConnector(App):
             sync_result = await self.sync_local_to_storage(
                 SyncLocalToStorageInput(
                     local_path=output_file_path,
-                    key=f"argo-artifacts/{conn_qn}/transformed-metadata/{self.run_id}/metadata/chunk-0-part0.json",
+                    key=f"argo-artifacts/{conn_qn}/transformed-metadata/metadata/chunk-0-part0.json",
                     content_type="application/x-ndjson",
                 )
             )
