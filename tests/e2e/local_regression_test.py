@@ -108,6 +108,7 @@ async def run_openapi_test(mgr: LocalProcessManager) -> LocalTestResult:
 
         _conn_name = f"local-openapi-{int(time.time())}"
         connector_input = OpenAPIConnectorInput(
+            connection_usage="CREATE",
             connection=Connection(
                 qualified_name=f"default/api/{_conn_name}",
                 name=_conn_name,
