@@ -33,8 +33,39 @@ import pytest
 import pytest_asyncio
 from temporalio.client import Client
 
-from app_framework.execution._temporal.backend import TemporalExecutorBackend
-from app_framework.execution.executor import AppExecutor
+from typing import Any
+
+from application_sdk.execution._temporal.backend import TemporalExecutorBackend
+
+
+class AppExecutor:
+    """Compatibility shim wrapping TemporalExecutorBackend for integration tests."""
+
+    def __init__(self, backend: TemporalExecutorBackend) -> None:
+        self._backend = backend
+
+    async def execute_app(
+        self,
+        app_cls: Any,
+        input_data: Any,
+        *,
+        execution_id_prefix: str = "",
+    ) -> Any:
+        from application_sdk.app.context import AppContext
+        from application_sdk.execution.retry import RetryPolicy
+
+        app_name = getattr(app_cls, "_app_name", execution_id_prefix or "app")
+        context = AppContext(
+            app_name=app_name,
+            app_version="0.0.0",
+            run_id=execution_id_prefix or app_name,
+        )
+        return await self._backend.execute(
+            app_cls,
+            input_data,
+            context=context,
+            retry_policy=RetryPolicy(),
+        )
 
 
 def _free_port() -> int:
@@ -135,7 +166,7 @@ def _start_worker(
         "--",
         sys.executable,
         "-m",
-        "app_framework.main",
+        "application_sdk.main",
         "--mode",
         "worker",
         "--app",
@@ -226,15 +257,10 @@ async def temporal_client() -> Client:
 
 @pytest_asyncio.fixture(scope="session")
 async def temporal_client_msgspec() -> Client:
-    """Connect to Temporal with msgspec data converter for pyatlan Asset serialization."""
-    from app_framework.execution._temporal.converter import (
-        create_data_converter,
-        get_msgspec_payload_converter,
-    )
+    """Connect to Temporal with pydantic data converter for pyatlan Asset serialization."""
+    from application_sdk.execution._temporal.converter import create_data_converter
 
-    data_converter = create_data_converter(
-        additional_converters=[get_msgspec_payload_converter()]
-    )
+    data_converter = create_data_converter()
     return await Client.connect("127.0.0.1:7233", data_converter=data_converter)
 
 

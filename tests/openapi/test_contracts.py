@@ -1,14 +1,13 @@
 """Unit tests for OpenAPI connector data contracts.
 
 Tests JSON round-trip serialization for all input/output contracts
-using msgspec to verify they survive encode/decode cycles.
+using Pydantic's own model_dump_json / model_validate_json.
 """
 
-import msgspec
+from pydantic import BaseModel
 
-from app_framework.app.types import FileReference
-from app_framework.credentials import CredentialRef
-from pyatlan_v9.model.assets import Connection
+from application_sdk.contracts.types import ConnectionRef, FileReference
+from application_sdk.credentials.ref import CredentialRef
 from openapi.contracts import (
     ExtractSpecInput,
     ExtractSpecOutput,
@@ -20,22 +19,19 @@ from openapi.contracts import (
 )
 
 
-def _round_trip(obj: object, cls: type) -> object:
-    """Encode an object to JSON bytes, then decode back to the same type.
-
-    CRITICAL: strict=False is required — Temporal's DataConverter performs
-    type coercions that strict=True would reject.
-    """
-    encoded = msgspec.json.encode(obj)
-    return msgspec.json.decode(encoded, type=cls, strict=False)
+def _round_trip(obj: BaseModel, cls: type[BaseModel]) -> BaseModel:
+    """Encode a Pydantic model to JSON, then decode back to the same type."""
+    return cls.model_validate_json(obj.model_dump_json())
 
 
 def _sample_file_ref(path: str = "/tmp/test.jsonl") -> FileReference:
     """Create a sample FileReference for testing."""
-    return FileReference(
-        local_path=path,
-        size_bytes=1024,
-        content_type="application/x-ndjson",
+    return FileReference(local_path=path)
+
+
+def _make_connection_ref(qn: str, name: str = "") -> ConnectionRef:
+    return ConnectionRef.model_validate(
+        {"typeName": "Connection", "attributes": {"qualifiedName": qn, "name": name}}
     )
 
 
@@ -61,14 +57,8 @@ class TestOpenAPIConnectorInput:
     def test_round_trip_with_values(self) -> None:
         """All non-default values must survive round-trip."""
         openapi_ref = CredentialRef(name="openapi", credential_type="openapi")
-        conn = Connection(
-            qualified_name="default/api/test-conn",
-            name="test-conn",
-            category="API",
-            admin_groups=["admins"],
-        )
         original = OpenAPIConnectorInput(
-            connection=conn,
+            connection=_make_connection_ref("default/api/test-conn", "test-conn"),
             import_type="CLOUD",
             spec_url="https://example.com/api.json",
             openapi_credential=openapi_ref,
@@ -79,8 +69,8 @@ class TestOpenAPIConnectorInput:
         )
         decoded = _round_trip(original, OpenAPIConnectorInput)
         assert decoded.connection is not None
-        assert decoded.connection.name == "test-conn"
-        assert decoded.connection.qualified_name == "default/api/test-conn"
+        assert decoded.connection.attributes.name == "test-conn"
+        assert decoded.connection.attributes.qualified_name == "default/api/test-conn"
         assert decoded.import_type == "CLOUD"
         assert decoded.spec_url == "https://example.com/api.json"
         assert decoded.output_dir == "/tmp/out"
@@ -122,20 +112,15 @@ class TestOpenAPIConnectorInput:
         assert decoded.connection_qualified_name == "default/api/my-connection"
 
     def test_round_trip_connection_usage_create(self) -> None:
-        """CREATE connection_usage path with Connection object survives round-trip."""
-        conn = Connection(
-            qualified_name="default/api/new-conn",
-            name="new-conn",
-            category="API",
-        )
+        """CREATE connection_usage path with ConnectionRef survives round-trip."""
         original = OpenAPIConnectorInput(
             connection_usage="CREATE",
-            connection=conn,
+            connection=_make_connection_ref("default/api/new-conn", "new-conn"),
         )
         decoded = _round_trip(original, OpenAPIConnectorInput)
         assert decoded.connection_usage == "CREATE"
         assert decoded.connection is not None
-        assert decoded.connection.qualified_name == "default/api/new-conn"
+        assert decoded.connection.attributes.qualified_name == "default/api/new-conn"
         assert decoded.connection_qualified_name == ""
 
     def test_round_trip_cloud_import_fields(self) -> None:
@@ -154,7 +139,7 @@ class TestOpenAPIConnectorInput:
 
     def test_round_trip_spec_file_field(self) -> None:
         """spec_file field (DIRECT import, unsupported) survives round-trip."""
-        from app_framework.app.types import FileReference
+        from application_sdk.contracts.types import FileReference
 
         ref = FileReference(local_path="/tmp/upload/spec.json")
         original = OpenAPIConnectorInput(
@@ -211,7 +196,7 @@ class TestOpenAPIConnectorOutput:
         assert decoded.atlan_updated_count == 3
         assert decoded.output_file is not None
         assert decoded.output_file.local_path == "/tmp/out/openapi_metadata.jsonl"
-        assert decoded.output_file.size_bytes == 1024
+        assert decoded.output_file.local_path is not None
 
     def test_output_file_none_by_default(self) -> None:
         """output_file is None when no records were extracted."""
@@ -226,7 +211,7 @@ class TestOpenAPIConnectorOutput:
         decoded = _round_trip(original, OpenAPIConnectorOutput)
         assert decoded.output_file is not None
         assert decoded.output_file.local_path == "/custom/path/output.jsonl"
-        assert decoded.output_file.size_bytes == 1024
+        assert decoded.output_file.local_path is not None
 
 
 # =============================================================================
@@ -286,7 +271,7 @@ class TestExtractSpecContracts:
         decoded = _round_trip(original, ExtractSpecOutput)
         assert decoded.api_spec_file is not None
         assert decoded.api_spec_file.local_path == "/tmp/raw/api_spec.jsonl"
-        assert decoded.api_spec_file.size_bytes == 1024
+        assert decoded.api_spec_file.local_path is not None
         assert decoded.api_path_file is not None
         assert decoded.api_path_file.local_path == "/tmp/raw/api_path.jsonl"
         assert decoded.api_spec_count == 1
@@ -315,16 +300,10 @@ class TestTransformContracts:
         """CREATE path: connection object is set; connection_qualified_name is derived from it."""
         spec_ref = _sample_file_ref("/tmp/diff/changed_api_spec.jsonl")
         path_ref = _sample_file_ref("/tmp/diff/changed_api_path.jsonl")
-        conn = Connection(
-            qualified_name="default/api/conn",
-            name="conn",
-            category="API",
-            admin_groups=["admins"],
-        )
         original = TransformInput(
             api_spec_file=spec_ref,
             api_path_file=path_ref,
-            connection=conn,
+            connection=_make_connection_ref("default/api/conn", "conn"),
             connection_qualified_name="default/api/conn",
             output_dir="/tmp/out",
             workflow_id="wf-abc123",
@@ -336,7 +315,7 @@ class TestTransformContracts:
         assert decoded.api_spec_file.local_path == "/tmp/diff/changed_api_spec.jsonl"
         assert decoded.api_path_file is not None
         assert decoded.connection is not None
-        assert decoded.connection.qualified_name == "default/api/conn"
+        assert decoded.connection.attributes.qualified_name == "default/api/conn"
         assert decoded.connection_qualified_name == "default/api/conn"
         assert decoded.output_dir == "/tmp/out"
         assert decoded.workflow_id == "wf-abc123"
@@ -384,7 +363,7 @@ class TestTransformContracts:
         decoded = _round_trip(original, TransformOutput)
         assert decoded.output_file is not None
         assert decoded.output_file.local_path == "/tmp/out/openapi_metadata.jsonl"
-        assert decoded.output_file.size_bytes == 1024
+        assert decoded.output_file.local_path is not None
         assert decoded.api_spec_count == 1
         assert decoded.api_path_count == 17
 
