@@ -21,15 +21,16 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from pyatlan_v9.model.assets import Connection
-from openapi.connector import OpenAPIConnector
-from openapi.contracts import (
+from application_sdk.contracts.types import ConnectionRef
+from app.connector import OpenAPIConnector
+from app.contracts import (
     OpenAPIConnectorInput,
     OpenAPIConnectorOutput,
 )
 
 if TYPE_CHECKING:
-    from app_framework.execution.executor import AppExecutor
+    # TODO(v3-migration): AppExecutor is now a local compatibility shim in conftest.py
+    from tests.replay.conftest import AppExecutor
 
 # ---------------------------------------------------------------------------
 # Load metadata.json — describes exactly what was scraped
@@ -85,11 +86,17 @@ class TestReplayExtraction:
                 OpenAPIConnector,
                 OpenAPIConnectorInput(
                     connection_usage="CREATE",
-                    connection=Connection(
-                        qualified_name=CONNECTION_QN,
-                        name=CONNECTION_NAME,
-                        category="API",
-                        admin_groups=["admins"],
+                    connection=ConnectionRef.model_validate(
+                        {
+                            "typeName": "Connection",
+                            "attributes": {
+                                "qualifiedName": CONNECTION_QN,
+                                "name": CONNECTION_NAME,
+                                "connectorName": "api",
+                                "category": "API",
+                                "adminGroups": ["admins"],
+                            },
+                        }
                     ),
                     spec_url=_SPEC_URL,
                     openapi_credential=None,
@@ -122,21 +129,21 @@ class TestReplayExtraction:
         assert extraction_result.publish_completed is False
 
     async def test_output_file_exists(
-        self, extraction_result: OpenAPIConnectorOutput
+        self, extraction_result: OpenAPIConnectorOutput, store_root: Path
     ) -> None:
-        """Output JSONL file should exist and be non-empty."""
+        """Output JSONL file should exist and be non-empty in the object store."""
         assert extraction_result.output_file is not None
-        output_path = Path(extraction_result.output_file.local_path)
+        output_path = store_root / extraction_result.output_file.storage_path
         assert output_path.exists()
         assert output_path.stat().st_size > 0
 
     async def test_output_contains_expected_types(
-        self, extraction_result: OpenAPIConnectorOutput
+        self, extraction_result: OpenAPIConnectorOutput, store_root: Path
     ) -> None:
         """Output JSONL should contain Connection, APISpec, and APIPath."""
         import json as _json
 
-        output_path = Path(extraction_result.output_file.local_path)
+        output_path = store_root / extraction_result.output_file.storage_path
         type_names: set[str] = set()
         with output_path.open() as f:
             for line in f:
@@ -159,12 +166,12 @@ class TestReplayExtraction:
         assert extraction_result.api_path_count == _EXPECTED_TOTAL - 1
 
     async def test_qualified_names_follow_convention(
-        self, extraction_result: OpenAPIConnectorOutput
+        self, extraction_result: OpenAPIConnectorOutput, store_root: Path
     ) -> None:
         """All qualifiedName values should start with the connection QN prefix."""
         import json as _json
 
-        output_path = Path(extraction_result.output_file.local_path)
+        output_path = store_root / extraction_result.output_file.storage_path
         prefix = f"{CONNECTION_QN}/"
         with output_path.open() as f:
             for line in f:

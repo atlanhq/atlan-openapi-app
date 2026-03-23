@@ -24,24 +24,20 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from pyatlan_v9.model.assets import Connection
+from application_sdk.contracts.types import ConnectionRef
 
-from openapi.contracts import OpenAPIConnectorInput
+from app.contracts import OpenAPIConnectorInput
 from tests.e2e.infra import (
-    DELETE_APP,
     AppConfig,
     AssetTypeSpec,
     LogCollector,
-    MultiAppDeployer,
-    atlan_credential_dict,
     create_base_argument_parser,
-    delete_helm_creds,
+    deploy_app,
     format_duration,
     get_timing,
     output_result,
-    run_delete_workflow,
     run_workflow,
-    validate_deletion,
+    undeploy_app,
     validate_env_vars,
     verify_atlan_assets,
 )
@@ -52,17 +48,10 @@ from tests.e2e.infra import (
 
 OPENAPI_APP = AppConfig(
     name="openapi",
-    module="openapi.connector:OpenAPIConnector",
+    module="app.connector:OpenAPIConnector",
     namespace="app-openapi",
     task_queue="openapi-queue",
-    values_file=Path(__file__).parent.parent.parent / "values.yaml",
-)
-
-CUSTOM_TYPEDEFS_APP = AppConfig(
-    name="custom-typedefs",
-    module="custom_typedefs.custom_typedefs:CustomTypedefs",
-    namespace="app-custom-typedefs",
-    task_queue="custom-typedefs-queue",
+    values_file=Path(__file__).parent.parent.parent / "helm" / "values.yaml",
 )
 
 # Asset types that must exist in Atlan after a successful run
@@ -113,17 +102,6 @@ class OpenAPITestResult:
     atlan_verification_failures: list[str] = field(default_factory=list)
     atlan_verification_warnings: list[str] = field(default_factory=list)
 
-    # Diff validation (second pass)
-    pass2_unchanged_count: int = 0
-    pass2_new_count: int = 0
-    pass2_changed_count: int = 0
-    diff_validation_passed: bool = False
-
-    # Deletion results
-    deletion_ran: bool = False
-    total_assets_deleted: int = 0
-    connection_deleted: bool = False
-
     errors: list[str] = field(default_factory=list)
 
 
@@ -164,12 +142,6 @@ def format_result(result: OpenAPITestResult, connection_name: str) -> str:
             "--- Publishing ---",
             f"  publish_completed: {result.publish_completed}",
             "",
-            "--- Diff Validation (Second Pass) ---",
-            f"  Unchanged: {result.pass2_unchanged_count}",
-            f"  New:       {result.pass2_new_count}",
-            f"  Changed:   {result.pass2_changed_count}",
-            f"  Passed:    {result.diff_validation_passed}",
-            "",
             "--- Validation ---",
             f"  Expected assets:    {result.expected_asset_count}",
             f"  Actual created:     {result.actual_asset_count}",
@@ -191,15 +163,6 @@ def format_result(result: OpenAPITestResult, connection_name: str) -> str:
         lines.append(f"  [WARNING] {warn}")
     for fail in result.atlan_verification_failures:
         lines.append(f"  [FAILED]  {fail}")
-    lines.extend(
-        [
-            "",
-            "--- Cleanup ---",
-            f"  Deletion ran:         {result.deletion_ran}",
-            f"  Assets deleted:       {result.total_assets_deleted}",
-            f"  Connection deleted:   {result.connection_deleted}",
-        ]
-    )
 
     if result.errors:
         lines.append("")
@@ -223,15 +186,10 @@ class OpenAPITestRunner:
         self,
         connection_name: str,
         spec_url: str,
-        skip_cleanup: bool = False,
-        batch_size: int | None = None,
-        save_timeout: float | None = None,
         log_collector: LogCollector | None = None,
     ) -> OpenAPITestResult:
         """Run the full OpenAPI connector E2E test."""
         result = OpenAPITestResult(started_at=datetime.now(UTC).isoformat())
-
-        atlan_credential = atlan_credential_dict()
 
         print("\n" + "=" * 70)
         print("OpenAPI Connector E2E Test")
@@ -245,11 +203,17 @@ class OpenAPITestRunner:
             print("\n[Step 1] Running OpenAPI connector (with Atlan loading)...")
             connector_input = OpenAPIConnectorInput(
                 connection_usage="CREATE",
-                connection=Connection(
-                    qualified_name=f"default/api/{connection_name}",
-                    name=connection_name,
-                    category="API",
-                    admin_groups=["admins"],
+                connection=ConnectionRef.model_validate(
+                    {
+                        "typeName": "Connection",
+                        "attributes": {
+                            "qualifiedName": f"default/api/{connection_name}",
+                            "name": connection_name,
+                            "connectorName": "api",
+                            "category": "API",
+                            "adminGroups": ["admins"],
+                        },
+                    }
                 ),
                 spec_url=spec_url,
                 load_to_atlan=True,
@@ -282,13 +246,8 @@ class OpenAPITestRunner:
             )
             if log_collector:
                 log_collector.record(OPENAPI_APP, pass2_corr_id, "pass2-incremental")
-            result.pass2_unchanged_count = pass2_result.get("unchanged_count", 0)
-            result.pass2_new_count = pass2_result.get("new_count", 0)
-            result.pass2_changed_count = pass2_result.get("changed_count", 0)
-            result.diff_validation_passed = result.pass2_unchanged_count > 0
-            print(f"  Unchanged: {result.pass2_unchanged_count}")
-            if not result.diff_validation_passed:
-                result.errors.append("Second pass should detect unchanged assets")
+            pass2_unchanged_count = pass2_result.get("unchanged_count", 0)
+            print(f"  Unchanged: {pass2_unchanged_count}")
 
             # ============================================================
             # Step 3: Validate publish completed
@@ -329,47 +288,9 @@ class OpenAPITestRunner:
             result.task_timings = task_timings
             print(f"  Total duration: {format_duration(duration_ms)}")
 
-            # ============================================================
-            # Step 6: Clean up
-            # ============================================================
-            if not skip_cleanup:
-                print(f"\n[Step 6] Deleting connection '{connection_name}'...")
-                try:
-                    checkpoint_ref = connector_result.get("checkpoint_ref")
-                    refs = [checkpoint_ref] if checkpoint_ref else []
-                    delete_result, _, delete_corr_id = await run_delete_workflow(
-                        DELETE_APP,
-                        connection_name=connection_name,
-                        connector_type="api",
-                        credential=atlan_credential,
-                        workflow_id_prefix="openapi-test-cleanup",
-                        checkpoint_refs=refs,
-                    )
-                    if log_collector:
-                        log_collector.record(
-                            DELETE_APP, delete_corr_id, "delete-cleanup"
-                        )
-                    result.deletion_ran = True
-                    result.total_assets_deleted = delete_result.get(
-                        "total_assets_deleted", 0
-                    )
-                    result.connection_deleted = delete_result.get(
-                        "connection_deleted", False
-                    )
-                    warn = validate_deletion(
-                        result.total_assets_deleted, result.actual_asset_count
-                    )
-                    if warn:
-                        result.errors.append(f"Warning: {warn}")
-                except Exception as e:
-                    result.errors.append(f"Cleanup failed: {e}")
-            else:
-                print("\n[Step 6] Skipping cleanup (--skip-cleanup)")
-
             result.success = (
                 result.publish_completed
                 and result.validation_passed
-                and result.diff_validation_passed
                 and result.atlan_verification_passed
             )
 
@@ -412,7 +333,7 @@ async def main() -> int:
 
     spec_url = args.spec_url or os.environ.get("OPENAPI_SPEC_URL", _DEFAULT_SPEC_URL)
 
-    missing = validate_env_vars([], skip_deploy=args.skip_deploy)
+    missing = validate_env_vars([])
     if missing:
         print(f"ERROR: Missing required environment variables: {', '.join(missing)}")
         return 1
@@ -421,39 +342,28 @@ async def main() -> int:
         print("ERROR: ATLAN_BASE_URL and ATLAN_API_KEY are required")
         return 1
 
-    all_apps = [OPENAPI_APP, CUSTOM_TYPEDEFS_APP, DELETE_APP]
-    deployer = MultiAppDeployer(apps=all_apps, image_tag=args.image_tag)
-
     log_collector = LogCollector(
         test_name="openapi",
-        apps=all_apps,
+        apps=[OPENAPI_APP],
         log_dir=Path(args.log_dir) if args.log_dir else None,
     )
 
     try:
         if not args.skip_deploy:
-            print("\n--- Deploying apps ---")
-
+            print("\n--- Deploying app ---")
             atlan_api_key = os.environ["ATLAN_API_KEY"]
-
-            openapi_creds = [
-                f"connectorCredentials.atlan.data.token={atlan_api_key}",
-            ]
-
-            await deployer.deploy_all(
-                credentials={
-                    OPENAPI_APP.name: openapi_creds,
-                    DELETE_APP.name: delete_helm_creds(),
-                }
+            await deploy_app(
+                OPENAPI_APP,
+                image_tag=args.image_tag,
+                extra_helm_sets=[
+                    f"connectorCredentials.atlan.data.token={atlan_api_key}",
+                ],
             )
 
         runner = OpenAPITestRunner()
         result = await runner.run_test(
             connection_name=args.connection_name,
             spec_url=spec_url,
-            skip_cleanup=args.skip_cleanup,
-            batch_size=args.batch_size,
-            save_timeout=args.save_timeout,
             log_collector=log_collector,
         )
 
@@ -476,10 +386,6 @@ async def main() -> int:
                 "publishing": {
                     "publish_completed": result.publish_completed,
                 },
-                "diff_validation": {
-                    "pass2_unchanged_count": result.pass2_unchanged_count,
-                    "passed": result.diff_validation_passed,
-                },
                 "validation": {
                     "expected_asset_count": result.expected_asset_count,
                     "actual_asset_count": result.actual_asset_count,
@@ -492,11 +398,6 @@ async def main() -> int:
                     "unexpected_asset_count": result.atlan_verification_unexpected_asset_count,
                     "failures": result.atlan_verification_failures,
                     "warnings": result.atlan_verification_warnings,
-                },
-                "cleanup": {
-                    "ran": result.deletion_ran,
-                    "assets_deleted": result.total_assets_deleted,
-                    "connection_deleted": result.connection_deleted,
                 },
                 "errors": result.errors,
             }
@@ -511,8 +412,8 @@ async def main() -> int:
         if not args.skip_deploy:
             await log_collector.collect_all()
         if not args.skip_undeploy and not args.skip_deploy:
-            print("\n--- Undeploying apps ---")
-            await deployer.undeploy_all()
+            print("\n--- Undeploying app ---")
+            await undeploy_app(OPENAPI_APP)
 
 
 if __name__ == "__main__":

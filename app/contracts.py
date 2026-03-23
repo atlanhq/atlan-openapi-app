@@ -5,21 +5,17 @@ backwards compatibility. Each App and @task method uses single-dataclass
 inputs and outputs to ensure Temporal serialization works correctly.
 """
 
-from dataclasses import dataclass, field
+from application_sdk.app import Input, Output
+from application_sdk.contracts.types import ConnectionRef, FileReference
+from application_sdk.credentials.ref import CredentialRef
 
-from app_framework.app import Input, Output
-from app_framework.app.types import FileReference
-from app_framework.credentials import CredentialRef
-from pyatlan_v9.model.assets import Connection
-
-from openapi._generated_input import AppInputContract
+from app._generated_input import AppInputContract
 
 # =============================================================================
 # App-level contracts
 # =============================================================================
 
 
-@dataclass
 class PublishInput(Input):
     """Input for the publish-app child workflow (platform service).
 
@@ -34,10 +30,9 @@ class PublishInput(Input):
     current_state_prefix: str = ""
     connection_creation_enabled: bool = True
     executor_enabled: bool = True
-    connection_entity: dict = field(default_factory=dict)
+    connection_entity: dict = {}
 
 
-@dataclass
 class OpenAPIConnectorInput(AppInputContract):
     """Input for the OpenAPI Connector App.
 
@@ -52,7 +47,6 @@ class OpenAPIConnectorInput(AppInputContract):
     """Optional credential for private OpenAPI specs. Not needed for public specs."""
 
 
-@dataclass
 class OpenAPIConnectorOutput(Output):
     """Output from the OpenAPI Connector App."""
 
@@ -73,7 +67,7 @@ class OpenAPIConnectorOutput(Output):
     atlan_updated_count: int = 0
     atlan_validated_count: int = 0
     atlan_error_count: int = 0
-    atlan_errors: list = field(default_factory=list)
+    atlan_errors: list = []
 
     publish_completed: bool = False
     """True if publish-app was called and completed successfully."""
@@ -84,7 +78,6 @@ class OpenAPIConnectorOutput(Output):
 # =============================================================================
 
 
-@dataclass
 class ExtractSpecInput(Input):
     """Input for the extract_spec task."""
 
@@ -101,7 +94,6 @@ class ExtractSpecInput(Input):
     """Optional credential for private specs (provides auth_header)."""
 
 
-@dataclass
 class ExtractSpecOutput(Output):
     """Output from the extract_spec task."""
 
@@ -123,7 +115,6 @@ class ExtractSpecOutput(Output):
 # =============================================================================
 
 
-@dataclass
 class TransformInput(Input):
     """Input for the transform task."""
 
@@ -133,8 +124,8 @@ class TransformInput(Input):
     api_path_file: FileReference | None = None
     """FileReference to api_path records from extract_spec."""
 
-    connection: Connection | None = None
-    """Atlan connection object (CREATE path). When set, the Connection entity is emitted
+    connection: ConnectionRef | None = None
+    """Atlan connection reference (CREATE path). When set, the Connection entity is emitted
     in the output. When None (REUSE path), connection_qualified_name is used for QN
     derivation and no Connection entity is written."""
 
@@ -155,7 +146,6 @@ class TransformInput(Input):
     """Workflow start time as millisecond-precision UNIX timestamp."""
 
 
-@dataclass
 class TransformOutput(Output):
     """Output from the transform task."""
 
