@@ -14,10 +14,26 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from openapi.api_types import OpenAPIPathRecord, OpenAPISpecRecord
+    from app.api_types import OpenAPIPathRecord, OpenAPISpecRecord
 
-from app_framework.atlan import apply_sync_metadata
+from application_sdk.contracts.types import ConnectionRef
+
 from pyatlan_v9.model.assets import APIPath, APISpec, Connection, RelatedAPISpec
+
+
+def apply_sync_metadata(
+    asset: "APIPath | APISpec",
+    workflow_id: str,
+    workflow_type: str,
+    workflow_run_at_ms: int,
+) -> None:
+    """Stamp sync metadata fields onto a pyatlan Asset instance."""
+    asset.status = "ACTIVE"
+    asset.tenant_id = "default"
+    asset.last_sync_run = workflow_id
+    asset.last_sync_run_at = workflow_run_at_ms
+    asset.last_sync_workflow_name = workflow_type
+
 
 # Connector name constant — matches connector_name in the Connection asset
 CONNECTOR_NAME = "api"
@@ -55,26 +71,23 @@ def build_api_path_qn(spec_qn: str, path_url: str) -> str:
 # =============================================================================
 
 
-def map_connection(connection: Connection) -> Connection:
+def map_connection(connection: ConnectionRef) -> Connection:
     """Re-emit the Connection as an upsertable entity for the Atlan Loader.
 
     Args:
-        connection: The Connection object provided by the caller (from input.connection).
-            Its qualified_name and name are authoritative.
+        connection: The ConnectionRef provided by the caller (from input.connection).
+            Converted to a pyatlan_v9 Connection via ConnectionRef.to_connection(),
+            then enriched with connector-specific fields.
     """
-    _qn = connection.qualified_name
-    conn_qn: str = _qn if isinstance(_qn, str) else ""
-    _name = connection.name
-    conn_name: str = (
-        _name if isinstance(_name, str) and _name else conn_qn.rsplit("/", 1)[-1]
-    )
-    return Connection(
-        qualified_name=conn_qn,
-        name=conn_name,
-        connector_name=CONNECTOR_NAME,
-        connection_qualified_name=conn_qn,
-        category="API",
-    )
+    conn_qn: str = connection.attributes.qualified_name
+    _name = connection.attributes.name
+    conn_name: str = _name if _name else conn_qn.rsplit("/", 1)[-1]
+    native: Connection = connection.to_connection()
+    native.connector_name = connection.attributes.connector_name or CONNECTOR_NAME
+    native.connection_qualified_name = conn_qn
+    native.name = conn_name
+    native.category = connection.attributes.category or "API"
+    return native
 
 
 def map_api_spec(

@@ -28,7 +28,7 @@ from typing import Any
 
 from pyatlan_v9.model.assets import Connection
 
-from openapi.contracts import OpenAPIConnectorInput
+from app.contracts import OpenAPIConnectorInput
 from tests.e2e.local_infra import (
     OPENAPI_LOCAL,
     LocalProcessManager,

@@ -1,5 +1,5 @@
 {
-  "id": "atlan-openapi",
+  "id": "openapi",
   "name": "OpenAPI Spec Loader",
   "logo": "http://assets.atlan.com/assets/apispec.png",
   "config": {

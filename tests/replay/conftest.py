@@ -20,24 +20,60 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
 import pytest_asyncio
 import respx
+from obstore.store import LocalStore
 from temporalio.client import Client
 from temporalio.worker import UnsandboxedWorkflowRunner, Worker
 
-from app_framework.execution._temporal.activities import get_all_task_activities
-from app_framework.execution._temporal.backend import TemporalExecutorBackend
-from app_framework.execution._temporal.converter import create_data_converter
-from app_framework.execution._temporal.workflows import get_all_app_workflows
-from app_framework.execution.executor import AppExecutor
+from application_sdk.execution._temporal.activities import get_all_task_activities
+from application_sdk.execution._temporal.backend import TemporalExecutorBackend
+from application_sdk.execution._temporal.converter import create_data_converter
+from application_sdk.execution._temporal.workflows import get_all_app_workflows
+from application_sdk.infrastructure.context import (
+    InfrastructureContext,
+    set_infrastructure,
+)
+
+
+class AppExecutor:
+    """Compatibility shim wrapping TemporalExecutorBackend for replay tests."""
+
+    def __init__(self, backend: TemporalExecutorBackend) -> None:
+        self._backend = backend
+
+    async def execute_app(
+        self,
+        app_cls: Any,
+        input_data: Any,
+        *,
+        execution_id_prefix: str = "",
+    ) -> Any:
+        from application_sdk.app.context import AppContext
+        from application_sdk.execution.retry import RetryPolicy
+
+        app_name = getattr(app_cls, "_app_name", execution_id_prefix or "app")
+        context = AppContext(
+            app_name=app_name,
+            app_version="0.0.0",
+            run_id=execution_id_prefix or app_name,
+        )
+        return await self._backend.execute(
+            app_cls,
+            input_data,
+            context=context,
+            retry_policy=RetryPolicy(),
+        )
+
 
 # ---------------------------------------------------------------------------
 # Import connector module — triggers @app/@task registration
 # ---------------------------------------------------------------------------
-import openapi.connector  # noqa: F401
+import app.connector  # noqa: E402, F401
 
 # ---------------------------------------------------------------------------
 # Replay extracts directory
@@ -126,9 +162,29 @@ async def temporal_client() -> Client:
     return await Client.connect("127.0.0.1:7233", data_converter=data_converter)
 
 
+@pytest.fixture(scope="session")
+def store_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Root directory for the session-scoped local object store."""
+    return tmp_path_factory.mktemp("object_store")
+
+
+@pytest.fixture(scope="session")
+def local_object_store(store_root: Path) -> LocalStore:
+    """File-backed object store for the test session.
+
+    Provides a LocalStore rooted in a session-scoped temp directory so that
+    FileReference persistence (local_path → storage_path) works end-to-end
+    and RETAINED-tier refs survive post-run cleanup.
+    """
+    store = LocalStore(prefix=store_root, mkdir=True)
+    set_infrastructure(InfrastructureContext(storage=store))
+    return store
+
+
 @pytest_asyncio.fixture(scope="session")
 async def replay_worker(
     temporal_client: Client,
+    local_object_store: LocalStore,  # noqa: ARG001 — ensures infrastructure is set before worker starts
 ) -> AsyncGenerator[Worker, None]:
     """In-process Temporal worker for the connector.
 

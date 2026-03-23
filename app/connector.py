@@ -15,24 +15,24 @@ both APISpec and APIPath data; splitting would require downloading twice).
 
 from __future__ import annotations
 
-import json
 import tempfile
 from pathlib import Path
 from typing import Any, TypeVar, cast
 
 import msgspec
-from temporalio import workflow
+from application_sdk.app import App, task
+from application_sdk.contracts.storage import UploadInput
+from application_sdk.contracts.types import FileReference, StorageTier
+from application_sdk.observability.logger_adaptor import AtlanLoggerAdapter as Logger
 
-from app_framework.app import App, FileReference, Logger, task
-from app_framework.app.contracts import SyncLocalToStorageInput
-from openapi.api_types import OpenAPIPathRecord, OpenAPISpecRecord
-from openapi.asset_mapper import (
+from app.api_types import OpenAPIPathRecord, OpenAPISpecRecord
+from app.asset_mapper import (
     build_api_spec_qn,
     map_api_path,
     map_api_spec,
     map_connection,
 )
-from openapi.contracts import (
+from app.contracts import (
     ExtractSpecInput,
     ExtractSpecOutput,
     OpenAPIConnectorInput,
@@ -41,7 +41,7 @@ from openapi.contracts import (
     TransformInput,
     TransformOutput,
 )
-from openapi.credentials import VALIDATED_AUTH_HEADER_KEY
+from app.credentials import VALIDATED_AUTH_HEADER_KEY
 
 T = TypeVar("T")
 
@@ -98,7 +98,7 @@ async def _extract_spec_async(
     Returns:
         Tuple of (api_spec_file, api_path_file, api_spec_count, api_path_count).
     """
-    from openapi.api_client import OpenAPIApiClient
+    from app.api_client import OpenAPIApiClient
 
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -196,12 +196,13 @@ async def _extract_spec_async(
                 path_count += 1
 
     logger.info(
-        "spec extracted",
-        extra={"api_spec_count": spec_count, "api_path_count": path_count},
+        "spec extracted api_spec_count=%d api_path_count=%d",
+        spec_count,
+        path_count,
     )
     return (
-        FileReference.from_local(spec_file_path),
-        FileReference.from_local(path_file_path),
+        FileReference(local_path=str(spec_file_path), tier=StorageTier.RETAINED),
+        FileReference(local_path=str(path_file_path), tier=StorageTier.RETAINED),
         spec_count,
         path_count,
     )
@@ -223,8 +224,7 @@ def _transform_blocking(
 
     connection = input.connection
     if connection is not None:
-        _raw_conn_qn = connection.qualified_name
-        conn_qn: str = _raw_conn_qn if isinstance(_raw_conn_qn, str) else ""
+        conn_qn: str = connection.attributes.qualified_name
     else:
         conn_qn = input.connection_qualified_name
     if not conn_qn:
@@ -262,16 +262,16 @@ def _transform_blocking(
 
     total = api_spec_count + api_path_count
     logger.info(
-        "transform complete",
-        extra={
-            "api_spec_count": api_spec_count,
-            "api_path_count": api_path_count,
-            "total": total,
-        },
+        "transform complete api_spec_count=%d api_path_count=%d total=%d",
+        api_spec_count,
+        api_path_count,
+        total,
     )
 
     return TransformOutput(
-        output_file=FileReference.from_local(output_file),
+        output_file=FileReference(
+            local_path=str(output_file), tier=StorageTier.RETAINED
+        ),
         api_spec_count=api_spec_count,
         api_path_count=api_path_count,
     )
@@ -308,7 +308,7 @@ class OpenAPIConnector(App):
     )
     async def extract_spec(self, input: ExtractSpecInput) -> ExtractSpecOutput:
         """Fetch the OpenAPI spec URL and extract APISpec + APIPath records."""
-        self.logger.info("extract_spec task starting", spec_url=input.spec_url)
+        self.logger.info("extract_spec task starting spec_url=%s", input.spec_url)
 
         if not input.spec_url:
             raise ValueError("spec_url is required for extract_spec")
@@ -321,9 +321,9 @@ class OpenAPIConnector(App):
             self.set_app_state(VALIDATED_AUTH_HEADER_KEY, None)  # claim ownership
             self.logger.debug("using pre-validated auth_header from validate()")
         elif input.openapi_credential is not None:
-            from openapi.credentials import OpenAPICredential
+            from app.credentials import OpenAPICredential
 
-            credential = await self.resolve_credential(input.openapi_credential)
+            credential = await self.context.resolve_credential(input.openapi_credential)
             auth_header = (
                 credential.auth_header
                 if isinstance(credential, OpenAPICredential)
@@ -341,9 +341,9 @@ class OpenAPIConnector(App):
         )
 
         self.logger.info(
-            "extract_spec task completed",
-            api_spec_count=spec_count,
-            api_path_count=path_count,
+            "extract_spec task completed api_spec_count=%d api_path_count=%d",
+            spec_count,
+            path_count,
         )
         return ExtractSpecOutput(
             api_spec_file=spec_file,
@@ -364,9 +364,9 @@ class OpenAPIConnector(App):
         result = await self.run_in_thread(_transform_blocking, input, self.logger)
 
         self.logger.info(
-            "transform task completed",
-            api_spec_count=result.api_spec_count,
-            api_path_count=result.api_path_count,
+            "transform task completed api_spec_count=%d api_path_count=%d",
+            result.api_spec_count,
+            result.api_path_count,
         )
         return result
 
@@ -380,19 +380,19 @@ class OpenAPIConnector(App):
         4. publish — sync to Atlan via publish-app (if load_to_atlan=True)
         """
         if input.connection_usage == "REUSE":
-            if not input.connection_qualified_name:
+            conn_qn = input.connection_qualified_name
+            # Fall back to connection.qualified_name when the explicit field is empty
+            # (handles callers that provide a connection object without setting connection_usage=CREATE)
+            if not conn_qn and input.connection is not None:
+                conn_qn = input.connection.attributes.qualified_name
+            if not conn_qn:
                 raise ValueError(
                     "connection_qualified_name required when connection_usage='REUSE'"
                 )
-            conn_qn = input.connection_qualified_name
             connection = None
         else:
             connection = self.require(input.connection, "connection")
-            conn_qn = (
-                connection.qualified_name
-                if isinstance(connection.qualified_name, str)
-                else ""
-            )
+            conn_qn = connection.attributes.qualified_name
 
         if input.import_type == "CLOUD":
             if not input.cloud_source or not input.spec_key:
@@ -415,10 +415,10 @@ class OpenAPIConnector(App):
             raise ValueError("spec_url is required")
 
         self.logger.info(
-            "openapi connector starting",
-            connection_qualified_name=conn_qn,
-            spec_url=input.spec_url,
-            load_to_atlan=input.load_to_atlan,
+            "openapi connector starting connection_qualified_name=%s spec_url=%s load_to_atlan=%s",
+            conn_qn,
+            input.spec_url,
+            input.load_to_atlan,
         )
 
         output_dir = input.output_dir or str(
@@ -447,8 +447,7 @@ class OpenAPIConnector(App):
         output_file_ref: FileReference | None = None
 
         if total_scanned > 0:
-            info = workflow.info()
-            workflow_run_at_ms = int(info.start_time.timestamp() * 1000)
+            workflow_run_at_ms = int(self.context.started_at.timestamp() * 1000)
             transform_result = await self.transform(
                 TransformInput(
                     api_spec_file=extract_result.api_spec_file,
@@ -456,8 +455,8 @@ class OpenAPIConnector(App):
                     connection=connection,
                     connection_qualified_name=conn_qn,
                     output_dir=output_dir,
-                    workflow_id=info.workflow_id,
-                    workflow_type=info.workflow_type,
+                    workflow_id=self.run_id,
+                    workflow_type=self.context.app_name,
                     workflow_run_at_ms=workflow_run_at_ms,
                 )
             )
@@ -472,29 +471,26 @@ class OpenAPIConnector(App):
         output_file_path = output_file_ref.local_path if output_file_ref else ""
 
         if input.load_to_atlan and output_file_path:
-            sync_result = await self.sync_local_to_storage(
-                SyncLocalToStorageInput(
+            upload_result = await self.upload(
+                UploadInput(
                     local_path=output_file_path,
-                    key=f"{conn_qn}/transformed-metadata/chunk-0-part0.json",
-                    content_type="application/x-ndjson",
+                    storage_path=f"{conn_qn}/transformed-metadata/chunk-0-part0.json",
                 )
             )
-            # Derive the actual prefix from the storage key (strips /metadata/chunk-0-part0.json)
-            if not sync_result.ref.storage_key:
+            # Derive the actual prefix from the storage path (strips /metadata/chunk-0-part0.json)
+            if not upload_result.ref.storage_path:
                 raise ValueError(
-                    "sync_result.ref.storage_key is None; cannot derive upload_prefix"
+                    "upload_result.ref.storage_path is None; cannot derive upload_prefix"
                 )
-            upload_prefix = str(Path(sync_result.ref.storage_key).parent.parent)
+            upload_prefix = str(Path(upload_result.ref.storage_path).parent.parent)
 
-            connection_dict = (
-                json.loads(connection.to_json(nested=True)) if connection else {}
-            )
+            connection_dict = connection.model_dump() if connection else {}
 
             self.logger.info(
-                "calling publish-app",
-                connection_qualified_name=conn_qn,
-                upload_prefix=upload_prefix,
-                executor_enabled=not input.publish_dry_run,
+                "calling publish-app connection_qualified_name=%s upload_prefix=%s executor_enabled=%s",
+                conn_qn,
+                upload_prefix,
+                not input.publish_dry_run,
             )
 
             await self.call_by_name(
@@ -517,11 +513,11 @@ class OpenAPIConnector(App):
             self.logger.info("publish-app completed")
 
         self.logger.info(
-            "openapi connector completed",
-            api_spec_count=api_spec_count,
-            api_path_count=api_path_count,
-            total_scanned=total_scanned,
-            publish_completed=publish_completed,
+            "openapi connector completed api_spec_count=%d api_path_count=%d total_scanned=%d publish_completed=%s",
+            api_spec_count,
+            api_path_count,
+            total_scanned,
+            publish_completed,
         )
 
         return OpenAPIConnectorOutput(
