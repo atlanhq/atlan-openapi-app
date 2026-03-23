@@ -1,5 +1,6 @@
 """Unit tests for the OpenAPI asset mapper."""
 
+from application_sdk.contracts.types import ConnectionRef
 from openapi.api_types import OpenAPIPathRecord, OpenAPISpecRecord
 from openapi.asset_mapper import (
     CONNECTOR_NAME,
@@ -74,9 +75,9 @@ class TestBuildApiPathQN:
 # =============================================================================
 
 
-def _make_connection(qn: str = CONN_QN, name: str = "test-conn") -> Connection:
-    return Connection(
-        qualified_name=qn, name=name, category="API", admin_groups=["admins"]
+def _make_connection(qn: str = CONN_QN, name: str = "test-conn") -> ConnectionRef:
+    return ConnectionRef.model_validate(
+        {"typeName": "Connection", "attributes": {"qualifiedName": qn, "name": name}}
     )
 
 
@@ -110,10 +111,11 @@ class TestMapConnection:
 
     def test_name_falls_back_to_last_segment(self) -> None:
         """When connection.name is not set, fall back to last QN segment."""
-        bare_conn = Connection(
-            qualified_name="default/api/fallback-name",
-            category="API",
-            admin_groups=["admins"],
+        bare_conn = ConnectionRef.model_validate(
+            {
+                "typeName": "Connection",
+                "attributes": {"qualifiedName": "default/api/fallback-name"},
+            }
         )
         result = map_connection(bare_conn)
         assert result.name == "fallback-name"

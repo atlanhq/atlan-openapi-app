@@ -9,11 +9,10 @@ the extract_spec @task method.
 
 from __future__ import annotations
 
-import logging
-
 import httpx
+from application_sdk.observability.logger_adaptor import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Methods we surface as available_operations (uppercase)
 _TRACKED_METHODS = {"get", "post", "put", "patch", "delete"}
@@ -66,7 +65,7 @@ class OpenAPIApiClient:
             httpx.HTTPStatusError: If the HTTP response indicates an error.
             ValueError: If the response cannot be parsed.
         """
-        logger.info("fetching OpenAPI spec", extra={"url": spec_url})
+        logger.info("fetching OpenAPI spec url=%s", spec_url)
         response = await self._client.get(spec_url)
         response.raise_for_status()
 
@@ -82,8 +81,10 @@ class OpenAPIApiClient:
         title = spec.get("info", {}).get("title", "<unknown>")
         openapi_version = spec.get("openapi", spec.get("swagger", "?"))
         logger.info(
-            "spec fetched",
-            extra={"title": title, "openapi": openapi_version, "paths": path_count},
+            "spec fetched title=%s openapi=%s paths=%d",
+            title,
+            openapi_version,
+            path_count,
         )
         return [spec]
 
@@ -126,12 +127,10 @@ class OpenAPIApiClient:
                         and "openapi" in spec
                         or "swagger" in spec
                     ):
-                        logger.info("extracted spec from ZIP", extra={"file": name})
+                        logger.info("extracted spec from ZIP file=%s", name)
                         specs.append(spec)
                 except Exception as exc:
-                    logger.warning(
-                        "skipping file in ZIP", extra={"file": name, "error": str(exc)}
-                    )
+                    logger.warning("skipping file in ZIP file=%s error=%s", name, exc)
         if not specs:
             raise ValueError(f"No valid OpenAPI specs found in ZIP from {source_url}")
         return specs

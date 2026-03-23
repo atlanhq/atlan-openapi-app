@@ -55,8 +55,12 @@ def ensure_dir(path: Path) -> Path:
 
 
 SENSITIVE_HEADER_PREFIXES = (
-    "set-cookie", "authorization", "x-auth", "x-api-key",
-    "cookie", "proxy-authorization",
+    "set-cookie",
+    "authorization",
+    "x-auth",
+    "x-api-key",
+    "cookie",
+    "proxy-authorization",
 )
 SENSITIVE_HEADER_SUBSTRINGS = ("token", "session", "secret")
 
@@ -89,8 +93,7 @@ def save_response(
         json.dump(body, f, indent=2)
 
     filtered_headers = {
-        k: v for k, v in response.headers.items()
-        if not _is_sensitive_header(k)
+        k: v for k, v in response.headers.items() if not _is_sensitive_header(k)
     }
     with open(out_dir / f"headers_{page:03d}.json", "w") as f:
         json.dump(
@@ -120,9 +123,13 @@ def request_with_backoff(
         if response.status_code == 429:
             rate_attempts += 1
             if rate_attempts >= max_rate_limit_attempts:
-                raise RuntimeError(f"Still rate-limited after {max_rate_limit_attempts} attempts: {url}")
-            retry_after = int(response.headers.get("Retry-After", 2 ** rate_attempts))
-            print(f"  Rate limited. Waiting {retry_after}s (attempt {rate_attempts}/{max_rate_limit_attempts})...")
+                raise RuntimeError(
+                    f"Still rate-limited after {max_rate_limit_attempts} attempts: {url}"
+                )
+            retry_after = int(response.headers.get("Retry-After", 2**rate_attempts))
+            print(
+                f"  Rate limited. Waiting {retry_after}s (attempt {rate_attempts}/{max_rate_limit_attempts})..."
+            )
             time.sleep(retry_after)
             continue
         # WAF detection: HTML body on 200 or 403 = challenge page, not real response.
@@ -131,9 +138,13 @@ def request_with_backoff(
         if "text/html" in content_type and response.status_code in (200, 403):
             waf_attempts += 1
             if waf_attempts >= max_waf_attempts:
-                raise RuntimeError(f"WAF challenge not resolved after {max_waf_attempts} attempts: {url}")
-            wait = min(2 ** waf_attempts, 120)
-            print(f"  WAF challenge (HTML body, status {response.status_code}). Waiting {wait}s...")
+                raise RuntimeError(
+                    f"WAF challenge not resolved after {max_waf_attempts} attempts: {url}"
+                )
+            wait = min(2**waf_attempts, 120)
+            print(
+                f"  WAF challenge (HTML body, status {response.status_code}). Waiting {wait}s..."
+            )
             time.sleep(wait)
             continue
         if response.status_code in (401, 403):
@@ -172,6 +183,7 @@ def scrape_spec(client: httpx.Client) -> dict:
         data = response.json()
     else:
         import yaml  # type: ignore
+
         data = yaml.safe_load(response.text)
 
     path_count = len(data.get("paths", {}))
@@ -180,7 +192,7 @@ def scrape_spec(client: httpx.Client) -> dict:
 
     save_response(response, entity_type, 1)
 
-    print(f"  Spec: \"{spec_title}\" (OpenAPI {openapi_version})")
+    print(f'  Spec: "{spec_title}" (OpenAPI {openapi_version})')
     print(f"  Paths: {path_count}")
     print(f"  Done: 1 document saved (1 APISpec + {path_count} APIPath records)")
 
