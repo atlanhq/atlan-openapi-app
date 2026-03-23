@@ -31,7 +31,8 @@ from openapi.contracts import (
 )
 
 if TYPE_CHECKING:
-    from app_framework.execution.executor import AppExecutor
+    # TODO(v3-migration): AppExecutor is now a local compatibility shim in conftest.py
+    from tests.integration.conftest import AppExecutor
 
 # Default to the public Swagger Petstore — no credentials required.
 # Override OPENAPI_SPEC_URL to test against a different spec.

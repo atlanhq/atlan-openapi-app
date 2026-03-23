@@ -1,13 +1,11 @@
 # AUTO-GENERATED from app.pkl — DO NOT EDIT MANUALLY.
 # To regenerate: make generate
-from dataclasses import dataclass
+from __future__ import annotations
 from typing import ClassVar
-from app_framework.app import Input
-from app_framework.app.types import FileReference
-from pyatlan_v9.model.assets import Connection
+from application_sdk.contracts.base import Input
+from application_sdk.contracts.types import ConnectionRef, FileReference
 
 
-@dataclass
 class AppInputContract(Input):
     _config_hash_exclude: ClassVar[set[str]] = {
         "output_dir",
@@ -30,7 +28,7 @@ class AppInputContract(Input):
     """Cloud storage credential (csa-connectors-objectstore). Required when import_type='CLOUD'."""
     connection_usage: str = "REUSE"
     """'CREATE' to make a new connection, 'REUSE' to pick an existing one."""
-    connection: Connection | None = None
+    connection: ConnectionRef | None = None
     """Atlan connection to create. Required when connection_usage='CREATE'."""
     connection_qualified_name: str = ""
     """Existing connection qualified name. Required when connection_usage='REUSE'."""

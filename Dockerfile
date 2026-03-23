@@ -5,14 +5,14 @@
 #
 # Build args:
 #   APP_MODULE - Python module path (openapi.connector:OpenAPIConnector)
-#   BASE_IMAGE - App-framework base (default: ghcr.io/atlanhq/experimental-app-sdk:latest)
+#   BASE_IMAGE - App-framework base (default: ghcr.io/atlanhq/application-sdk:latest)
 #
 # Usage:
 #   docker build \
 #     --build-arg APP_MODULE=openapi.connector:OpenAPIConnector \
 #     -t openapi:latest .
 
-ARG BASE_IMAGE=ghcr.io/atlanhq/experimental-app-sdk:latest
+ARG BASE_IMAGE=ghcr.io/atlanhq/application-sdk:latest
 
 # Stage 1: Install connector into the existing base venv
 FROM ${BASE_IMAGE} AS builder
