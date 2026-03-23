@@ -76,7 +76,7 @@ CUSTOM_TYPEDEFS_LOCAL = LocalAppConfig(
 
 OPENAPI_LOCAL = LocalAppConfig(
     name="openapi",
-    module="openapi.connector:OpenAPIConnector",
+    module="app.connector:OpenAPIConnector",
     task_queue="openapi-queue",
     handler_port=9080,
     worker_health_port=9091,

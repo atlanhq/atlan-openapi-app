@@ -1,8 +1,8 @@
 """Unit tests for the OpenAPI asset mapper."""
 
 from application_sdk.contracts.types import ConnectionRef
-from openapi.api_types import OpenAPIPathRecord, OpenAPISpecRecord
-from openapi.asset_mapper import (
+from app.api_types import OpenAPIPathRecord, OpenAPISpecRecord
+from app.asset_mapper import (
     CONNECTOR_NAME,
     build_api_path_qn,
     build_api_spec_qn,

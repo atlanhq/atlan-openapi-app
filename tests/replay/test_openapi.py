@@ -22,8 +22,8 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 from application_sdk.contracts.types import ConnectionRef
-from openapi.connector import OpenAPIConnector
-from openapi.contracts import (
+from app.connector import OpenAPIConnector
+from app.contracts import (
     OpenAPIConnectorInput,
     OpenAPIConnectorOutput,
 )

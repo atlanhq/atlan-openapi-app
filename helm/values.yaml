@@ -1,0 +1,6 @@
+appName: openapi
+appModule: app.connector:OpenAPIConnector
+
+image:
+  # Bare repo name only — the chart prepends ghcr.io/atlanhq/ automatically.
+  repository: atlan-openapi-app
