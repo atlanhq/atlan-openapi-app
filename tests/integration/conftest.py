@@ -1,41 +1,43 @@
 """Fixtures for integration tests.
 
-Each test only starts the workers it needs via fixture dependencies.
-Workers are started as session-scoped fixtures and terminated when the session ends.
-
-Workers are wrapped with `dapr run` so that DAPR secret stores are available,
-matching the production deployment model.
-
-Run tests with: make test-integration
-Requires:
-    - temporal server start-dev --dynamic-config-value frontend.WorkerHeartbeatsEnabled=true
-    - dapr CLI installed
+Tests connect to an external Temporal dev server.
+Secret/state/storage infrastructure is mocked — no Dapr required.
 
 Environment variables:
-    SHOW_WORKER_LOGS=1: Show worker logs in real-time
-    OTEL_EXPORTER_OTLP_ENDPOINT: Export traces/metrics/logs to collector
+    TEMPORAL_HOST: Temporal server address (default: ``localhost:7233``).
+    OPENAPI_AUTH_HEADER: Optional auth header for private spec endpoints.
+
+Run tests with: uv run pytest tests/integration/ -v
+Requires: temporal server start-dev
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
-import shutil
-import signal
-import socket
-import subprocess
-import sys
-import tempfile
-import time
-from collections.abc import Generator
+from pathlib import Path
+from typing import Any
 
 import pytest
 import pytest_asyncio
+from application_sdk.execution._temporal.backend import TemporalExecutorBackend
+from application_sdk.execution._temporal.converter import create_data_converter_for_app
+from application_sdk.execution._temporal.worker import create_worker
+from application_sdk.infrastructure.context import (
+    InfrastructureContext,
+    set_infrastructure,
+)
+from application_sdk.storage import create_local_store
+from application_sdk.testing.mocks import MockSecretStore, MockStateStore
 from temporalio.client import Client
 
-from typing import Any
+# Trigger OpenAPIConnector app registration before create_worker is called.
+from app.connector import OpenAPIConnector  # noqa: F401
 
-from application_sdk.execution._temporal.backend import TemporalExecutorBackend
+_TASK_QUEUE = "openapi-queue"
+_TEMPORAL_HOST = os.environ.get("TEMPORAL_HOST", "localhost:7233")
+_temporal_reachable: bool | None = None
 
 
 class AppExecutor:
@@ -68,229 +70,107 @@ class AppExecutor:
         )
 
 
-def _free_port() -> int:
-    """Ask the OS for a free TCP port."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-def _wait_for_ready(port: int, timeout: int = 45) -> bool:
-    """Poll GET /health on *port* until it responds or *timeout* expires."""
-    import httpx
-
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        try:
-            with httpx.Client(timeout=2.0) as client:
-                resp = client.get(f"http://localhost:{port}/health")
-                if resp.status_code < 500:
-                    return True
-        except Exception:
-            pass
-        time.sleep(1)
-    return False
-
-
-def _prepare_dapr_components(secrets: dict[str, str]) -> str:
-    """Create a temp directory with DAPR component configs and a secrets file."""
-    tmp_dir = tempfile.mkdtemp(prefix="dapr-integration-")
-    components_dir = os.path.join(tmp_dir, "components")
-    os.makedirs(components_dir)
-
-    secrets_file = os.path.join(tmp_dir, "secrets.json")
-    with open(secrets_file, "w") as f:
-        json.dump(secrets, f)
-
-    secretstore_yaml = f"""apiVersion: dapr.io/v1alpha1
-kind: Component
-metadata:
-  name: secretstore
-spec:
-  type: secretstores.local.file
-  version: v1
-  metadata:
-    - name: secretsFile
-      value: {secrets_file}
-    - name: nestedSeparator
-      value: ":"
-"""
-    with open(os.path.join(components_dir, "secretstore.yaml"), "w") as f:
-        f.write(secretstore_yaml)
-
-    return tmp_dir
-
-
-def _start_worker(
-    app_module: str,
-    task_queue: str,
-    dapr_components_path: str,
-    *,
-    health_port: int | None = None,
-) -> subprocess.Popen[bytes]:
-    """Start a worker wrapped with `dapr run` for DAPR integration.
-
-    IMPORTANT: Uses DEVNULL, not PIPE — PIPE without reading causes
-    deadlock when the OS pipe buffer (~64KB) fills up.
-    """
-    if health_port is None:
-        health_port = _free_port()
-
-    dapr_grpc_port = _free_port()
-    dapr_http_port = _free_port()
-
-    worker_env = os.environ.copy()
-    show_logs = os.environ.get("SHOW_WORKER_LOGS", "0") == "1"
-
-    dapr_app_id = f"test-{task_queue}"
-
-    cmd = [
-        "dapr",
-        "run",
-        "--app-id",
-        dapr_app_id,
-        "--app-port",
-        str(health_port),
-        "--dapr-http-port",
-        str(dapr_http_port),
-        "--dapr-grpc-port",
-        str(dapr_grpc_port),
-        "--resources-path",
-        dapr_components_path,
-        "--log-level",
-        "warn",
-        "--placement-host-address",
-        "",
-        "--scheduler-host-address",
-        "",
-        "--",
-        sys.executable,
-        "-m",
-        "application_sdk.main",
-        "--mode",
-        "worker",
-        "--app",
-        app_module,
-        "--task-queue",
-        task_queue,
-        "--health-port",
-        str(health_port),
-    ]
-
-    if show_logs:
-        proc = subprocess.Popen(cmd, env=worker_env, start_new_session=True)
-    else:
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            env=worker_env,
-            start_new_session=True,
-        )
-
-    if not _wait_for_ready(health_port, timeout=45):
-        raise RuntimeError(
-            f"Worker for {task_queue} did not become ready on port {health_port} within 45s"
-        )
-    return proc
-
-
-def _stop_worker(proc: subprocess.Popen[bytes]) -> None:
-    """Stop a worker subprocess via process group kill."""
-    if os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"):
-        print("\nWaiting for OTEL metrics to flush...")
-        time.sleep(12)
-
-    try:
-        pgid = os.getpgid(proc.pid)
-        os.killpg(pgid, signal.SIGTERM)
-        proc.wait(timeout=10)
-    except ProcessLookupError:
-        pass
-    except subprocess.TimeoutExpired:
-        try:
-            pgid = os.getpgid(proc.pid)
-            os.killpg(pgid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        proc.wait(timeout=5)
-    except OSError:
-        pass
+# ---------------------------------------------------------------------------
+# Infrastructure fixture — wires mock secret/state/storage (no Dapr)
+# ---------------------------------------------------------------------------
 
 
 @pytest.fixture(scope="session")
-def dapr_components_dir() -> Generator[str, None, None]:
-    """Session-scoped DAPR components directory with a local secrets file."""
-    secrets: dict[str, str] = {}
+def store_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Root directory for the session-scoped LocalStore.
 
-    # Atlan API token (for tests that load to Atlan)
-    atlan_key = os.environ.get("ATLAN_API_KEY", "")
-    if atlan_key:
-        secrets["atlan"] = json.dumps(
-            {
-                "type": "atlan_api_token",
-                "token": atlan_key,
-                "base_url": os.environ.get("ATLAN_BASE_URL", ""),
-            }
-        )
+    RETAINED-tier files survive here after cleanup_storage runs, because
+    cleanup_storage skips RETAINED refs.  Tests can resolve a durable
+    FileReference to a local path via ``store_root / ref.storage_path``.
+    """
+    return tmp_path_factory.mktemp("sdk-store")
 
-    # OpenAPI credential (optional — only needed for private spec endpoints)
+
+@pytest.fixture(scope="session")
+def infrastructure(store_root: Path) -> InfrastructureContext:
+    """Wire mock infrastructure for the session using a LocalStore."""
     openapi_auth_header = os.environ.get("OPENAPI_AUTH_HEADER", "")
+    secrets: dict[str, str] = {}
     if openapi_auth_header:
         secrets["openapi"] = json.dumps(
-            {
-                "type": "openapi",
-                "auth_header": openapi_auth_header,
-            }
+            {"type": "openapi", "auth_header": openapi_auth_header}
         )
 
-    tmp_dir = _prepare_dapr_components(secrets)
-    yield os.path.join(tmp_dir, "components")
-    shutil.rmtree(tmp_dir, ignore_errors=True)
+    ctx = InfrastructureContext(
+        state_store=MockStateStore(),
+        secret_store=MockSecretStore(secrets),
+        storage=create_local_store(store_root),
+    )
+    set_infrastructure(ctx)
+    return ctx
+
+
+# ---------------------------------------------------------------------------
+# Temporal connectivity check + graceful skip
+# ---------------------------------------------------------------------------
+
+
+def _check_temporal_reachable(host: str) -> bool:
+    """Return True if the Temporal server at *host* responds within 3 seconds."""
+
+    async def _probe() -> bool:
+        try:
+            client = await Client.connect(host, lazy=True)
+            handle = client.get_workflow_handle("__connectivity_probe__")
+            await asyncio.wait_for(handle.describe(), timeout=3.0)
+            return True  # describe() succeeded unexpectedly
+        except asyncio.TimeoutError:
+            return False
+        except Exception:
+            return True  # Any non-timeout error means the server IS reachable
+
+    return asyncio.run(_probe())
+
+
+@pytest.fixture(autouse=True, scope="session")
+def require_temporal() -> None:
+    """Skip the entire test session if Temporal is not reachable."""
+    global _temporal_reachable
+    if _temporal_reachable is None:
+        _temporal_reachable = _check_temporal_reachable(_TEMPORAL_HOST)
+    if not _temporal_reachable:
+        pytest.skip(
+            f"Temporal server not running at {_TEMPORAL_HOST} — "
+            "start it with: temporal server start-dev"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Temporal client and in-process worker fixtures
+# ---------------------------------------------------------------------------
 
 
 @pytest_asyncio.fixture(scope="session")
 async def temporal_client() -> Client:
-    """Connect to Temporal cluster at 127.0.0.1:7233."""
-    return await Client.connect("127.0.0.1:7233")
+    """Connect to the external Temporal dev server."""
+    data_converter = create_data_converter_for_app(OpenAPIConnector)
+    return await Client.connect(_TEMPORAL_HOST, data_converter=data_converter)
 
 
 @pytest_asyncio.fixture(scope="session")
-async def temporal_client_msgspec() -> Client:
-    """Connect to Temporal with pydantic data converter for pyatlan Asset serialization."""
-    from application_sdk.execution._temporal.converter import create_data_converter
-
-    data_converter = create_data_converter()
-    return await Client.connect("127.0.0.1:7233", data_converter=data_converter)
-
-
-# ---------------------------------------------------------------------------
-# OpenAPI connector worker and executor fixtures
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture(scope="session")
-def openapi_worker(
-    dapr_components_dir: str,
-) -> Generator[subprocess.Popen[bytes], None, None]:
-    """Start the OpenAPI connector worker."""
-    proc = _start_worker(
-        "openapi.connector:OpenAPIConnector",
-        "openapi-queue",
-        dapr_components_dir,
-    )
-    yield proc
-    _stop_worker(proc)
+async def openapi_worker(
+    temporal_client: Client,
+    infrastructure: InfrastructureContext,  # noqa: ARG001 — ensures infra is set first
+) -> Any:
+    """Start the OpenAPI connector worker in-process."""
+    w = create_worker(temporal_client, task_queue=_TASK_QUEUE)
+    async with w:
+        yield
 
 
 @pytest.fixture(scope="session")
 def openapi_executor(
-    temporal_client_msgspec: Client,
-    openapi_worker: subprocess.Popen[bytes],  # noqa: ARG001
+    temporal_client: Client,
+    openapi_worker: Any,  # noqa: ARG001 — ensures worker is running
 ) -> AppExecutor:
     """Executor for OpenAPI connector integration tests."""
     backend = TemporalExecutorBackend(
-        client=temporal_client_msgspec,
-        task_queue="openapi-queue",
+        client=temporal_client,
+        task_queue=_TASK_QUEUE,
     )
     return AppExecutor(backend=backend)

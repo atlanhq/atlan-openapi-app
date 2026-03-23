@@ -8,7 +8,7 @@ from pathlib import Path
 
 import msgspec
 
-from openapi.api_types import OpenAPIPathRecord, OpenAPISpecRecord
+from app.api_types import OpenAPIPathRecord, OpenAPISpecRecord
 
 
 def _enc_hook(obj: object) -> object:

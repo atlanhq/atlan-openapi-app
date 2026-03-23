@@ -20,7 +20,6 @@ import os
 import socket
 import subprocess
 import time
-import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -31,12 +30,12 @@ import msgspec
 
 # Repo root: tests/e2e/infra.py -> e2e -> tests -> repo_root
 REPO_ROOT = Path(__file__).parent.parent.parent
-# OCI chart — override with HELM_CHART_REF env var if needed (e.g. pinned version)
-HELM_CHART = os.environ.get(
-    "HELM_CHART_REF",
-    "oci://ghcr.io/atlanhq/charts/atlan-app",
-)
-HELM_CHART_VERSION = os.environ.get("HELM_CHART_VERSION", "0.1.3")
+# Local chart (sibling repo) — override with HELM_CHART_REF env var to use a
+# remote OCI ref (e.g. "oci://ghcr.io/atlanhq/charts/atlan-app").
+_LOCAL_CHART = str(REPO_ROOT.parent / "application-sdk" / "helm" / "atlan-app")
+HELM_CHART = os.environ.get("HELM_CHART_REF", _LOCAL_CHART)
+# Only set when using a remote/versioned chart; leave empty for local directory charts.
+HELM_CHART_VERSION = os.environ.get("HELM_CHART_VERSION", "")
 
 
 @dataclass
@@ -50,18 +49,10 @@ class AppConfig:
     values_file: Path | None = None
     """Path to a Helm values override file.
 
-    - Connector apps: set to ``REPO_ROOT / "values.yaml"`` (values.yaml at repo root).
+    - Connector apps: set to ``REPO_ROOT / "helm" / "values.yaml"`` (values.yaml at repo root).
     - Shared apps (loader, delete, custom-typedefs): leave ``None`` — appName/appModule
       are injected via ``--set`` by ``deploy_app()``.
     """
-
-
-DELETE_APP = AppConfig(
-    name="delete-connection",
-    module="delete_connection.delete_connection_app:DeleteConnectionApp",
-    namespace="app-delete-connection",
-    task_queue="delete-connection-queue",
-)
 
 
 # =============================================================================
@@ -76,18 +67,6 @@ def atlan_credential_dict() -> dict[str, str]:
         "credential_type": "atlan_api_token",
         "store_name": "default",
     }
-
-
-def delete_helm_creds() -> list[str]:
-    """Helm ``--set`` values for the delete-connection's Atlan credential."""
-    atlan_api_key = os.environ.get("ATLAN_API_KEY", "")
-    if not atlan_api_key:
-        return []
-    return [
-        "connectorCredentials.atlan.type=atlan_api_token",
-        f"connectorCredentials.atlan.data.token={atlan_api_key}",
-        "connectorCredentials.atlan.data.base_url=INTERNAL",
-    ]
 
 
 # =============================================================================
@@ -190,115 +169,78 @@ async def kube_http_call(
 # =============================================================================
 
 
-class MultiAppDeployer:
-    """Manages deployment of multiple apps to Kubernetes."""
+async def deploy_app(
+    app: AppConfig,
+    image_tag: str = "latest",
+    extra_helm_sets: list[str] | None = None,
+    memory_limit: str = "2Gi",
+) -> None:
+    """Deploy a single app to Kubernetes via Helm (upgrade --install)."""
+    print(f"\nDeploying {app.name} (tag={image_tag})...")
 
-    def __init__(self, apps: list[AppConfig], image_tag: str = "latest"):
-        self.apps = apps
-        self.image_tag = image_tag
+    helm_cmd = [
+        "helm",
+        "upgrade",
+        "--install",
+        "--wait",
+        "--timeout=300s",
+        "--namespace",
+        app.namespace,
+        "--create-namespace",
+    ]
 
-    def deploy_app(
-        self,
-        app: AppConfig,
-        extra_helm_sets: list[str] | None = None,
-        memory_limit: str = "2Gi",
-    ) -> None:
-        """Deploy a single app to Kubernetes via Helm."""
-        print(f"\nDeploying {app.name}...")
-        print(f"  Image tag: {self.image_tag}")
+    if app.values_file is not None:
+        helm_cmd.extend(["-f", str(app.values_file)])
+        helm_cmd.extend(["--set-string", f"image.tag={image_tag}"])
+    else:
+        helm_cmd.extend(["--set", f"appName={app.name}"])
+        helm_cmd.extend(["--set", f"appModule={app.module}"])
 
-        helm_cmd = [
-            "helm",
-            "install",
-            app.name,
-            str(HELM_CHART),
-            "--version",
-            HELM_CHART_VERSION,
+    helm_cmd.extend(
+        [
+            "--set",
+            "worker.resources.requests.memory=512Mi",
+            "--set",
+            f"worker.resources.limits.memory={memory_limit}",
         ]
+    )
 
-        if app.values_file is not None:
-            helm_cmd.extend(["-f", str(app.values_file)])
-        else:
-            helm_cmd.extend(["--set", f"appName={app.name}"])
-            helm_cmd.extend(["--set", f"appModule={app.module}"])
+    for item in extra_helm_sets or []:
+        helm_cmd.extend(["--set", item])
 
-        if app.values_file is not None:
-            helm_cmd.extend(["--set-string", f"image.tag={self.image_tag}"])
+    helm_cmd.append(app.name)
+    helm_cmd.append(str(HELM_CHART))
+    if HELM_CHART_VERSION:
+        helm_cmd.extend(["--version", HELM_CHART_VERSION])
 
-        helm_cmd.extend(
-            [
-                "--set",
-                f"imagePullSecret.username={os.environ['GH_USERNAME']}",
-                "--set",
-                f"imagePullSecret.password={os.environ['APP_PKG_GH_PAT']}",
-                "--set",
-                "worker.storage.size=10Gi",
-                "--set",
-                "worker.storage.maxSize=50Gi",
-                "--set",
-                "worker.resources.requests.memory=512Mi",
-                "--set",
-                f"worker.resources.limits.memory={memory_limit}",
-                "--namespace",
-                app.namespace,
-                "--create-namespace",
-                "--wait",
-                "--timeout",
-                "300s",
-            ]
+    proc = await asyncio.create_subprocess_exec(
+        *helm_cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr_bytes = await proc.communicate()
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"Deploy of {app.name} failed (exit {proc.returncode}):\n"
+            f"{stderr_bytes.decode(errors='replace')}"
         )
+    print(f"  {app.name} deployed successfully")
 
-        for item in extra_helm_sets or []:
-            helm_cmd.extend(["--set", item])
 
-        result = subprocess.run(helm_cmd, capture_output=True, text=True)
-
-        if result.returncode != 0:
-            print(f"Deploy failed:\n{result.stderr}")
-            raise RuntimeError(
-                f"Deploy of {app.name} failed with code {result.returncode}"
-            )
-
-        print(f"  {app.name} deployed successfully")
-
-    def undeploy_app(self, app: AppConfig) -> None:
-        """Remove an app deployment via Helm."""
-        print(f"\nUndeploying {app.name}...")
-
-        result = subprocess.run(
-            ["helm", "uninstall", app.name, "--namespace", app.namespace],
-            capture_output=True,
-            text=True,
+async def undeploy_app(app: AppConfig) -> None:
+    """Uninstall a Helm release and delete its namespace."""
+    print(f"\nUndeploying {app.name}...")
+    for cmd in [
+        ["helm", "uninstall", app.name, "--namespace", app.namespace],
+        ["kubectl", "delete", "namespace", app.namespace, "--ignore-not-found"],
+    ]:
+        cp = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
         )
-
-        if result.returncode != 0:
-            print(f"Undeploy warning:\n{result.stderr}")
-
-        ns_result = subprocess.run(
-            ["kubectl", "delete", "namespace", app.namespace, "--ignore-not-found"],
-            capture_output=True,
-            text=True,
-        )
-
-        if ns_result.returncode != 0:
-            print(f"Namespace cleanup warning:\n{ns_result.stderr}")
-
-        print(f"  {app.name} undeployed")
-
-    async def deploy_all(self, credentials: dict[str, list[str]]) -> None:
-        """Deploy all apps in parallel."""
-        await asyncio.gather(
-            *(
-                asyncio.to_thread(self.deploy_app, app, credentials.get(app.name, []))
-                for app in self.apps
-            )
-        )
-
-    async def undeploy_all(self) -> None:
-        """Remove all app deployments in parallel."""
-        await asyncio.gather(
-            *(asyncio.to_thread(self.undeploy_app, app) for app in self.apps)
-        )
+        await cp.communicate()
+    print(f"  {app.name} undeployed")
 
 
 # =============================================================================
@@ -418,60 +360,6 @@ async def run_workflow(
     return data.get("result", {}), workflow_id, correlation_id
 
 
-async def run_delete_workflow(
-    app: AppConfig,
-    connection_name: str,
-    connector_type: str,
-    credential: dict[str, Any],
-    *,
-    workflow_id_prefix: str = "cleanup",
-    checkpoint_refs: list[dict[str, Any]] | None = None,
-    poll_interval: float = 5.0,
-    timeout_minutes: float = 30.0,
-) -> tuple[dict[str, Any], str, str]:
-    """Run delete-connection workflow and wait for completion."""
-    post_data: dict[str, Any] = {
-        "connection_name": connection_name,
-        "connector_type": connector_type,
-        "credential": credential,
-        "workflow_id": f"{workflow_id_prefix}-{uuid.uuid4().hex[:8]}",
-    }
-    if checkpoint_refs:
-        post_data["checkpoint_refs"] = checkpoint_refs
-
-    response = await kube_http_call(
-        app, "POST", "/workflows/v1/start", json_body=post_data
-    )
-    response.raise_for_status()
-
-    run_response = response.json()
-    workflow_id = run_response["data"]["workflow_id"]
-    correlation_id = run_response.get("correlation_id", workflow_id)
-    print(f"  Delete workflow started: {workflow_id}")
-    print(f"  Correlation ID:         {correlation_id}")
-
-    deadline = time.monotonic() + timeout_minutes * 60
-    while time.monotonic() < deadline:
-        result_response = await kube_http_call(
-            app, "GET", f"/workflows/v1/result/{workflow_id}", params={"wait": "false"}
-        )
-        result_response.raise_for_status()
-        envelope = result_response.json()
-        data = envelope["data"]
-
-        if data["status"] != "running":
-            break
-
-        await asyncio.sleep(poll_interval)
-    else:
-        raise RuntimeError(
-            f"Delete workflow {workflow_id} did not complete within {timeout_minutes} minutes"
-        )
-
-    result: dict[str, Any] = data.get("result", {})
-    return result, workflow_id, correlation_id
-
-
 async def get_timing(
     app: AppConfig, workflow_id: str
 ) -> tuple[float, list[dict[str, Any]]]:
@@ -567,23 +455,6 @@ def validate_asset_creation(
         rate = 0.0
     passed = rate >= min_success_rate
     return passed, rate
-
-
-def validate_deletion(
-    total_deleted: int,
-    actual_created: int,
-    *,
-    min_ratio: float = 0.5,
-) -> str | None:
-    """Check whether deletion count is reasonable."""
-    if actual_created > 0:
-        ratio = total_deleted / actual_created
-        if ratio < min_ratio:
-            return (
-                f"Deletion count ({total_deleted}) is much lower "
-                f"than created assets ({actual_created})"
-            )
-    return None
 
 
 @dataclass
@@ -890,23 +761,17 @@ def create_base_argument_parser(description: str) -> argparse.ArgumentParser:
     """Create an ``ArgumentParser`` with flags shared across all E2E tests."""
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument("--skip-deploy", action="store_true")
-    parser.add_argument("--skip-cleanup", action="store_true")
     parser.add_argument("--skip-undeploy", action="store_true")
     parser.add_argument("--image-tag", type=str, default="latest")
-    parser.add_argument("--batch-size", type=int, default=None)
-    parser.add_argument("--save-timeout", type=float, default=None)
     parser.add_argument("--format", choices=["text", "json"], default="text")
     parser.add_argument("--output", type=str, default=None)
     parser.add_argument("--log-dir", type=str, default=None)
     return parser
 
 
-def validate_env_vars(required: list[str], *, skip_deploy: bool = False) -> list[str]:
+def validate_env_vars(required: list[str]) -> list[str]:
     """Return list of missing environment variables."""
-    all_required = list(required)
-    if not skip_deploy:
-        all_required.extend(["GH_USERNAME", "APP_PKG_GH_PAT"])
-    return [v for v in all_required if not os.environ.get(v)]
+    return [v for v in required if not os.environ.get(v)]
 
 
 def output_result(text: str, path: str | None) -> None:

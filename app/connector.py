@@ -26,14 +26,14 @@ from application_sdk.contracts.storage import UploadInput
 from application_sdk.contracts.types import FileReference, StorageTier
 from application_sdk.observability.logger_adaptor import AtlanLoggerAdapter as Logger
 
-from openapi.api_types import OpenAPIPathRecord, OpenAPISpecRecord
-from openapi.asset_mapper import (
+from app.api_types import OpenAPIPathRecord, OpenAPISpecRecord
+from app.asset_mapper import (
     build_api_spec_qn,
     map_api_path,
     map_api_spec,
     map_connection,
 )
-from openapi.contracts import (
+from app.contracts import (
     ExtractSpecInput,
     ExtractSpecOutput,
     OpenAPIConnectorInput,
@@ -42,7 +42,7 @@ from openapi.contracts import (
     TransformInput,
     TransformOutput,
 )
-from openapi.credentials import VALIDATED_AUTH_HEADER_KEY
+from app.credentials import VALIDATED_AUTH_HEADER_KEY
 
 T = TypeVar("T")
 
@@ -99,7 +99,7 @@ async def _extract_spec_async(
     Returns:
         Tuple of (api_spec_file, api_path_file, api_spec_count, api_path_count).
     """
-    from openapi.api_client import OpenAPIApiClient
+    from app.api_client import OpenAPIApiClient
 
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -322,7 +322,7 @@ class OpenAPIConnector(App):
             self.set_app_state(VALIDATED_AUTH_HEADER_KEY, None)  # claim ownership
             self.logger.debug("using pre-validated auth_header from validate()")
         elif input.openapi_credential is not None:
-            from openapi.credentials import OpenAPICredential
+            from app.credentials import OpenAPICredential
 
             credential = await self.resolve_credential(input.openapi_credential)
             auth_header = (
