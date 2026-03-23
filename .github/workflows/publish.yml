@@ -39,7 +39,7 @@ jobs:
             ghcr.io/atlanhq/${{ github.event.repository.name }}:latest
             ghcr.io/atlanhq/${{ github.event.repository.name }}:${{ github.sha }}
           build-args: |
-            APP_MODULE=openapi.connector:OpenAPIConnector
+            APP_MODULE=app.connector:OpenAPIConnector
           secrets: |
             GIT_AUTH_TOKEN=${{ secrets.ORG_PAT_GITHUB }}
           cache-from: type=gha

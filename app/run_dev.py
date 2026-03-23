@@ -44,11 +44,12 @@ import asyncio
 import json
 import os
 
+from application_sdk.infrastructure.secrets import InMemorySecretStore
+from application_sdk.main import run_dev_combined
+
 # Import credential types to register them with the credential registry
-import openapi.credentials  # noqa: F401 - registers 'openapi' credential type
-from app_framework.main import run_dev_combined
-from app_framework.infrastructure.secrets import InMemorySecretStore
-from openapi.connector import OpenAPIConnector
+import app.credentials  # noqa: F401 - registers 'openapi' credential type
+from app.connector import OpenAPIConnector
 
 
 async def main() -> None:

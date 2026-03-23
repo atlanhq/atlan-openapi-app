@@ -76,7 +76,9 @@ def test_api_paths_present(mock_openapi_spec, extracts_dir):
     assert "/pet" in paths, "Petstore spec should have /pet path"
     pet_path = paths["/pet"]
     # /pet supports PUT and POST
-    assert "put" in pet_path or "post" in pet_path, "/pet should have PUT or POST operations"
+    assert "put" in pet_path or "post" in pet_path, (
+        "/pet should have PUT or POST operations"
+    )
 
 
 def test_templated_path_present(mock_openapi_spec, extracts_dir):
@@ -91,7 +93,9 @@ def test_templated_path_present(mock_openapi_spec, extracts_dir):
 
     paths = response.json()["paths"]
     templated = [p for p in paths if "{" in p and "}" in p]
-    assert len(templated) >= 1, "Spec should have at least one templated path (e.g. /pet/{petId})"
+    assert len(templated) >= 1, (
+        "Spec should have at least one templated path (e.g. /pet/{petId})"
+    )
 
 
 @pytest.mark.asyncio

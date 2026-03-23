@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "resolvedDependencies": {
-    "package://pkg.pkl-lang.org/github.com/atlanhq/app-contract-toolkit@0": {
+    "package://atlanhq.github.io/app-contract-toolkit/app-contract-toolkit@0": {
       "type": "local",
-      "uri": "projectpackage://pkg.pkl-lang.org/github.com/atlanhq/app-contract-toolkit@0.2.0",
+      "uri": "projectpackage://atlanhq.github.io/app-contract-toolkit/app-contract-toolkit@0.2.9",
       "path": "../../app-contract-toolkit/src"
     }
   }

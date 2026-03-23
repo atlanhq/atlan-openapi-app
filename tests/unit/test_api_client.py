@@ -15,7 +15,7 @@ import pytest
 import respx
 import httpx
 
-from openapi.api_client import OpenAPIApiClient
+from app.api_client import OpenAPIApiClient
 
 
 # =============================================================================
