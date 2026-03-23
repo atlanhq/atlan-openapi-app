@@ -5,3 +5,9 @@ repos:
       - id: ruff          # lint and auto-fix
         args: [--fix]
       - id: ruff-format   # format (restages automatically)
+  - repo: https://github.com/RobertCraigie/pyright-python
+    rev: v1.1.379
+    hooks:
+      - id: pyright
+        args: ["app/"]
+        pass_filenames: false

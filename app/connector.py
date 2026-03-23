@@ -15,7 +15,6 @@ both APISpec and APIPath data; splitting would require downloading twice).
 
 from __future__ import annotations
 
-import json
 import tempfile
 from pathlib import Path
 from typing import Any, TypeVar, cast
@@ -324,7 +323,7 @@ class OpenAPIConnector(App):
         elif input.openapi_credential is not None:
             from app.credentials import OpenAPICredential
 
-            credential = await self.resolve_credential(input.openapi_credential)
+            credential = await self.context.resolve_credential(input.openapi_credential)
             auth_header = (
                 credential.auth_header
                 if isinstance(credential, OpenAPICredential)
@@ -485,9 +484,7 @@ class OpenAPIConnector(App):
                 )
             upload_prefix = str(Path(upload_result.ref.storage_path).parent.parent)
 
-            connection_dict = (
-                json.loads(connection.to_json(nested=True)) if connection else {}
-            )
+            connection_dict = connection.model_dump() if connection else {}
 
             self.logger.info(
                 "calling publish-app connection_qualified_name=%s upload_prefix=%s executor_enabled=%s",
