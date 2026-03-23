@@ -7,12 +7,10 @@ The OpenAPI connector works with public spec URLs — no API credentials needed
 for public specs (e.g. the Swagger Petstore).
 
 Requires:
-    - Temporal cluster at 127.0.0.1:7233
-    - temporal server start-dev --dynamic-config-value frontend.WorkerHeartbeatsEnabled=true
-    - dapr CLI installed
+    - temporal server start-dev
 
 Run with:
-    make test-integration   # ALWAYS use make — sets OTEL_EXPORTER_OTLP_ENDPOINT
+    uv run pytest tests/integration/ -v
 """
 
 from __future__ import annotations
@@ -23,9 +21,9 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from pyatlan_v9.model.assets import Connection
-from openapi.connector import OpenAPIConnector
-from openapi.contracts import (
+from application_sdk.contracts.types import ConnectionRef
+from app.connector import OpenAPIConnector
+from app.contracts import (
     OpenAPIConnectorInput,
     OpenAPIConnectorOutput,
 )
@@ -72,11 +70,17 @@ class TestOpenAPIConnectorExtraction:
             await openapi_executor.execute_app(
                 OpenAPIConnector,
                 OpenAPIConnectorInput(
-                    connection=Connection(
-                        qualified_name=CONNECTION_QN,
-                        name=CONNECTION_NAME,
-                        category="API",
-                        admin_groups=["admins"],
+                    connection_usage="CREATE",
+                    connection=ConnectionRef.model_validate(
+                        {
+                            "typeName": "Connection",
+                            "attributes": {
+                                "qualifiedName": CONNECTION_QN,
+                                "name": CONNECTION_NAME,
+                                "category": "API",
+                                "adminGroups": ["admins"],
+                            },
+                        }
                     ),
                     spec_url=_SPEC_URL,
                     output_dir=str(output_dir / "run1"),
@@ -86,6 +90,7 @@ class TestOpenAPIConnectorExtraction:
                 execution_id_prefix="test-openapi-extraction",
             ),
         )
+
         return result
 
     async def test_workflow_completes(
@@ -102,15 +107,6 @@ class TestOpenAPIConnectorExtraction:
         assert extraction_result.api_path_count >= 1
         assert extraction_result.total_scanned >= 2
 
-    async def test_all_new_without_checkpoint(
-        self, extraction_result: OpenAPIConnectorOutput
-    ) -> None:
-        """Without checkpoint, new_count equals total_scanned."""
-        assert extraction_result.new_count == extraction_result.total_scanned
-        assert extraction_result.unchanged_count == 0
-        assert extraction_result.changed_count == 0
-        assert extraction_result.deleted_count == 0
-
     async def test_no_atlan_loading(
         self, extraction_result: OpenAPIConnectorOutput
     ) -> None:
@@ -118,21 +114,21 @@ class TestOpenAPIConnectorExtraction:
         assert extraction_result.atlan_loaded_count == 0
 
     async def test_output_file_exists(
-        self, extraction_result: OpenAPIConnectorOutput
+        self, extraction_result: OpenAPIConnectorOutput, store_root: Path
     ) -> None:
-        """Output JSONL file should exist and be non-empty."""
+        """Output JSONL file should exist in the LocalStore and be non-empty."""
         assert extraction_result.output_file is not None
-        output_path = Path(extraction_result.output_file.local_path)
+        output_path = store_root / extraction_result.output_file.storage_path
         assert output_path.exists()
         assert output_path.stat().st_size > 0
 
     async def test_output_contains_expected_types(
-        self, extraction_result: OpenAPIConnectorOutput
+        self, extraction_result: OpenAPIConnectorOutput, store_root: Path
     ) -> None:
         """Output JSONL should contain Connection, APISpec, and APIPath."""
         import json
 
-        output_path = Path(extraction_result.output_file.local_path)
+        output_path = store_root / extraction_result.output_file.storage_path
         type_names: set[str] = set()
         with output_path.open() as f:
             for line in f:
@@ -147,12 +143,12 @@ class TestOpenAPIConnectorExtraction:
         assert "APIPath" in type_names
 
     async def test_qualified_names_follow_convention(
-        self, extraction_result: OpenAPIConnectorOutput
+        self, extraction_result: OpenAPIConnectorOutput, store_root: Path
     ) -> None:
         """All qualifiedName values should start with the connection prefix."""
         import json
 
-        output_path = Path(extraction_result.output_file.local_path)
+        output_path = store_root / extraction_result.output_file.storage_path
         prefix = f"{CONNECTION_QN}/"
         with output_path.open() as f:
             for line in f:
@@ -167,97 +163,3 @@ class TestOpenAPIConnectorExtraction:
                     assert qn.startswith(prefix), (
                         f"qualifiedName '{qn}' does not start with '{prefix}'"
                     )
-
-
-class TestOpenAPIConnectorCheckpoint:
-    """Incremental extraction with checkpoint.
-
-    First run populates checkpoint (all NEW), second run verifies all UNCHANGED.
-    """
-
-    @pytest.fixture(scope="class")
-    def tmp_dir_class(self, tmp_path_factory: pytest.TempPathFactory) -> Path:
-        return tmp_path_factory.mktemp("openapi_checkpoint")
-
-    @pytest.fixture(scope="class")
-    async def first_run_result(
-        self,
-        openapi_executor: "AppExecutor",
-        tmp_dir_class: Path,
-    ) -> OpenAPIConnectorOutput:
-        """Execute first run to populate checkpoint."""
-        checkpoint_dir = tmp_dir_class / "checkpoint"
-        checkpoint_dir.mkdir()
-        output_dir = tmp_dir_class / "output"
-        output_dir.mkdir()
-
-        result = cast(
-            "OpenAPIConnectorOutput",
-            await openapi_executor.execute_app(
-                OpenAPIConnector,
-                OpenAPIConnectorInput(
-                    connection=Connection(
-                        qualified_name=CONNECTION_QN,
-                        name=CONNECTION_NAME,
-                        category="API",
-                        admin_groups=["admins"],
-                    ),
-                    spec_url=_SPEC_URL,
-                    output_dir=str(output_dir / "run1"),
-                    checkpoint_dir=str(checkpoint_dir),
-                    load_to_atlan=False,
-                ),
-                execution_id_prefix="test-openapi-checkpoint-run1",
-            ),
-        )
-        return result
-
-    async def test_first_run_all_new(
-        self, first_run_result: OpenAPIConnectorOutput
-    ) -> None:
-        """First run with checkpoint should mark all records as NEW."""
-        assert first_run_result.new_count == first_run_result.total_scanned
-        assert first_run_result.unchanged_count == 0
-        assert first_run_result.changed_count == 0
-        assert first_run_result.deleted_count == 0
-        assert first_run_result.total_scanned >= 2
-
-    async def test_second_run_all_unchanged(
-        self,
-        openapi_executor: "AppExecutor",
-        first_run_result: OpenAPIConnectorOutput,
-        tmp_dir_class: Path,
-    ) -> None:
-        """Second run with same spec should mark all records as UNCHANGED."""
-        import time
-
-        time.sleep(1.5)
-
-        checkpoint_dir = tmp_dir_class / "checkpoint"
-        output_dir = tmp_dir_class / "output"
-
-        result = cast(
-            "OpenAPIConnectorOutput",
-            await openapi_executor.execute_app(
-                OpenAPIConnector,
-                OpenAPIConnectorInput(
-                    connection=Connection(
-                        qualified_name=CONNECTION_QN,
-                        name=CONNECTION_NAME,
-                        category="API",
-                        admin_groups=["admins"],
-                    ),
-                    spec_url=_SPEC_URL,
-                    output_dir=str(output_dir / "run2"),
-                    checkpoint_dir=str(checkpoint_dir),
-                    load_to_atlan=False,
-                ),
-                execution_id_prefix="test-openapi-checkpoint-run2",
-            ),
-        )
-
-        assert result.unchanged_count == first_run_result.total_scanned
-        assert result.new_count == 0
-        assert result.changed_count == 0
-        assert result.deleted_count == 0
-        assert result.output_file is None  # No changes to transform

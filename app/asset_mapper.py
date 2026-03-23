@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from openapi.api_types import OpenAPIPathRecord, OpenAPISpecRecord
+    from app.api_types import OpenAPIPathRecord, OpenAPISpecRecord
 
 from application_sdk.contracts.types import ConnectionRef
 

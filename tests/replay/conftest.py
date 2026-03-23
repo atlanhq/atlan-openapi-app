@@ -73,7 +73,7 @@ class AppExecutor:
 # ---------------------------------------------------------------------------
 # Import connector module — triggers @app/@task registration
 # ---------------------------------------------------------------------------
-import openapi.connector  # noqa: E402, F401
+import app.connector  # noqa: E402, F401
 
 # ---------------------------------------------------------------------------
 # Replay extracts directory

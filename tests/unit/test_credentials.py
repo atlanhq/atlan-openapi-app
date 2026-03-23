@@ -7,7 +7,7 @@
 """Unit tests for OpenAPI credential parsing and factory functions."""
 
 from application_sdk.credentials.registry import CredentialTypeRegistry
-from openapi.credentials import (
+from app.credentials import (
     OpenAPICredential,
     _parse_openapi_credential,
     openapi_credential_ref,

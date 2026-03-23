@@ -9,7 +9,7 @@ from application_sdk.app import Input, Output
 from application_sdk.contracts.types import ConnectionRef, FileReference
 from application_sdk.credentials.ref import CredentialRef
 
-from openapi._generated_input import AppInputContract
+from app._generated_input import AppInputContract
 
 # =============================================================================
 # App-level contracts

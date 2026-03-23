@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from application_sdk.contracts.types import ConnectionRef, FileReference
 from application_sdk.credentials.ref import CredentialRef
-from openapi.contracts import (
+from app.contracts import (
     ExtractSpecInput,
     ExtractSpecOutput,
     OpenAPIConnectorInput,
