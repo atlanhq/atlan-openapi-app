@@ -129,8 +129,8 @@ class OpenAPIApiClient:
                     ):
                         logger.info("extracted spec from ZIP file=%s", name)
                         specs.append(spec)
-                except Exception as exc:
-                    logger.warning("skipping file in ZIP file=%s error=%s", name, exc)
+                except Exception:
+                    logger.warning("skipping file in ZIP file=%s", name, exc_info=True)
         if not specs:
             raise ValueError(f"No valid OpenAPI specs found in ZIP from {source_url}")
         return specs
