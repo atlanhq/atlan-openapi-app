@@ -16,16 +16,24 @@ Run with:
 from __future__ import annotations
 
 import os
+from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+import pytest_asyncio
+from temporalio import workflow
+from temporalio.client import Client
+from temporalio.worker import Worker
+from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner
 
 from application_sdk.contracts.types import ConnectionRef
+from application_sdk.execution.sandbox import SandboxConfig
 from app.connector import OpenAPIConnector
 from app.contracts import (
     OpenAPIConnectorInput,
     OpenAPIConnectorOutput,
+    PublishInput,
 )
 
 if TYPE_CHECKING:
@@ -163,3 +171,124 @@ class TestOpenAPIConnectorExtraction:
                     assert qn.startswith(prefix), (
                         f"qualifiedName '{qn}' does not start with '{prefix}'"
                     )
+
+
+# =============================================================================
+# Stub publish workflow
+# =============================================================================
+
+# Shared list written to by _StubPublishWorkflow (inside the Temporal sandbox)
+# and read by TestPublishConnectionEntityCamelCase.  Works because
+# "tests.integration.test_openapi" is passed as a sandbox passthrough module —
+# the sandbox reuses the already-imported module instance rather than
+# re-importing it, so module-level state is shared with the test process.
+_captured_publish_inputs: list[dict[str, Any]] = []
+
+
+@workflow.defn(name="PublishWorkflow")
+class _StubPublishWorkflow:
+    """Lightweight stand-in for publish-app.
+
+    Records connection_entity from the incoming PublishInput so tests can
+    assert on wire-format keys without needing a real publish-app deployment.
+    """
+
+    @workflow.run
+    async def run(self, input_data: PublishInput) -> dict[str, Any]:
+        _captured_publish_inputs.append(input_data.connection_entity)
+        return {}
+
+
+# =============================================================================
+# Integration guard: camelCase connection_entity sent to publish-app
+# =============================================================================
+
+
+class TestPublishConnectionEntityCamelCase:
+    """Connector must send camelCase connection_entity to publish-app.
+
+    Regression guard for the bug where connection.model_dump() (without
+    by_alias=True) serialized ConnectionAttributes fields in snake_case.
+    publish-app expects strict camelCase (qualifiedName, connectorName, …).
+    """
+
+    @pytest_asyncio.fixture(scope="class")
+    async def publish_stub_worker(
+        self, temporal_client: Client
+    ) -> AsyncGenerator[None, None]:
+        """Start a stub 'PublishWorkflow' worker on the publish-app task queue.
+
+        Configures "tests.integration.test_openapi" as a sandbox passthrough so
+        the stub workflow can write to _captured_publish_inputs in this module.
+        """
+        config = SandboxConfig().with_passthrough_modules(
+            "tests.integration.test_openapi"
+        )
+        runner = SandboxedWorkflowRunner(restrictions=config.to_temporal_restrictions())
+        w = Worker(
+            temporal_client,
+            task_queue="atlan-publish-production",
+            workflows=[_StubPublishWorkflow],
+            workflow_runner=runner,
+        )
+        async with w:
+            yield
+
+    @pytest.fixture(autouse=True)
+    def _clear_captures(self) -> Any:
+        _captured_publish_inputs.clear()
+        yield
+        _captured_publish_inputs.clear()
+
+    async def test_connection_entity_keys_are_camel_case(
+        self,
+        openapi_executor: "AppExecutor",
+        publish_stub_worker: None,  # noqa: ARG002 — ensures stub worker is running
+        tmp_path: Path,
+    ) -> None:
+        """Run connector with load_to_atlan=True and verify camelCase keys in connection_entity."""
+        output_dir = tmp_path / "camel_case_test"
+        output_dir.mkdir()
+
+        await openapi_executor.execute_app(
+            OpenAPIConnector,
+            OpenAPIConnectorInput(
+                connection_usage="CREATE",
+                connection=ConnectionRef.model_validate(
+                    {
+                        "typeName": "Connection",
+                        "attributes": {
+                            "qualifiedName": "default/api/test-camel-case",
+                            "name": "test-camel-case",
+                            "connectorName": "api",
+                            "category": "API",
+                            "adminGroups": ["admins"],
+                        },
+                    }
+                ),
+                spec_url=_SPEC_URL,
+                output_dir=str(output_dir),
+                checkpoint_dir="",
+                load_to_atlan=True,
+                publish_dry_run=True,
+            ),
+            execution_id_prefix="test-publish-camel-case",
+        )
+
+        assert len(_captured_publish_inputs) == 1, (
+            f"Expected exactly one publish-app call, got {len(_captured_publish_inputs)}"
+        )
+        attrs = _captured_publish_inputs[0].get("attributes", {})
+        assert "qualifiedName" in attrs, (
+            "publish-app requires camelCase 'qualifiedName' — "
+            "connector must call connection.model_dump(by_alias=True)"
+        )
+        assert "connectorName" in attrs, (
+            "publish-app requires camelCase 'connectorName'"
+        )
+        assert "adminGroups" in attrs, "publish-app requires camelCase 'adminGroups'"
+        assert "qualified_name" not in attrs, (
+            "snake_case keys must not appear — regression of model_dump() without by_alias=True"
+        )
+        assert "connector_name" not in attrs
+        assert "admin_groups" not in attrs

@@ -26,7 +26,6 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-import msgspec
 
 # Repo root: tests/e2e/infra.py -> e2e -> tests -> repo_root
 REPO_ROOT = Path(__file__).parent.parent.parent
@@ -301,15 +300,14 @@ def cleanup_in_cluster(app: AppConfig, paths: list[str]) -> None:
 
 
 def _to_json_dict(obj: Any) -> dict[str, Any]:
-    """Serialize a contract Input dataclass (or plain dict) to a JSON-compatible dict.
-
-    Uses msgspec so that pyatlan Connection objects and other non-trivial
-    dataclass fields are encoded correctly — the same way Temporal's
-    DataConverter would encode them.
-    """
+    """Serialize a contract Input (Pydantic model or plain dict) to a JSON-compatible dict."""
     if isinstance(obj, dict):
         return obj
-    return json.loads(msgspec.json.encode(obj))
+    if hasattr(obj, "model_dump_json"):
+        return json.loads(obj.model_dump_json())
+    raise TypeError(
+        f"Cannot serialize {type(obj).__name__} to dict — expected a Pydantic model or dict"
+    )
 
 
 async def run_workflow(
