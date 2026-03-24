@@ -2,11 +2,11 @@ name: Integration Tests
 
 on:
   pull_request:
-    types:
-      - opened
-      - synchronize
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      distinct_id:
 
 jobs:
   integration-tests:
@@ -15,92 +15,124 @@ jobs:
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       pull-requests: write
       contents: write
 
     steps:
+      - name: echo distinct ID ${{ github.event.inputs.distinct_id }}
+        run: echo ${{ github.event.inputs.distinct_id }}
+
       - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-
-      - name: Install dependencies
-        run: uv sync --frozen --all-groups
 
       - name: Install Temporal CLI and start dev server
         run: |
           curl -sSf https://temporal.download/cli.sh | sh
           echo "$HOME/.temporalio/bin" >> "$GITHUB_PATH"
+          "$HOME/.temporalio/bin/temporal" server start-dev \
+            --db-filename /tmp/temporal.db --headless &
+          sleep 5
 
-      - name: Start Temporal dev server
-        run: |
-          temporal server start-dev --headless &
-          for i in $(seq 1 30); do
-            temporal workflow list --namespace default 2>/dev/null && break
-            sleep 1
-          done
+      - uses: atlanhq/application-sdk/.github/actions/setup-deps@main
 
-      - name: Run integration tests with profiling
+      - name: Update application-sdk rev
+        if: ${{ github.event.inputs.distinct_id != '' }}
         run: |
-          uv run scalene --json --outfile .github/scalene.json --cli --profile-all \
-            -- -m pytest tests/integration/ -v
-        continue-on-error: true
+          commit_hash=${{ github.event.inputs.distinct_id }}
+          uv add git+https://github.com/atlanhq/application-sdk --rev $commit_hash
+
+      - name: Run integration tests with Scalene profiling
+        id: integration_tests
+        env:
+          ATLAN_LOCAL_DEVELOPMENT: true
+          ATLAN_APPLICATION_NAME: ${{ github.event.repository.name }}
+          TEMPORAL_HOST: localhost:7233
+        run: |
+          PYTEST_BIN=$(uv run python -c "import shutil; print(shutil.which('pytest'))")
+          uv run scalene run -o .github/scalene-profile.json \
+            --profile-only app \
+            "$PYTEST_BIN" --- \
+            tests/integration/ --capture=no --log-cli-level=INFO -v --full-trace
+
+      - name: Upload Scalene profile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scalene-profile
+          path: .github/scalene-profile.json
 
       - name: Report profiling metrics
         if: always()
         run: |
-          if [ -f .github/scalene.json ]; then
-            AVG_CPU=$(python -c "
-          import json, sys
-          data = json.load(open('.github/scalene.json'))
-          vals = [
-            f['n_cpu_percent_c'] + f['n_cpu_percent_python'] + f['n_sys_percent']
-            for fd in data.get('files', {}).values()
-            for f in fd.get('functions', [])
-            if f.get('n_cpu_percent_c') is not None
-          ]
-          print(f'{sum(vals)/len(vals):.2f}' if vals else 'N/A')
-          ")
-            MAX_CPU=$(python -c "
+          if [ -f .github/scalene-profile.json ]; then
+            uv run python -c "
           import json
-          data = json.load(open('.github/scalene.json'))
-          vals = [
-            f['n_cpu_percent_c'] + f['n_cpu_percent_python'] + f['n_sys_percent']
-            for fd in data.get('files', {}).values()
-            for f in fd.get('functions', [])
-            if f.get('n_cpu_percent_c') is not None
-          ]
-          print(f'{max(vals):.2f}' if vals else 'N/A')
-          ")
-            MEMORY_MB=$(python -c "
-          import json
-          data = json.load(open('.github/scalene.json'))
-          print(f\"{data.get('max_footprint_mb', 'N/A'):.2f}\")
-          ")
+          data = json.load(open('.github/scalene-profile.json'))
+          elapsed = data.get('elapsed_time_sec', 0)
+          peak_mb = data.get('max_footprint_mb', 0)
+          top = sorted(
+            [(fname, f['percent_cpu_time']) for fname, f in data.get('files', {}).items()],
+            key=lambda x: -x[1]
+          )[:5]
+          print(f'ELAPSED={elapsed:.2f}')
+          print(f'PEAK_MB={peak_mb:.1f}')
+          for fname, pct in top:
+              short = fname.split('/')[-1]
+              print(f'TOP|{short}|{pct:.1f}')
+          " > .github/scalene-parsed.txt
+            ELAPSED=$(grep ^ELAPSED .github/scalene-parsed.txt | cut -d= -f2)
+            PEAK_MB=$(grep ^PEAK_MB .github/scalene-parsed.txt | cut -d= -f2)
           else
-            AVG_CPU="N/A"; MAX_CPU="N/A"; MEMORY_MB="N/A"
+            ELAPSED="N/A"
+            PEAK_MB="N/A"
           fi
 
-          cat >> metrics.md <<EOF
-          ## Integration Test Profiling Metrics
+          TEST_RESULT="${{ steps.integration_tests.outcome }}"
+          if [ "$TEST_RESULT" = "success" ]; then
+            TEST_BADGE="✅ passed"
+          else
+            TEST_BADGE="❌ failed"
+          fi
 
-          | Metric | Value |
-          |--------|-------|
-          | Average CPU Usage | ${AVG_CPU}% |
-          | Max CPU Usage | ${MAX_CPU}% |
-          | Memory Usage | ${MEMORY_MB} MB |
-          EOF
+          echo "## Integration Test Results and Performance Metrics" >> metrics.md
+          echo "**Tests:** $TEST_BADGE | **Commit:** \`${{ github.sha }}\`" >> metrics.md
+          echo "### Runner Environment Details" >> metrics.md
+          echo "$(mpstat 1 1 | awk 'NR == 1')" >> metrics.md
+          echo "Total Memory: $(free -m | awk 'NR == 2 {print $2}') MB" >> metrics.md
+
+          echo "### Resource Usage" >> metrics.md
+          echo "| Metric | Value |" >> metrics.md
+          echo "|--------|-------|" >> metrics.md
+          echo "| Elapsed Time | ${ELAPSED}s |" >> metrics.md
+          echo "| Peak Memory (RSS) | ${PEAK_MB} MB |" >> metrics.md
+
+          if [ -f .github/scalene-parsed.txt ] && grep -q "^TOP" .github/scalene-parsed.txt; then
+            echo "" >> metrics.md
+            echo "### Top Files by CPU Time (app/ only)" >> metrics.md
+            echo "| File | CPU % |" >> metrics.md
+            echo "|------|-------|" >> metrics.md
+            grep "^TOP" .github/scalene-parsed.txt | while IFS='|' read -r _ file pct; do
+              echo "| \`${file}\` | ${pct}% |" >> metrics.md
+            done
+          fi
+
+          echo "" >> metrics.md
+          echo "_Full profile available as a [workflow artifact](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})._" >> metrics.md
+
+          echo "---" >> metrics.md
 
           cat metrics.md
+          exit 0
 
       - name: Comment profiling metrics on PR
-        if: github.event_name == 'pull_request'
+        if: ${{ always() && github.event_name == 'pull_request' }}
         uses: mshick/add-pr-comment@b8f338c590a895d50bcbfa6c5859251edc8952fc # v2.8.2
         with:
           message-id: "integration_test_profiling"
           message-path: metrics.md
         continue-on-error: true
+
+      - name: Stop Temporal
+        if: always()
+        run: pkill -f "temporal server" || true
