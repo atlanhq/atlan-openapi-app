@@ -45,60 +45,45 @@ jobs:
           done
 
       - name: Run integration tests with profiling
+        id: integration_tests
         run: |
-          uv run scalene --json --outfile .github/scalene.json --cli --profile-all \
-            -- -m pytest tests/integration/ -v
+          /usr/bin/time -v uv run pytest tests/integration/ -v \
+            2>.github/time_output.txt
+          cat .github/time_output.txt
         continue-on-error: true
 
       - name: Report profiling metrics
         if: always()
         run: |
-          if [ -f .github/scalene.json ]; then
-            AVG_CPU=$(python -c "
-          import json, sys
-          data = json.load(open('.github/scalene.json'))
-          vals = [
-            f['n_cpu_percent_c'] + f['n_cpu_percent_python'] + f['n_sys_percent']
-            for fd in data.get('files', {}).values()
-            for f in fd.get('functions', [])
-            if f.get('n_cpu_percent_c') is not None
-          ]
-          print(f'{sum(vals)/len(vals):.2f}' if vals else 'N/A')
-          ")
-            MAX_CPU=$(python -c "
-          import json
-          data = json.load(open('.github/scalene.json'))
-          vals = [
-            f['n_cpu_percent_c'] + f['n_cpu_percent_python'] + f['n_sys_percent']
-            for fd in data.get('files', {}).values()
-            for f in fd.get('functions', [])
-            if f.get('n_cpu_percent_c') is not None
-          ]
-          print(f'{max(vals):.2f}' if vals else 'N/A')
-          ")
-            MEMORY_MB=$(python -c "
-          import json
-          data = json.load(open('.github/scalene.json'))
-          print(f\"{data.get('max_footprint_mb', 'N/A'):.2f}\")
-          ")
+          if [ -f .github/time_output.txt ]; then
+            PEAK_MEM_KB=$(grep "Maximum resident" .github/time_output.txt | awk '{print $NF}')
+            PEAK_MEM_MB=$(awk "BEGIN {printf \"%.0f\", $PEAK_MEM_KB / 1024}")
+            CPU_PCT=$(grep "Percent of CPU" .github/time_output.txt | awk '{print $NF}')
+            WALL_TIME=$(grep "Elapsed (wall clock)" .github/time_output.txt | awk '{print $NF}')
           else
-            AVG_CPU="N/A"; MAX_CPU="N/A"; MEMORY_MB="N/A"
+            PEAK_MEM_MB="N/A"; CPU_PCT="N/A"; WALL_TIME="N/A"
           fi
 
-          cat >> metrics.md <<EOF
-          ## Integration Test Profiling Metrics
+          TEST_RESULT="${{ steps.integration_tests.outcome }}"
+          if [ "$TEST_RESULT" = "success" ]; then
+            TEST_BADGE="✅ passed"
+          else
+            TEST_BADGE="❌ failed"
+          fi
 
-          | Metric | Value |
-          |--------|-------|
-          | Average CPU Usage | ${AVG_CPU}% |
-          | Max CPU Usage | ${MAX_CPU}% |
-          | Memory Usage | ${MEMORY_MB} MB |
-          EOF
+          echo "## Integration Test Results and Performance Metrics" >> metrics.md
+          echo "**Tests:** $TEST_BADGE | **Commit:** \`${{ github.sha }}\`" >> metrics.md
+          echo "### Resource Usage" >> metrics.md
+          echo "| Metric | Value |" >> metrics.md
+          echo "|--------|-------|" >> metrics.md
+          echo "| Peak Memory (RSS) | ${PEAK_MEM_MB} MB |" >> metrics.md
+          echo "| CPU Usage | ${CPU_PCT} |" >> metrics.md
+          echo "| Wall Time | ${WALL_TIME} |" >> metrics.md
 
           cat metrics.md
 
       - name: Comment profiling metrics on PR
-        if: github.event_name == 'pull_request'
+        if: ${{ always() && github.event_name == 'pull_request' }}
         uses: mshick/add-pr-comment@b8f338c590a895d50bcbfa6c5859251edc8952fc # v2.8.2
         with:
           message-id: "integration_test_profiling"
