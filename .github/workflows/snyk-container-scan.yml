@@ -1,7 +1,7 @@
 name: Snyk check for Docker Image
 
 on:
-  push:
+  pull_request:
     branches:
       - main
     paths:
