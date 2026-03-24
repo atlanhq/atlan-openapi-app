@@ -37,7 +37,7 @@ _VALUES_FILE = _REPO_ROOT / "helm" / "values.yaml"
 
 _APP_NAME = "openapi"
 _NAMESPACE = "app-openapi"
-_HANDLER_PORT = 80  # Service port (-> container 8080)
+_HANDLER_PORT = 80  # Service port (-> container 8000)
 _DEPLOY_TIMEOUT = 300  # seconds
 
 
