@@ -1,15 +1,8 @@
 name: Publish App Docker Image
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - '**'
-      - '!kurl-installer.yaml'
-      - '!**.md'
-      - '!images/**'
-      - '!**.png'
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -17,60 +10,36 @@ permissions:
   actions: read
 
 jobs:
-  prepare:
+  publish:
+    name: Build and Push to GHCR
     runs-on: ubuntu-latest
-    outputs:
-      branch: ${{ steps.get_branch.outputs.branch }}
-      version: ${{ steps.get_version.outputs.version }}
-      lowercase_branch: ${{ steps.get_lowercase_branch.outputs.lowercase_branch }}
-      repository_name: ${{ steps.get_repo_name.outputs.repository_name }}
-    steps:
-      - uses: actions/checkout@v4.0.0
-        with:
-          fetch-depth: 0
-
-      - name: Get branch name
-        run: echo "branch=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
-        id: get_branch
-
-      - name: Get repository name
-        run: echo "repository_name=`echo "$GITHUB_REPOSITORY" | awk -F / '{print $2}' | sed -e "s/:refs//"`" >> $GITHUB_OUTPUT
-        id: get_repo_name
-        shell: bash
-
-      - name: Get version tag
-        run: echo "version=$(echo `git ls-remote https://${{ secrets.ORG_PAT_GITHUB }}@github.com/atlanhq/${{ steps.get_repo_name.outputs.repository_name }}.git ${{ steps.get_branch.outputs.branch }} | awk '{ print $1}' | cut -c1-7`)abcd" >> $GITHUB_OUTPUT
-        id: get_version
-
-      - name: Lowercase branch name
-        run: echo "lowercase_branch=$(echo '${{ steps.get_branch.outputs.branch }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
-        id: get_lowercase_branch
-
-  push-to-ghcr:
-    runs-on: ubuntu-latest
-    needs: prepare
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-ghcr
-      cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4.0.0
         with:
           fetch-depth: 0
 
-      - name: Set up Buildx
-        id: buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
 
-      - name: Login to GitHub Registry
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: $GITHUB_ACTOR
+          username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Extract version
+        id: version
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
       - name: Build and push docker image to GHCR
-        id: ghcr_docker_build
         uses: atlanhq/.github/.github/actions/secure-build-push-apps@main
         with:
           branch: ${{ github.ref_name }}
@@ -80,59 +49,20 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
-            ghcr.io/atlanhq/${{ github.event.repository.name }}-${{ needs.prepare.outputs.lowercase_branch }}:latest
-            ghcr.io/atlanhq/${{ github.event.repository.name }}-${{ needs.prepare.outputs.lowercase_branch }}:${{ needs.prepare.outputs.version }}
+            ghcr.io/atlanhq/${{ github.event.repository.name }}:${{ steps.version.outputs.version }}
+            ghcr.io/atlanhq/${{ github.event.repository.name }}:latest
           build-args: |
             APP_MODULE=app.connector:OpenAPIConnector
           github-token: ${{ secrets.GITHUB_TOKEN }}
-        env:
-          DOCKER_CLIENT_TIMEOUT: 600
-          COMPOSE_HTTP_TIMEOUT: 600
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-  # push-to-dockerhub:
-  #   runs-on: ubuntu-latest
-  #   needs: prepare
-  #   concurrency:
-  #     group: ${{ github.workflow }}-${{ github.ref }}-dockerhub
-  #     cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
-  #   timeout-minutes: 20
-  #   steps:
-  #     - uses: actions/checkout@v4.0.0
-  #       with:
-  #         fetch-depth: 0
-  #
-  #     - name: Set up Buildx
-  #       id: buildx
-  #       uses: docker/setup-buildx-action@v3
-  #
-  #     - name: Login to Docker Hub
-  #       uses: docker/login-action@v3
-  #       with:
-  #         username: atlanhq
-  #         password: ${{ secrets.DOCKER_HUB_PAT_RW }}
-  #
-  #     - name: Login to GitHub Registry
-  #       uses: docker/login-action@v3
-  #       with:
-  #         registry: ghcr.io
-  #         username: $GITHUB_ACTOR
-  #         password: ${{ secrets.ORG_PAT_GITHUB }}
-  #
-  #     - name: Build and push docker image to Docker Hub
-  #       id: docker_build
-  #       uses: atlanhq/.github/.github/actions/secure-build-push-apps@main
-  #       with:
-  #         branch: ${{ github.ref_name }}
-  #         snyk-token: ${{ secrets.SNYK_TOKEN_BU_APPS }}
-  #         context: .
-  #         file: ./Dockerfile
-  #         push: true
-  #         platforms: linux/amd64,linux/arm64
-  #         tags: |
-  #           registry-1.docker.io/atlanhq/${{ github.event.repository.name }}:${{ needs.prepare.outputs.branch }}-${{ needs.prepare.outputs.version }}
-  #           registry-1.docker.io/atlanhq/${{ github.event.repository.name }}:${{ needs.prepare.outputs.branch }}-latest
-  #         build-args: |
-  #           APP_MODULE=app.connector:OpenAPIConnector
-  #       env:
-  #         DOCKER_CLIENT_TIMEOUT: 600
-  #         COMPOSE_HTTP_TIMEOUT: 600
+      - name: Summary
+        run: |
+          echo "## Image Published" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Release:** \`${{ steps.version.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Platforms:** \`linux/amd64\`, \`linux/arm64\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Tags:**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`ghcr.io/atlanhq/${{ github.event.repository.name }}:${{ steps.version.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`ghcr.io/atlanhq/${{ github.event.repository.name }}:latest\`" >> "$GITHUB_STEP_SUMMARY"
