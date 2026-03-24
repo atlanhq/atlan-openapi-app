@@ -1,6 +1,9 @@
 name: Publish App Docker Image
 
 on:
+  push:
+    branches:
+      - main
   release:
     types: [published]
 
@@ -32,12 +35,31 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract version
+      - name: Extract version and tags
         id: version
         run: |
-          TAG="${{ github.event.release.tag_name }}"
+          IMAGE="ghcr.io/atlanhq/${{ github.event.repository.name }}"
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+            VERSION="${TAG#v}"
+            {
+              echo "tags<<EOF"
+              echo "${IMAGE}:${VERSION}"
+              echo "${IMAGE}:latest"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            VERSION="${{ github.sha }}"
+            VERSION="${VERSION:0:7}"
+            TAG="${VERSION}"
+            {
+              echo "tags<<EOF"
+              echo "${IMAGE}:${VERSION}"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push docker image to GHCR
         uses: atlanhq/.github/.github/actions/secure-build-push-apps@main
@@ -48,9 +70,7 @@ jobs:
           file: ./Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: |
-            ghcr.io/atlanhq/${{ github.event.repository.name }}:${{ steps.version.outputs.version }}
-            ghcr.io/atlanhq/${{ github.event.repository.name }}:latest
+          tags: ${{ steps.version.outputs.tags }}
           build-args: |
             APP_MODULE=app.connector:OpenAPIConnector
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -59,10 +79,13 @@ jobs:
 
       - name: Summary
         run: |
+          IMAGE="ghcr.io/atlanhq/${{ github.event.repository.name }}"
           echo "## Image Published" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Release:** \`${{ steps.version.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Trigger:** \`${{ github.event_name }}\` | **Ref:** \`${{ steps.version.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "**Platforms:** \`linux/amd64\`, \`linux/arm64\`" >> "$GITHUB_STEP_SUMMARY"
           echo "**Tags:**" >> "$GITHUB_STEP_SUMMARY"
-          echo "- \`ghcr.io/atlanhq/${{ github.event.repository.name }}:${{ steps.version.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- \`ghcr.io/atlanhq/${{ github.event.repository.name }}:latest\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`${IMAGE}:${{ steps.version.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "- \`${IMAGE}:latest\`" >> "$GITHUB_STEP_SUMMARY"
+          fi
