@@ -484,7 +484,7 @@ class OpenAPIConnector(App):
                 )
             upload_prefix = str(Path(upload_result.ref.storage_path).parent.parent)
 
-            connection_dict = connection.model_dump() if connection else {}
+            connection_dict = connection.model_dump(by_alias=True) if connection else {}
 
             self.logger.info(
                 "calling publish-app connection_qualified_name=%s upload_prefix=%s executor_enabled=%s",
