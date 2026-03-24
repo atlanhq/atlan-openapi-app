@@ -4,7 +4,7 @@
 # Extends the app-framework base image with the OpenAPI connector code and dependencies.
 #
 # Build args:
-#   APP_MODULE - Python module path (app.connector:OpenAPIConnector)
+#   APP_MODULE - Python module path (app.connector:OpenAPIConnector); baked into ATLAN_APP_MODULE env var
 #
 # Usage:
 #   docker build \
@@ -33,4 +33,4 @@ RUN --mount=type=cache,target=/home/appuser/.cache/uv,uid=1000,gid=1000 \
 # Copy application code
 COPY --chown=appuser:appuser app/ app/
 
-ENV ATLAN_APP_MODULE_DEFAULT=${APP_MODULE}
+ENV ATLAN_APP_MODULE=${APP_MODULE}
