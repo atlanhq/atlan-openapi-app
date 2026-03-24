@@ -26,6 +26,7 @@ dev = [
     "httpx>=0.28.1",
     "pre-commit>=4.2.0",
     "coverage[toml]>=7.13.5",
+    "scalene>=2.2.1",
 ]
 
 [tool.pyright]
