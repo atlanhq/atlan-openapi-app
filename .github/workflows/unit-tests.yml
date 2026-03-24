@@ -43,6 +43,7 @@ jobs:
           uv run coverage report --fail-under=30
 
       - name: Comment Coverage Report on PR
+        if: ${{ always() && github.event_name == 'pull_request' }}
         uses: orgoro/coverage@3f13a558c5af7376496aa4848bf0224aead366ac # v3.2
         with:
           coverageFile: coverage.xml
