@@ -42,50 +42,30 @@ jobs:
           commit_hash=${{ github.event.inputs.distinct_id }}
           uv add git+https://github.com/atlanhq/application-sdk --rev $commit_hash
 
-      - name: Run integration tests with Scalene profiling
+      - name: Run integration tests with profiling
         id: integration_tests
         env:
           ATLAN_LOCAL_DEVELOPMENT: true
           ATLAN_APPLICATION_NAME: ${{ github.event.repository.name }}
           TEMPORAL_HOST: localhost:7233
         run: |
-          PYTEST_BIN=$(uv run python -c "import shutil; print(shutil.which('pytest'))")
-          uv run scalene run -o .github/scalene-profile.json \
-            --profile-only app \
-            "$PYTEST_BIN" --- \
-            tests/integration/ --capture=no --log-cli-level=INFO -v --full-trace
-
-      - name: Upload Scalene profile
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: scalene-profile
-          path: .github/scalene-profile.json
+          /usr/bin/time -v uv run coverage run -m pytest tests/integration/ \
+            --capture=no --log-cli-level=INFO -v --full-trace \
+            2>.github/time_output.txt
+          cat .github/time_output.txt
 
       - name: Report profiling metrics
         if: always()
         run: |
-          if [ -f .github/scalene-profile.json ]; then
-            uv run python -c "
-          import json
-          data = json.load(open('.github/scalene-profile.json'))
-          elapsed = data.get('elapsed_time_sec', 0)
-          peak_mb = data.get('max_footprint_mb', 0)
-          top = sorted(
-            [(fname, f['percent_cpu_time']) for fname, f in data.get('files', {}).items()],
-            key=lambda x: -x[1]
-          )[:5]
-          print(f'ELAPSED={elapsed:.2f}')
-          print(f'PEAK_MB={peak_mb:.1f}')
-          for fname, pct in top:
-              short = fname.split('/')[-1]
-              print(f'TOP|{short}|{pct:.1f}')
-          " > .github/scalene-parsed.txt
-            ELAPSED=$(grep ^ELAPSED .github/scalene-parsed.txt | cut -d= -f2)
-            PEAK_MB=$(grep ^PEAK_MB .github/scalene-parsed.txt | cut -d= -f2)
+          if [ -f .github/time_output.txt ]; then
+            PEAK_MEM_KB=$(grep "Maximum resident" .github/time_output.txt | awk '{print $NF}')
+            PEAK_MEM_MB=$(awk "BEGIN {printf \"%.0f\", $PEAK_MEM_KB / 1024}")
+            CPU_PCT=$(grep "Percent of CPU" .github/time_output.txt | awk '{print $NF}')
+            WALL_TIME=$(grep "Elapsed (wall clock)" .github/time_output.txt | awk '{print $NF}')
           else
-            ELAPSED="N/A"
-            PEAK_MB="N/A"
+            PEAK_MEM_MB="N/A"
+            CPU_PCT="N/A"
+            WALL_TIME="N/A"
           fi
 
           TEST_RESULT="${{ steps.integration_tests.outcome }}"
@@ -104,21 +84,9 @@ jobs:
           echo "### Resource Usage" >> metrics.md
           echo "| Metric | Value |" >> metrics.md
           echo "|--------|-------|" >> metrics.md
-          echo "| Elapsed Time | ${ELAPSED}s |" >> metrics.md
-          echo "| Peak Memory (RSS) | ${PEAK_MB} MB |" >> metrics.md
-
-          if [ -f .github/scalene-parsed.txt ] && grep -q "^TOP" .github/scalene-parsed.txt; then
-            echo "" >> metrics.md
-            echo "### Top Files by CPU Time (app/ only)" >> metrics.md
-            echo "| File | CPU % |" >> metrics.md
-            echo "|------|-------|" >> metrics.md
-            grep "^TOP" .github/scalene-parsed.txt | while IFS='|' read -r _ file pct; do
-              echo "| \`${file}\` | ${pct}% |" >> metrics.md
-            done
-          fi
-
-          echo "" >> metrics.md
-          echo "_Full profile available as a [workflow artifact](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})._" >> metrics.md
+          echo "| Peak Memory (RSS) | ${PEAK_MEM_MB} MB |" >> metrics.md
+          echo "| CPU Usage | ${CPU_PCT} |" >> metrics.md
+          echo "| Wall Time | ${WALL_TIME} |" >> metrics.md
 
           echo "---" >> metrics.md
 
