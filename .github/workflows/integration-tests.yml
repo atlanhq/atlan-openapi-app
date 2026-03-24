@@ -1,9 +1,6 @@
 name: Integration Tests
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
     types:
       - opened
@@ -19,6 +16,9 @@ jobs:
       group: ${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
     timeout-minutes: 15
+    permissions:
+      pull-requests: write
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -44,5 +44,63 @@ jobs:
             sleep 1
           done
 
-      - name: Run integration tests
-        run: uv run pytest tests/integration/ -v
+      - name: Run integration tests with profiling
+        run: |
+          uv run scalene --json --outfile .github/scalene.json --cli --profile-all \
+            -- -m pytest tests/integration/ -v
+        continue-on-error: true
+
+      - name: Report profiling metrics
+        if: always()
+        run: |
+          if [ -f .github/scalene.json ]; then
+            AVG_CPU=$(python -c "
+          import json, sys
+          data = json.load(open('.github/scalene.json'))
+          vals = [
+            f['n_cpu_percent_c'] + f['n_cpu_percent_python'] + f['n_sys_percent']
+            for fd in data.get('files', {}).values()
+            for f in fd.get('functions', [])
+            if f.get('n_cpu_percent_c') is not None
+          ]
+          print(f'{sum(vals)/len(vals):.2f}' if vals else 'N/A')
+          ")
+            MAX_CPU=$(python -c "
+          import json
+          data = json.load(open('.github/scalene.json'))
+          vals = [
+            f['n_cpu_percent_c'] + f['n_cpu_percent_python'] + f['n_sys_percent']
+            for fd in data.get('files', {}).values()
+            for f in fd.get('functions', [])
+            if f.get('n_cpu_percent_c') is not None
+          ]
+          print(f'{max(vals):.2f}' if vals else 'N/A')
+          ")
+            MEMORY_MB=$(python -c "
+          import json
+          data = json.load(open('.github/scalene.json'))
+          print(f\"{data.get('max_footprint_mb', 'N/A'):.2f}\")
+          ")
+          else
+            AVG_CPU="N/A"; MAX_CPU="N/A"; MEMORY_MB="N/A"
+          fi
+
+          cat >> metrics.md <<EOF
+          ## Integration Test Profiling Metrics
+
+          | Metric | Value |
+          |--------|-------|
+          | Average CPU Usage | ${AVG_CPU}% |
+          | Max CPU Usage | ${MAX_CPU}% |
+          | Memory Usage | ${MEMORY_MB} MB |
+          EOF
+
+          cat metrics.md
+
+      - name: Comment profiling metrics on PR
+        if: github.event_name == 'pull_request'
+        uses: mshick/add-pr-comment@b8f338c590a895d50bcbfa6c5859251edc8952fc # v2.8.2
+        with:
+          message-id: "integration_test_profiling"
+          message-path: metrics.md
+        continue-on-error: true
