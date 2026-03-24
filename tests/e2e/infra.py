@@ -496,6 +496,20 @@ async def verify_atlan_assets(
     failures: list[str] = []
     warnings: list[str] = []
 
+    if not base_url or not api_key:
+        missing = [
+            name
+            for name, val in [("ATLAN_BASE_URL", base_url), ("ATLAN_API_KEY", api_key)]
+            if not val
+        ]
+        msg = f"Atlan verification skipped: missing credentials ({', '.join(missing)})"
+        print(f"  [WARN] {msg}")
+        failures.append(msg)
+        result.failures = failures
+        result.warnings = warnings
+        result.passed = False
+        return result
+
     try:
         async with AsyncAtlanClient(base_url=base_url, api_key=api_key) as client:
             for spec in expected_types:
@@ -546,7 +560,11 @@ async def verify_atlan_assets(
                 )
 
     except Exception as e:
-        failures.append(f"Atlan verification error: {e}")
+        import traceback
+
+        print(f"  [ERROR] Atlan verification failed ({type(e).__name__}): {e}")
+        traceback.print_exc()
+        failures.append(f"Atlan verification error ({type(e).__name__}): {e}")
 
     result.failures = failures
     result.warnings = warnings
