@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import socket
 import subprocess
 import time
@@ -29,7 +28,9 @@ import pytest
 
 from tests.e2e.conftest import DeployedApp
 
-logger = logging.getLogger(__name__)
+from application_sdk.observability.logger_adaptor import get_logger
+
+logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
