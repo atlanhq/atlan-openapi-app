@@ -68,6 +68,8 @@ contract/output/input.py
 # ─── Local test artefacts ────────────────────────────────────────────────────
 storage/
 e2e-logs/
+scalene-profile.json
+scalene-profile.html
 
 # ─── Python ─────────────────────────────────────────────────────────────────
 __pycache__/
