@@ -18,6 +18,7 @@ ARG APP_MODULE
 # git is required for uv to fetch git-sourced dependencies (atlan-application-sdk)
 USER root
 RUN apk add --no-cache git
+USER appuser
 
 WORKDIR /app
 
@@ -25,11 +26,11 @@ WORKDIR /app
 COPY --chown=appuser:appuser pyproject.toml uv.lock ./
 
 # Install dependencies (excluding the project itself) into a new venv
-RUN uv venv .venv && uv sync --locked --no-install-project --no-dev
+RUN --mount=type=cache,target=/home/appuser/.cache/uv,uid=1000,gid=1000 \
+    uv venv .venv && \
+    uv sync --locked --no-install-project --no-dev
 
 # Copy application code
 COPY --chown=appuser:appuser app/ app/
-
-USER appuser
 
 ENV ATLAN_APP_MODULE_DEFAULT=${APP_MODULE}
