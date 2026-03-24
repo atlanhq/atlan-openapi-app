@@ -18,7 +18,7 @@ Usage:
     python -m openapi.run_dev
 
     # 4. Extract metadata (public spec, no loading):
-    curl -X POST http://localhost:8080/workflows/v1/start \\
+    curl -X POST http://localhost:8000/workflows/v1/start \\
       -H "Content-Type: application/json" \\
       -d '{
         "connection": {"qualifiedName": "default/api/test-openapi", "name": "test-openapi"},
@@ -28,10 +28,10 @@ Usage:
     # Response: {"success": true, "data": {"workflow_id": "...", "run_id": "..."}, ...}
 
     # 5. Check the result (replace <workflow_id> with value from response["data"]["workflow_id"]):
-    curl http://localhost:8080/workflows/v1/result/<workflow_id>
+    curl http://localhost:8000/workflows/v1/result/<workflow_id>
 
     # 6. Full E2E with Atlan loading via publish-app (requires cluster with publish-app):
-    curl -X POST http://localhost:8080/workflows/v1/start \\
+    curl -X POST http://localhost:8000/workflows/v1/start \\
       -H "Content-Type: application/json" \\
       -d '{
         "connection": {"qualifiedName": "default/api/test-openapi", "name": "test-openapi"},
