@@ -28,12 +28,17 @@ from application_sdk.infrastructure.context import (
     InfrastructureContext,
     set_infrastructure,
 )
-from application_sdk.storage import create_local_store
+from application_sdk.observability.observability import AtlanObservability
+from application_sdk.storage import create_local_store, create_memory_store
 from application_sdk.testing.mocks import MockSecretStore, MockStateStore
 from temporalio.client import Client
 
 # Trigger OpenAPIConnector app registration before create_worker is called.
 from app.connector import OpenAPIConnector  # noqa: F401
+
+# Pre-wire a memory store as the deployment objectstore so the periodic
+# observability flush does not keep retrying and spamming warnings in tests.
+AtlanObservability._deployment_store = create_memory_store()
 
 _TASK_QUEUE = "openapi-queue"
 _TEMPORAL_HOST = os.environ.get("TEMPORAL_HOST", "localhost:7233")
