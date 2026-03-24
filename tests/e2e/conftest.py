@@ -13,14 +13,15 @@ Run:
 from __future__ import annotations
 
 import asyncio
-import logging
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest_asyncio
 
-logger = logging.getLogger(__name__)
+from application_sdk.observability.logger_adaptor import get_logger
+
+logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Paths
