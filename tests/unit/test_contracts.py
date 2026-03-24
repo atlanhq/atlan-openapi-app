@@ -374,6 +374,91 @@ class TestTransformContracts:
 
 
 # =============================================================================
+# ConnectionRef serialization
+# =============================================================================
+
+
+class TestConnectionRefSerialization:
+    """Pin the camelCase wire-format requirement for ConnectionRef.
+
+    ConnectionRef.model_dump(by_alias=True) must produce camelCase attribute
+    keys. Without by_alias=True the nested ConnectionAttributes model serializes
+    in snake_case because Pydantic does not inherit serialize_by_alias from the
+    parent model — which is the bug fixed in connector.py.
+    """
+
+    def test_model_dump_by_alias_produces_camel_case(self) -> None:
+        """model_dump(by_alias=True) must produce camelCase attribute keys."""
+        ref = ConnectionRef.model_validate(
+            {
+                "typeName": "Connection",
+                "attributes": {
+                    "qualifiedName": "default/api/test",
+                    "name": "test",
+                    "connectorName": "api",
+                    "adminGroups": ["admins"],
+                    "adminUsers": ["user1"],
+                    "adminRoles": [],
+                },
+            }
+        )
+        d = ref.model_dump(by_alias=True)
+        attrs = d["attributes"]
+        assert "qualifiedName" in attrs, "qualifiedName must be camelCase"
+        assert "connectorName" in attrs, "connectorName must be camelCase"
+        assert "adminGroups" in attrs, "adminGroups must be camelCase"
+        assert "adminUsers" in attrs, "adminUsers must be camelCase"
+        assert "adminRoles" in attrs, "adminRoles must be camelCase"
+        # Confirm snake_case is absent
+        assert "qualified_name" not in attrs
+        assert "connector_name" not in attrs
+        assert "admin_groups" not in attrs
+
+    def test_model_dump_without_by_alias_does_not_produce_camel_case(self) -> None:
+        """Regression guard: model_dump() without by_alias produces snake_case attributes.
+
+        This test documents the Pydantic behaviour that motivated the fix: the
+        outer ConnectionRef has serialize_by_alias=True, but that flag is NOT
+        inherited by the nested ConnectionAttributes model, so plain model_dump()
+        leaves attribute keys in snake_case.
+        """
+        ref = _make_connection_ref("default/api/test", "test")
+        d = ref.model_dump()
+        attrs = d["attributes"]
+        assert "qualified_name" in attrs, (
+            "plain model_dump() still yields snake_case — "
+            "connector must always use model_dump(by_alias=True)"
+        )
+
+    def test_top_level_key_is_camel_case(self) -> None:
+        """typeName (not type_name) must appear at the top level."""
+        ref = _make_connection_ref("default/api/test", "test")
+        d = ref.model_dump(by_alias=True)
+        assert "typeName" in d
+        assert "type_name" not in d
+
+    def test_snake_case_input_also_serializes_to_camel_case(self) -> None:
+        """ConnectionRef built with snake_case field names must still serialize to camelCase."""
+        ref = ConnectionRef.model_validate(
+            {
+                "typeName": "Connection",
+                "attributes": {
+                    "qualified_name": "default/api/test",
+                    "name": "test",
+                    "connector_name": "api",
+                    "admin_groups": ["admins"],
+                },
+            }
+        )
+        d = ref.model_dump(by_alias=True)
+        attrs = d["attributes"]
+        assert "qualifiedName" in attrs
+        assert "connectorName" in attrs
+        assert "adminGroups" in attrs
+        assert "qualified_name" not in attrs
+
+
+# =============================================================================
 # PublishInput
 # =============================================================================
 
@@ -409,3 +494,37 @@ class TestPublishInput:
         assert decoded.connection_creation_enabled is False
         assert decoded.executor_enabled is False
         assert decoded.connection_entity.get("typeName") == "Connection"
+
+    def test_connection_entity_built_from_connection_ref_is_camel_case(self) -> None:
+        """connection_entity must use camelCase keys as publish-app expects.
+
+        Mirrors exactly how connector.py builds connection_entity:
+            connection_dict = connection.model_dump(by_alias=True)
+            PublishInput(..., connection_entity=connection_dict)
+        """
+        connection = ConnectionRef.model_validate(
+            {
+                "typeName": "Connection",
+                "attributes": {
+                    "qualifiedName": "default/api/my-conn",
+                    "name": "my-conn",
+                    "connectorName": "api",
+                    "category": "API",
+                    "adminGroups": ["admins"],
+                    "adminUsers": [],
+                    "adminRoles": [],
+                },
+            }
+        )
+        connection_dict = connection.model_dump(by_alias=True)
+        publish_input = PublishInput(
+            connection_qualified_name="default/api/my-conn",
+            connection_entity=connection_dict,
+        )
+        attrs = publish_input.connection_entity["attributes"]
+        assert "qualifiedName" in attrs, "publish-app requires camelCase qualifiedName"
+        assert "connectorName" in attrs, "publish-app requires camelCase connectorName"
+        assert "adminGroups" in attrs, "publish-app requires camelCase adminGroups"
+        assert "qualified_name" not in attrs
+        assert "connector_name" not in attrs
+        assert "admin_groups" not in attrs
