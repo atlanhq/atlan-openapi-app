@@ -67,7 +67,7 @@ jobs:
         with:
           registry: ghcr.io
           username: $GITHUB_ACTOR
-          password: ${{ secrets.ORG_PAT_GITHUB }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push docker image to GHCR
         id: ghcr_docker_build
@@ -84,7 +84,7 @@ jobs:
             ghcr.io/atlanhq/${{ github.event.repository.name }}-${{ needs.prepare.outputs.lowercase_branch }}:${{ needs.prepare.outputs.version }}
           build-args: |
             APP_MODULE=app.connector:OpenAPIConnector
-          github-token: ${{ secrets.ORG_PAT_GITHUB }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
         env:
           DOCKER_CLIENT_TIMEOUT: 600
           COMPOSE_HTTP_TIMEOUT: 600
