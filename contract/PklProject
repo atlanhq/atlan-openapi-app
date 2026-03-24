@@ -1,4 +1,0 @@
-amends "pkl:Project"
-dependencies {
-  ["app-contract-toolkit"] = import("../../app-contract-toolkit/src/PklProject")
-}
