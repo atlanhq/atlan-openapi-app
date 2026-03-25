@@ -473,15 +473,14 @@ class OpenAPIConnector(App):
                 UploadInput(
                     local_path=output_file_path,
                     storage_path=f"{conn_qn}/transformed-metadata/chunk-0-part0.json",
+                    tier=StorageTier.PERSISTENT,
                 )
             )
             if not upload_result.ref.storage_path:
                 raise ValueError(
                     "upload_result.ref.storage_path is None; cannot derive transformed_data_prefix"
                 )
-            transformed_data_prefix = str(
-                Path(upload_result.ref.storage_path).parent.parent
-            )
+            transformed_data_prefix = str(Path(upload_result.ref.storage_path).parent)
             publish_completed = True
             self.logger.info(
                 "upload complete transformed_data_prefix=%s", transformed_data_prefix
