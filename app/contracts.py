@@ -33,22 +33,14 @@ class PublishInput(Input):
     connection_entity: dict = {}
 
 
-class OpenAPIConnectorInput(AppInputContract):
-    """Input for the OpenAPI Connector App.
-
-    Extends the Pkl-generated AppInputContract with app-specific fields
-    not derivable from the UI config.
-    """
-
-    load_to_atlan: bool = False
-    """If True, load extracted metadata to Atlan via publish-app."""
-
-    openapi_credential: CredentialRef | None = None
-    """Optional credential for private OpenAPI specs. Not needed for public specs."""
+OpenAPIConnectorInput = AppInputContract
 
 
 class OpenAPIConnectorOutput(Output):
     """Output from the OpenAPI Connector App."""
+
+    connection_qualified_name: str = ""
+    transformed_data_prefix: str = ""
 
     api_spec_count: int = 0
     """Number of APISpec entities extracted (always 0 or 1)."""
