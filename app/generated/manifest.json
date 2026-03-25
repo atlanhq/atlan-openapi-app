@@ -32,6 +32,8 @@
         "args": {
           "connection_qualified_name": "$.extract.outputs.connection_qualified_name",
           "transformed_data_prefix": "$.extract.outputs.transformed_data_prefix",
+          "publish_state_prefix": "$.extract.outputs.publish_state_prefix",
+          "current_state_prefix": "$.extract.outputs.current_state_prefix",
           "connection_creation_enabled": true,
           "executor_enabled": true,
           "connection_entity": "{{connection}}"
