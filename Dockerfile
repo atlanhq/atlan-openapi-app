@@ -34,4 +34,4 @@ RUN --mount=type=cache,target=/home/appuser/.cache/uv,uid=1000,gid=1000 \
 COPY --chown=appuser:appuser app/ app/
 
 ENV ATLAN_APP_MODULE=${APP_MODULE}
-ENV ATLAN_CONTRACT_GENERATED_DIR=/app/app/contract/generated
+ENV ATLAN_CONTRACT_GENERATED_DIR=/app/app/generated
