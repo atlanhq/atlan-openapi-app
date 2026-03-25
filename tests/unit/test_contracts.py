@@ -48,23 +48,20 @@ class TestOpenAPIConnectorInput:
         assert decoded.connection is None
         assert decoded.import_type == "URL"
         assert decoded.spec_url == ""
-        assert decoded.openapi_credential is None
         assert decoded.output_dir == ""
         assert decoded.checkpoint_dir == ""
-        assert decoded.load_to_atlan is False
+        assert decoded.load_to_atlan is True
         assert decoded.publish_dry_run is False
 
     def test_round_trip_with_values(self) -> None:
         """All non-default values must survive round-trip."""
-        openapi_ref = CredentialRef(name="openapi", credential_type="openapi")
         original = OpenAPIConnectorInput(
             connection=_make_connection_ref("default/api/test-conn", "test-conn"),
             import_type="CLOUD",
             spec_url="https://example.com/api.json",
-            openapi_credential=openapi_ref,
             output_dir="/tmp/out",
             checkpoint_dir="/tmp/ckpt",
-            load_to_atlan=True,
+            load_to_atlan=False,
             publish_dry_run=True,
         )
         decoded = _round_trip(original, OpenAPIConnectorInput)
@@ -75,20 +72,8 @@ class TestOpenAPIConnectorInput:
         assert decoded.spec_url == "https://example.com/api.json"
         assert decoded.output_dir == "/tmp/out"
         assert decoded.checkpoint_dir == "/tmp/ckpt"
-        assert decoded.load_to_atlan is True
+        assert decoded.load_to_atlan is False
         assert decoded.publish_dry_run is True
-
-    def test_round_trip_openapi_credential_ref_fields(self) -> None:
-        """CredentialRef fields (name, credential_type, store_name) must survive."""
-        ref = CredentialRef(
-            name="my-openapi-cred", credential_type="openapi", store_name="vault"
-        )
-        original = OpenAPIConnectorInput(openapi_credential=ref)
-        decoded = _round_trip(original, OpenAPIConnectorInput)
-        assert decoded.openapi_credential is not None
-        assert decoded.openapi_credential.name == "my-openapi-cred"
-        assert decoded.openapi_credential.credential_type == "openapi"
-        assert decoded.openapi_credential.store_name == "vault"
 
     def test_round_trip_new_fields_defaults(self) -> None:
         """New fields introduced for Pkl contract must have correct defaults."""
@@ -162,6 +147,8 @@ class TestOpenAPIConnectorOutput:
         """All default values must survive round-trip."""
         original = OpenAPIConnectorOutput()
         decoded = _round_trip(original, OpenAPIConnectorOutput)
+        assert decoded.connection_qualified_name == ""
+        assert decoded.transformed_data_prefix == ""
         assert decoded.api_spec_count == 0
         assert decoded.api_path_count == 0
         assert decoded.output_file is None
