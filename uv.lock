@@ -166,7 +166,7 @@ wheels = [
 [[package]]
 name = "atlan-application-sdk"
 version = "3.0.0"
-source = { git = "https://github.com/atlanhq/application-sdk?branch=refactor-v3#59883503d0d2df7cef7f36bfc5a415c5175de7a5" }
+source = { git = "https://github.com/atlanhq/application-sdk?branch=refactor-v3#76bd32e09722b3889cb71f6e6d6a21b05a1ee050" }
 dependencies = [
     { name = "aiohttp" },
     { name = "duckdb" },
