@@ -105,23 +105,6 @@ uiConfig {
   }
 }
 
-extraNodes {
-  ["publish"] = new DAGNode {
-    displayName = "Publish to Atlas"
-    workflowType = "PublishWorkflow"
-    appName = "publish"
-    taskQueue = "atlan-publish-{deployment_name}"
-    args {
-      ["connection_qualified_name"] = "$.extract.outputs.connection_qualified_name"
-      ["transformed_data_prefix"] = "$.extract.outputs.transformed_data_prefix"
-      ["connection_creation_enabled"] = true
-      ["executor_enabled"] = true
-      ["connection_entity"] = "{{connection}}"
-    }
-    dependsOn { "extract" }
-  }
-}
-
 manifestTopLevelArgs {
   ["connection"] = "connection"
 }
