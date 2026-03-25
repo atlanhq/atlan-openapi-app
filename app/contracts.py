@@ -41,6 +41,8 @@ class OpenAPIConnectorOutput(Output):
 
     connection_qualified_name: str = ""
     transformed_data_prefix: str = ""
+    publish_state_prefix: str = ""
+    current_state_prefix: str = ""
 
     api_spec_count: int = 0
     """Number of APISpec entities extracted (always 0 or 1)."""
