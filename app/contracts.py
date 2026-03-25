@@ -9,7 +9,7 @@ from application_sdk.app import Input, Output
 from application_sdk.contracts.types import ConnectionRef, FileReference
 from application_sdk.credentials.ref import CredentialRef
 
-from app.contract.generated.input import AppInputContract
+from app.generated.input import AppInputContract
 
 # =============================================================================
 # App-level contracts
