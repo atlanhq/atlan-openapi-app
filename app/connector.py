@@ -37,7 +37,6 @@ from app.contracts import (
     ExtractSpecOutput,
     OpenAPIConnectorInput,
     OpenAPIConnectorOutput,
-    PublishInput,
     TransformInput,
     TransformOutput,
 )
@@ -56,8 +55,6 @@ def _enc_hook(obj: Any) -> Any:
 
 
 _encoder = msgspec.json.Encoder(enc_hook=_enc_hook)
-
-_PUBLISH_APP_TASK_QUEUE = "atlan-publish-production"
 
 
 def _iter_jsonl(ref: FileReference | None, cls: type[T]) -> "Any":
@@ -433,7 +430,6 @@ class OpenAPIConnector(App):
                 spec_url=input.spec_url,
                 connection_qualified_name=conn_qn,
                 output_dir=f"{output_dir}/raw",
-                openapi_credential=input.openapi_credential,
             )
         )
 
@@ -470,6 +466,8 @@ class OpenAPIConnector(App):
         publish_completed = False
         output_file_path = output_file_ref.local_path if output_file_ref else ""
 
+        transformed_data_prefix = ""
+
         if input.load_to_atlan and output_file_path:
             upload_result = await self.upload(
                 UploadInput(
@@ -477,40 +475,17 @@ class OpenAPIConnector(App):
                     storage_path=f"{conn_qn}/transformed-metadata/chunk-0-part0.json",
                 )
             )
-            # Derive the actual prefix from the storage path (strips /metadata/chunk-0-part0.json)
             if not upload_result.ref.storage_path:
                 raise ValueError(
-                    "upload_result.ref.storage_path is None; cannot derive upload_prefix"
+                    "upload_result.ref.storage_path is None; cannot derive transformed_data_prefix"
                 )
-            upload_prefix = str(Path(upload_result.ref.storage_path).parent.parent)
-
-            connection_dict = connection.model_dump(by_alias=True) if connection else {}
-
-            self.logger.info(
-                "calling publish-app connection_qualified_name=%s upload_prefix=%s executor_enabled=%s",
-                conn_qn,
-                upload_prefix,
-                not input.publish_dry_run,
-            )
-
-            await self.call_by_name(
-                "PublishWorkflow",
-                PublishInput(
-                    connection_qualified_name=conn_qn,
-                    transformed_data_prefix=upload_prefix,
-                    publish_state_prefix=(
-                        f"persistent-artifacts/apps/atlan-publish-app/state"
-                        f"/{conn_qn}/publish-state"
-                    ),
-                    current_state_prefix=f"argo-artifacts/{conn_qn}/current-state",
-                    connection_creation_enabled=bool(connection),
-                    executor_enabled=not input.publish_dry_run,
-                    connection_entity=connection_dict,
-                ),
-                task_queue=_PUBLISH_APP_TASK_QUEUE,
+            transformed_data_prefix = str(
+                Path(upload_result.ref.storage_path).parent.parent
             )
             publish_completed = True
-            self.logger.info("publish-app completed")
+            self.logger.info(
+                "upload complete transformed_data_prefix=%s", transformed_data_prefix
+            )
 
         self.logger.info(
             "openapi connector completed api_spec_count=%d api_path_count=%d total_scanned=%d publish_completed=%s",
@@ -521,6 +496,10 @@ class OpenAPIConnector(App):
         )
 
         return OpenAPIConnectorOutput(
+            connection_qualified_name=conn_qn
+            if input.connection_usage == "REUSE"
+            else "",
+            transformed_data_prefix=transformed_data_prefix,
             api_spec_count=api_spec_count,
             api_path_count=api_path_count,
             output_file=output_file_ref,
