@@ -391,49 +391,79 @@ class OpenAPIConnector(App):
             connection = self.require(input.connection, "connection")
             conn_qn = connection.attributes.qualified_name
 
-        if input.import_type == "CLOUD":
-            if not input.cloud_source or not input.spec_key:
-                raise ValueError(
-                    "cloud_source and spec_key required when import_type='CLOUD'"
-                )
-            raise NotImplementedError(
-                "CLOUD import_type not yet implemented in App Framework. "
-                "Use import_type='URL' with a direct spec URL instead."
-            )
-
-        if input.import_type == "DIRECT":
-            raise ValueError(
-                "import_type='DIRECT' (UI file upload) is not supported in the App Framework. "
-                "Use import_type='URL' with a publicly accessible spec URL, or "
-                "import_type='CLOUD' with a presigned URL."
-            )
-
-        if not input.spec_url:
-            raise ValueError("spec_url is required")
-
-        self.logger.info(
-            "openapi connector starting connection_qualified_name=%s spec_url=%s load_to_atlan=%s",
-            conn_qn,
-            input.spec_url,
-            input.load_to_atlan,
-        )
-
         output_dir = input.output_dir or str(
             Path(tempfile.gettempdir()) / "openapi" / self.run_id
         )
 
-        # ================================================================
-        # Step 1: Extract APISpec + APIPath (bundled, one HTTP GET)
-        # ================================================================
-        extract_result = await self.extract_spec(
-            ExtractSpecInput(
-                spec_url=input.spec_url,
-                connection_qualified_name=conn_qn,
-                output_dir=f"{output_dir}/raw",
+        if input.import_type == "CLOUD":
+            if not input.spec_prefix and not input.spec_key:
+                raise ValueError(
+                    "spec_prefix or spec_key required when import_type='CLOUD'"
+                )
+            # Resolve cloud_source credential if provided (Path A: external storage)
+            # If not provided, falls back to tenant storage env vars (Path B)
+            credential_data = None
+            if input.cloud_source:
+                from application_sdk.credentials.ref import CredentialRef
+
+                cred_ref = CredentialRef(
+                    name=input.cloud_source,
+                    credential_type="unknown",
+                    credential_guid=input.cloud_source,
+                )
+                credential_data = await self.context.resolve_credential_raw(cred_ref)
+                self.logger.info(
+                    "resolved cloud_source credential auth_type=%s",
+                    credential_data.get("authType", "unknown"),
+                )
+
+            from app.cloud_storage import download_spec_from_cloud
+
+            local_spec_paths = await download_spec_from_cloud(
+                spec_prefix=input.spec_prefix,
+                spec_key=input.spec_key,
+                credential_data=credential_data,
+                output_dir=f"{output_dir}/cloud_download",
+                tenant_store=self.context.storage,
             )
+            # Each downloaded file is processed as a separate spec_url
+            # (extract_spec handles local file paths via api_client)
+            spec_urls = local_spec_paths
+        elif input.import_type == "DIRECT":
+            raise ValueError(
+                "import_type='DIRECT' is not supported — it was never exposed in the UI. "
+                "Use import_type='URL' or import_type='CLOUD'."
+            )
+        elif input.import_type == "URL":
+            if not input.spec_url:
+                raise ValueError("spec_url is required when import_type='URL'")
+            spec_urls = [input.spec_url]
+        else:
+            raise ValueError(f"Unknown import_type: {input.import_type}")
+
+        self.logger.info(
+            "openapi connector starting connection_qualified_name=%s spec_urls=%s load_to_atlan=%s",
+            conn_qn,
+            spec_urls,
+            input.load_to_atlan,
         )
 
-        total_scanned = extract_result.api_spec_count + extract_result.api_path_count
+        # ================================================================
+        # Step 1: Extract APISpec + APIPath (bundled, one per spec file)
+        # ================================================================
+        total_scanned = 0
+        all_extract_results: list[ExtractSpecOutput] = []
+
+        for i, spec_url in enumerate(spec_urls):
+            extract_result = await self.extract_spec(
+                ExtractSpecInput(
+                    spec_url=spec_url,
+                    connection_qualified_name=conn_qn,
+                    output_dir=f"{output_dir}/raw/{i}",
+                )
+            )
+            all_extract_results.append(extract_result)
+            total_scanned += extract_result.api_spec_count + extract_result.api_path_count
 
         # ================================================================
         # Step 2: Transform to Atlan Atlas entity format
@@ -444,21 +474,24 @@ class OpenAPIConnector(App):
 
         if total_scanned > 0:
             workflow_run_at_ms = int(self.context.started_at.timestamp() * 1000)
-            transform_result = await self.transform(
-                TransformInput(
-                    api_spec_file=extract_result.api_spec_file,
-                    api_path_file=extract_result.api_path_file,
-                    connection=connection,
-                    connection_qualified_name=conn_qn,
-                    output_dir=output_dir,
-                    workflow_id=self.run_id,
-                    workflow_type=self.context.app_name,
-                    workflow_run_at_ms=workflow_run_at_ms,
+            for i, extract_result in enumerate(all_extract_results):
+                if extract_result.api_spec_count + extract_result.api_path_count == 0:
+                    continue
+                transform_result = await self.transform(
+                    TransformInput(
+                        api_spec_file=extract_result.api_spec_file,
+                        api_path_file=extract_result.api_path_file,
+                        connection=connection,
+                        connection_qualified_name=conn_qn,
+                        output_dir=f"{output_dir}/transform/{i}",
+                        workflow_id=self.run_id,
+                        workflow_type=self.context.app_name,
+                        workflow_run_at_ms=workflow_run_at_ms,
+                    )
                 )
-            )
-            output_file_ref = transform_result.output_file
-            api_spec_count = transform_result.api_spec_count
-            api_path_count = transform_result.api_path_count
+                output_file_ref = transform_result.output_file
+                api_spec_count += transform_result.api_spec_count
+                api_path_count += transform_result.api_path_count
 
         # ================================================================
         # Step 3: Upload and publish to Atlan (if requested)
