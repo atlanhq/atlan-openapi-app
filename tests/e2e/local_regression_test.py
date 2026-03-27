@@ -26,7 +26,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from pyatlan_v9.model.assets import Connection
+from application_sdk.contracts.types import ConnectionAttributes, ConnectionRef
 
 from app.contracts import OpenAPIConnectorInput
 from tests.e2e.local_infra import (
@@ -109,11 +109,12 @@ async def run_openapi_test(mgr: LocalProcessManager) -> LocalTestResult:
         _conn_name = f"local-openapi-{int(time.time())}"
         connector_input = OpenAPIConnectorInput(
             connection_usage="CREATE",
-            connection=Connection(
-                qualified_name=f"default/api/{_conn_name}",
-                name=_conn_name,
-                category="API",
-                admin_groups=["admins"],
+            connection=ConnectionRef(
+                attributes=ConnectionAttributes(
+                    qualified_name=f"default/api/{_conn_name}",
+                    name=_conn_name,
+                    category="API",
+                ),
             ),
             spec_url=spec_url,
             load_to_atlan=False,
