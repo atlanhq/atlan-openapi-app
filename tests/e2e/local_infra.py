@@ -122,6 +122,50 @@ spec:
     with (components_dir / "secretstore.yaml").open("w") as f:
         f.write(secretstore_yaml)
 
+    objectstore_dir = tmp_dir / "objectstore"
+    objectstore_dir.mkdir(parents=True)
+    objectstore_yaml = f"""apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: objectstore
+spec:
+  type: bindings.localstorage
+  version: v1
+  ignoreErrors: true
+  metadata:
+    - name: rootPath
+      value: {objectstore_dir}
+"""
+    with (components_dir / "objectstore.yaml").open("w") as f:
+        f.write(objectstore_yaml)
+
+    statestore_dir = tmp_dir / "statestore"
+    statestore_dir.mkdir(parents=True)
+    statestore_yaml = f"""apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: statestore
+spec:
+  type: state.in-memory
+  version: v1
+"""
+    with (components_dir / "statestore.yaml").open("w") as f:
+        f.write(statestore_yaml)
+
+    eventstore_yaml = """apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: eventstore
+spec:
+  type: bindings.localstorage
+  version: v1
+  metadata:
+    - name: rootPath
+      value: /tmp/dapr-eventstore
+"""
+    with (components_dir / "eventstore.yaml").open("w") as f:
+        f.write(eventstore_yaml)
+
     return str(tmp_dir)
 
 
@@ -148,7 +192,11 @@ class LocalProcessManager:
         log_file = Path(tempfile.gettempdir()) / f"app-log-{app.task_queue}.jsonl"
         with contextlib.suppress(FileNotFoundError):
             log_file.unlink()
-        proc_env = {**os.environ, "LOG_FILE_PATH": str(log_file)}
+        proc_env = {
+            **os.environ,
+            "LOG_FILE_PATH": str(log_file),
+            "DAPR_COMPONENTS_PATH": self._dapr_components_path,
+        }
 
         actual_worker_port = _free_port()
         has_handler = handler and app.handler_port > 0
