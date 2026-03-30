@@ -160,8 +160,15 @@ async def _download_from_external_store(
             logger.debug("skipping non-spec file=%s", obj_path)
             continue
 
-        filename = Path(obj_path).name
-        local_path = str(Path(output_dir) / filename)
+        # Preserve relative path structure to avoid filename collisions
+        # (e.g., specs/v1/api.json and specs/v2/api.json)
+        rel_path = (
+            obj_path[len(list_prefix) :]
+            if list_prefix and obj_path.startswith(list_prefix)
+            else Path(obj_path).name
+        )
+        local_path = str(Path(output_dir) / rel_path)
+        Path(local_path).parent.mkdir(parents=True, exist_ok=True)
         logger.info("downloading spec file=%s", obj_path)
         result = await obs.get_async(store, obj_path)
         data = await result.bytes_async()
