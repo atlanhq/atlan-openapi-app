@@ -54,16 +54,20 @@ jobs:
             SHORT_SHA="${SHORT_SHA:0:7}"
             BRANCH="${{ github.ref_name }}"
             if [ "$BRANCH" = "main" ]; then
-              VERSION="${SHORT_SHA}"
+              TAG="${SHORT_SHA}"
+              {
+                echo "tags<<EOF"
+                echo "${IMAGE}:${TAG}"
+                echo "EOF"
+              } >> "$GITHUB_OUTPUT"
             else
-              VERSION="${BRANCH}-${SHORT_SHA}"
+              TAG="${SHORT_SHA}"
+              {
+                echo "tags<<EOF"
+                echo "${IMAGE}-${BRANCH}:${TAG}"
+                echo "EOF"
+              } >> "$GITHUB_OUTPUT"
             fi
-            TAG="${VERSION}"
-            {
-              echo "tags<<EOF"
-              echo "${IMAGE}:${VERSION}"
-              echo "EOF"
-            } >> "$GITHUB_OUTPUT"
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
