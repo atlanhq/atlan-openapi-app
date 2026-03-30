@@ -463,7 +463,9 @@ class OpenAPIConnector(App):
                 )
             )
             all_extract_results.append(extract_result)
-            total_scanned += extract_result.api_spec_count + extract_result.api_path_count
+            total_scanned += (
+                extract_result.api_spec_count + extract_result.api_path_count
+            )
 
         # ================================================================
         # Step 2: Transform to Atlan Atlas entity format
