@@ -349,7 +349,7 @@ class TestDownloadSpecFromCloud:
             patch("app.cloud_storage.obs") as mock_obs,
         ):
             mock_create.return_value = MagicMock()
-            mock_obs.list_async = AsyncMock(
+            mock_create.return_value.list_async = AsyncMock(
                 return_value=[
                     {"path": "specs/api1.json", "size": 100},
                     {"path": "specs/api2.yaml", "size": 200},
@@ -380,12 +380,9 @@ class TestDownloadSpecFromCloud:
             "extra": {"region": "us-east-1", "s3_bucket": "ext-bucket"},
         }
 
-        with (
-            patch("app.cloud_storage._create_store") as mock_create,
-            patch("app.cloud_storage.obs") as mock_obs,
-        ):
+        with patch("app.cloud_storage._create_store") as mock_create:
             mock_create.return_value = MagicMock()
-            mock_obs.list_async = AsyncMock(
+            mock_create.return_value.list_async = AsyncMock(
                 return_value=[{"path": "specs/readme.txt", "size": 50}]
             )
 
