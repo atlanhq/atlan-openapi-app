@@ -35,4 +35,6 @@ COPY --chown=appuser:appuser app/ app/
 
 ENV ATLAN_APP_MODULE=${APP_MODULE}
 ENV ATLAN_CONTRACT_GENERATED_DIR=/app/app/generated
-ENV ATLAN_TASK_QUEUE=atlan-openapi-queue
+# Task queue is derived by the SDK from ATLAN_APPLICATION_NAME + ATLAN_DEPLOYMENT_NAME
+# (set by Helm at runtime) → atlan-{app}-{deployment}, e.g. atlan-openapi-production.
+# This matches the atlan-interim-apps template which produces the same pattern.
