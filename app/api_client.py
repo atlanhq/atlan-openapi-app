@@ -70,7 +70,7 @@ class OpenAPIApiClient:
         # Local file path (from CLOUD download) — read directly
         import os
 
-        if os.path.isfile(spec_url):
+        if "://" not in spec_url and os.path.isfile(spec_url):
             logger.info("reading OpenAPI spec from local file=%s", spec_url)
             with open(spec_url, "rb") as f:
                 content = f.read()
@@ -148,10 +148,8 @@ class OpenAPIApiClient:
                 )
                 try:
                     spec = self._parse_body(raw, content_type, name)
-                    if (
-                        isinstance(spec, dict)
-                        and "openapi" in spec
-                        or "swagger" in spec
+                    if isinstance(spec, dict) and (
+                        "openapi" in spec or "swagger" in spec
                     ):
                         logger.info("extracted spec from ZIP file=%s", name)
                         specs.append(spec)
