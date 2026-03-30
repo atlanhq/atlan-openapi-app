@@ -35,4 +35,4 @@ COPY --chown=appuser:appuser app/ app/
 
 ENV ATLAN_APP_MODULE=${APP_MODULE}
 ENV ATLAN_CONTRACT_GENERATED_DIR=/app/app/generated
-ENV ATLAN_TASK_QUEUE=openapi-queue
+ENV ATLAN_TASK_QUEUE=atlan-openapi-queue
