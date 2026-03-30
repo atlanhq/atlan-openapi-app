@@ -28,7 +28,7 @@ from typing import Any
 
 import obstore as obs
 from application_sdk.observability.logger_adaptor import get_logger
-from obstore.store import AzureStore, GCSStore, S3Store
+from obstore.store import AzureStore, GCSStore, S3Store  # type: ignore[reportCallIssue]
 
 logger = get_logger(__name__)
 
@@ -58,7 +58,6 @@ def _create_store(creds: dict[str, Any]) -> Any:
     auth_type = creds.get("authType", "")
 
     if auth_type == "s3":
-
         bucket = extra.get("s3_bucket", "")
         region = extra.get("region", "")
         access_key = creds.get("username") or ""
@@ -81,10 +80,9 @@ def _create_store(creds: dict[str, Any]) -> Any:
         # If no keys and no role: obstore uses default credentials chain
         # (IAM/instance profile/EKS IRSA)
 
-        return S3Store(bucket=bucket, config=config)
+        return S3Store(bucket=bucket, config=config)  # type: ignore[reportCallIssue]
 
     elif auth_type == "gcs":
-
         bucket = extra.get("gcs_bucket", "")
         if not bucket:
             raise ValueError("GCS bucket is required (extra.gcs_bucket)")
@@ -94,10 +92,9 @@ def _create_store(creds: dict[str, Any]) -> Any:
         if sa_json:
             gcs_config["google_service_account_key"] = sa_json
 
-        return GCSStore(bucket=bucket, config=gcs_config if gcs_config else None)
+        return GCSStore(bucket=bucket, config=gcs_config if gcs_config else None)  # type: ignore[reportCallIssue]
 
     elif auth_type == "adls":
-
         storage_account = extra.get("storage_account_name", "")
         container = extra.get("adls_container", "objectstore")
         if not storage_account:
@@ -121,7 +118,7 @@ def _create_store(creds: dict[str, Any]) -> Any:
             if client_secret:
                 az_config["azure_storage_client_secret"] = client_secret
 
-        return AzureStore(container_name=container, config=az_config)
+        return AzureStore(container_name=container, config=az_config)  # type: ignore[reportCallIssue]
 
     else:
         raise ValueError(f"Unknown cloud credential authType: {auth_type}")
@@ -155,7 +152,7 @@ async def _download_from_external_store(
     logger.info("listing all specs under prefix=%s", list_prefix)
 
     downloaded: list[str] = []
-    objects = await obs.list_async(store, prefix=list_prefix)
+    objects = await store.list_async(prefix=list_prefix)  # type: ignore[attr-defined]
     for obj_meta in objects:
         obj_path = obj_meta["path"]
         ext = Path(obj_path).suffix.lower()

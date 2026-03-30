@@ -141,7 +141,7 @@ spec:
 
     statestore_dir = tmp_dir / "statestore"
     statestore_dir.mkdir(parents=True)
-    statestore_yaml = f"""apiVersion: dapr.io/v1alpha1
+    statestore_yaml = """apiVersion: dapr.io/v1alpha1
 kind: Component
 metadata:
   name: statestore
