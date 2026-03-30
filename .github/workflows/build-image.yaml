@@ -50,8 +50,14 @@ jobs:
               echo "EOF"
             } >> "$GITHUB_OUTPUT"
           else
-            VERSION="${{ github.sha }}"
-            VERSION="${VERSION:0:7}"
+            SHORT_SHA="${{ github.sha }}"
+            SHORT_SHA="${SHORT_SHA:0:7}"
+            BRANCH="${{ github.ref_name }}"
+            if [ "$BRANCH" = "main" ]; then
+              VERSION="${SHORT_SHA}"
+            else
+              VERSION="${BRANCH}-${SHORT_SHA}"
+            fi
             TAG="${VERSION}"
             {
               echo "tags<<EOF"
