@@ -504,13 +504,13 @@ class OpenAPIConnector(App):
         transformed_data_prefix = ""
 
         if input.load_to_atlan and output_file_path:
-            # Upload to: artifacts/apps/{app}/workflows/{workflow_id}/{run_id}/transformed/
-            # This matches the crossover template's transformed-data-prefix which uses
-            # both workflow_id and run_id from manage_interim_app.py outputs.
+            # Upload to SDK default path + /transformed/ subdirectory:
+            #   artifacts/apps/{app}/workflows/{workflow_id}/{run_id}/transformed/{filename}
+            # The SDK computes the prefix from context; we just append /transformed/.
             upload_result = await self.upload(
                 UploadInput(
                     local_path=output_file_path,
-                    storage_path=f"artifacts/apps/{self.context.app_name}/workflows/{input.workflow_id}/{self.run_id}/transformed/{Path(output_file_path).name}",
+                    storage_path=f"artifacts/apps/{self.context.app_name}/workflows/{self.context.workflow_id}/{self.run_id}/transformed/{Path(output_file_path).name}",
                 )
             )
             if not upload_result.ref.storage_path:
