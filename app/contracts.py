@@ -105,6 +105,34 @@ class ExtractSpecOutput(Output):
 
 
 # =============================================================================
+# Task-level contracts: download_cloud_spec
+# =============================================================================
+
+
+class DownloadCloudSpecInput(Input):
+    """Input for the download_cloud_spec task."""
+
+    cloud_source: str = ""
+    """Cloud storage credential GUID."""
+
+    spec_prefix: str = ""
+    """Object store directory path."""
+
+    spec_key: str = ""
+    """Object key (filename) in the object store."""
+
+    output_dir: str = ""
+    """Directory to download spec files to."""
+
+
+class DownloadCloudSpecOutput(Output):
+    """Output from the download_cloud_spec task."""
+
+    spec_paths: list[str] = []
+    """Local file paths of downloaded spec files."""
+
+
+# =============================================================================
 # Task-level contracts: transform
 # =============================================================================
 

@@ -33,6 +33,8 @@ from app.asset_mapper import (
     map_connection,
 )
 from app.contracts import (
+    DownloadCloudSpecInput,
+    DownloadCloudSpecOutput,
     ExtractSpecInput,
     ExtractSpecOutput,
     OpenAPIConnectorInput,
@@ -299,6 +301,41 @@ class OpenAPIConnector(App):
     passthrough_modules = {"openapi.asset_mapper"}  # noqa: RUF012
 
     @task(
+        timeout_seconds=1800,
+        heartbeat_timeout_seconds=120,
+        auto_heartbeat_seconds=30,
+    )
+    async def download_cloud_spec(
+        self, input: DownloadCloudSpecInput
+    ) -> DownloadCloudSpecOutput:
+        """Download OpenAPI spec from cloud storage. Runs as activity (has I/O)."""
+        credential_data = None
+        if input.cloud_source:
+            from application_sdk.credentials.ref import CredentialRef
+
+            cred_ref = CredentialRef(
+                name=input.cloud_source,
+                credential_type="unknown",
+                credential_guid=input.cloud_source,
+            )
+            credential_data = await self.context.resolve_credential_raw(cred_ref)
+            self.logger.info(
+                "resolved cloud_source credential auth_type=%s",
+                credential_data.get("authType", "unknown"),
+            )
+
+        from app.cloud_storage import download_spec_from_cloud
+
+        local_spec_paths = await download_spec_from_cloud(
+            spec_prefix=input.spec_prefix,
+            spec_key=input.spec_key,
+            credential_data=credential_data,
+            output_dir=input.output_dir,
+            tenant_store=self.context.storage,
+        )
+        return DownloadCloudSpecOutput(spec_paths=local_spec_paths)
+
+    @task(
         timeout_seconds=3600,
         heartbeat_timeout_seconds=120,
         auto_heartbeat_seconds=30,
@@ -400,35 +437,17 @@ class OpenAPIConnector(App):
                 raise ValueError(
                     "spec_prefix or spec_key required when import_type='CLOUD'"
                 )
-            # Resolve cloud_source credential if provided (Path A: external storage)
-            # If not provided, falls back to tenant storage env vars (Path B)
-            credential_data = None
-            if input.cloud_source:
-                from application_sdk.credentials.ref import CredentialRef
-
-                cred_ref = CredentialRef(
-                    name=input.cloud_source,
-                    credential_type="unknown",
-                    credential_guid=input.cloud_source,
+            # Download spec from cloud storage via task (credential resolution
+            # and cloud I/O must run in an activity, not workflow code).
+            cloud_result = await self.download_cloud_spec(
+                DownloadCloudSpecInput(
+                    cloud_source=input.cloud_source,
+                    spec_prefix=input.spec_prefix,
+                    spec_key=input.spec_key,
+                    output_dir=f"{output_dir}/cloud_download",
                 )
-                credential_data = await self.context.resolve_credential_raw(cred_ref)
-                self.logger.info(
-                    "resolved cloud_source credential auth_type=%s",
-                    credential_data.get("authType", "unknown"),
-                )
-
-            from app.cloud_storage import download_spec_from_cloud
-
-            local_spec_paths = await download_spec_from_cloud(
-                spec_prefix=input.spec_prefix,
-                spec_key=input.spec_key,
-                credential_data=credential_data,
-                output_dir=f"{output_dir}/cloud_download",
-                tenant_store=self.context.storage,
             )
-            # Each downloaded file is processed as a separate spec_url
-            # (extract_spec handles local file paths via api_client)
-            spec_urls = local_spec_paths
+            spec_urls = cloud_result.spec_paths
         elif input.import_type == "DIRECT":
             raise ValueError(
                 "import_type='DIRECT' is not supported — it was never exposed in the UI. "
