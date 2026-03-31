@@ -510,7 +510,7 @@ class OpenAPIConnector(App):
             upload_result = await self.upload(
                 UploadInput(
                     local_path=output_file_path,
-                    storage_path=f"artifacts/apps/{self.context.app_name}/workflows/{self.context.workflow_id}/{self.run_id}/transformed/{Path(output_file_path).name}",
+                    storage_path=f"artifacts/apps/{self.context.app_name}/workflows/{input.workflow_id}/{self.run_id}/transformed/{Path(output_file_path).name}",
                 )
             )
             if not upload_result.ref.storage_path:
