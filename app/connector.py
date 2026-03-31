@@ -504,8 +504,9 @@ class OpenAPIConnector(App):
         transformed_data_prefix = ""
 
         if input.load_to_atlan and output_file_path:
-            # Upload to SDK standard path: artifacts/apps/{app}/workflows/{wf_id}/{run_id}/transformed/
-            # The publish step references this path via workflow_id + run_id outputs.
+            # Upload to: artifacts/apps/{app}/workflows/{workflow_id}/{run_id}/transformed/
+            # This matches the crossover template's transformed-data-prefix which uses
+            # both workflow_id and run_id from manage_interim_app.py outputs.
             upload_result = await self.upload(
                 UploadInput(
                     local_path=output_file_path,
