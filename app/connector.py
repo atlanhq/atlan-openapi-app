@@ -217,7 +217,7 @@ def _transform_blocking(
     """Transform OpenAPI records to Atlan Atlas entity format."""
     out_dir = Path(input.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    output_file = out_dir / "openapi_metadata.jsonl"
+    output_file = out_dir / "openapi_metadata.json"
 
     connection = input.connection
     if connection is not None:
