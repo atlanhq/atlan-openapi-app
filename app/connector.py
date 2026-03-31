@@ -504,11 +504,12 @@ class OpenAPIConnector(App):
         transformed_data_prefix = ""
 
         if input.load_to_atlan and output_file_path:
+            # Upload to SDK standard path: artifacts/apps/{app}/workflows/{wf_id}/{run_id}/transformed/
+            # The publish step references this path via workflow_id + run_id outputs.
             upload_result = await self.upload(
                 UploadInput(
                     local_path=output_file_path,
-                    storage_path=f"{conn_qn}/transformed-metadata/chunk-0-part0.json",
-                    tier=StorageTier.PERSISTENT,
+                    storage_path=f"artifacts/apps/{self.context.app_name}/workflows/{input.workflow_id}/{self.run_id}/transformed/{Path(output_file_path).name}",
                 )
             )
             if not upload_result.ref.storage_path:
