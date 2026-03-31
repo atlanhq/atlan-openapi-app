@@ -311,14 +311,9 @@ class OpenAPIConnector(App):
         """Download OpenAPI spec from cloud storage. Runs as activity (has I/O)."""
         credential_data = None
         if input.cloud_source:
-            from application_sdk.credentials.ref import CredentialRef
+            from application_sdk.services.secretstore import SecretStore
 
-            cred_ref = CredentialRef(
-                name=input.cloud_source,
-                credential_type="unknown",
-                credential_guid=input.cloud_source,
-            )
-            credential_data = await self.context.resolve_credential_raw(cred_ref)
+            credential_data = await SecretStore.get_credentials(input.cloud_source)
             self.logger.info(
                 "resolved cloud_source credential auth_type=%s",
                 credential_data.get("authType", "unknown"),
