@@ -38,7 +38,7 @@ _SPEC_EXTENSIONS = {".json", ".yaml", ".yml", ".zip"}
 def _has_valid_auth(credentials: dict[str, Any]) -> bool:
     """Check if credential has key-based or role-based auth."""
     has_key_auth = bool(credentials.get("username") and credentials.get("password"))
-    extra = credentials.get("extra", {})
+    extra = credentials.get("extra") or credentials.get("extras") or {}
     if isinstance(extra, str):
         extra = json.loads(extra) if extra else {}
     has_role_auth = bool(extra.get("aws_role_arn"))
@@ -52,10 +52,10 @@ def _create_store(creds: dict[str, Any]) -> Any:
     place we need boto3 — obstore doesn't support STS assume_role natively).
     boto3 is already available in the base image.
     """
-    extra = creds.get("extra", {})
+    extra = creds.get("extra") or creds.get("extras") or {}
     if isinstance(extra, str):
         extra = json.loads(extra) if extra else {}
-    auth_type = creds.get("authType", "")
+    auth_type = creds.get("authType") or creds.get("auth_type") or ""
 
     if auth_type == "s3":
         bucket = extra.get("s3_bucket", "")
@@ -239,7 +239,7 @@ async def download_spec_from_cloud(
         # Path A: External storage — use credential's own bucket/keys
         logger.info(
             "using external storage credentials auth_type=%s",
-            credential_data.get("authType", "unknown"),
+            credential_data.get("authType") or credential_data.get("auth_type") or "unknown",
         )
         store = _create_store(credential_data)
         return await _download_from_external_store(
