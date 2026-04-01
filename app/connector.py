@@ -316,7 +316,9 @@ class OpenAPIConnector(App):
             credential_data = await SecretStore.get_credentials(input.cloud_source)
             self.logger.info(
                 "resolved cloud_source credential auth_type=%s",
-                credential_data.get("authType") or credential_data.get("auth_type") or "unknown",
+                credential_data.get("authType")
+                or credential_data.get("auth_type")
+                or "unknown",
             )
 
         from app.cloud_storage import download_spec_from_cloud
