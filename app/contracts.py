@@ -5,8 +5,10 @@ backwards compatibility. Each App and @task method uses single-dataclass
 inputs and outputs to ensure Temporal serialization works correctly.
 """
 
+from typing import Annotated
+
 from application_sdk.app import Input, Output
-from application_sdk.contracts.types import ConnectionRef, FileReference
+from application_sdk.contracts.types import ConnectionRef, FileReference, MaxItems
 from application_sdk.credentials.ref import CredentialRef
 
 from app.generated.input import AppInputContract
@@ -128,7 +130,7 @@ class DownloadCloudSpecInput(Input):
 class DownloadCloudSpecOutput(Output):
     """Output from the download_cloud_spec task."""
 
-    spec_paths: list[str] = []
+    spec_paths: Annotated[list[str], MaxItems(1000)] = []
     """Local file paths of downloaded spec files."""
 
 
