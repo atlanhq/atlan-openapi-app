@@ -408,14 +408,6 @@ class OpenAPIConnector(App):
         3. transform — map to Atlan Atlas entities (if records were extracted)
         4. publish — sync to Atlan via publish-app (if load_to_atlan=True)
         """
-        self.logger.info(
-            "run starting connection_usage=%s import_type=%s load_to_atlan=%s workflow_id=%s",
-            input.connection_usage,
-            input.import_type,
-            input.load_to_atlan,
-            input.workflow_id,
-        )
-
         if input.connection_usage == "REUSE":
             conn_qn = input.connection_qualified_name
             # Fall back to connection.qualified_name when the explicit field is empty
@@ -427,29 +419,15 @@ class OpenAPIConnector(App):
                     "connection_qualified_name required when connection_usage='REUSE'"
                 )
             connection = None
-            self.logger.info(
-                "connection mode=REUSE connection_qualified_name=%s", conn_qn
-            )
         else:
             connection = self.require(input.connection, "connection")
             conn_qn = connection.attributes.qualified_name
-            self.logger.info(
-                "connection mode=CREATE connection_qualified_name=%s connection_name=%s",
-                conn_qn,
-                connection.attributes.name,
-            )
 
         output_dir = input.output_dir or str(
             Path(tempfile.gettempdir()) / "openapi" / self.run_id
         )
 
         if input.import_type == "CLOUD":
-            self.logger.info(
-                "import mode=CLOUD spec_prefix=%s spec_key=%s cloud_source=%s",
-                input.spec_prefix,
-                input.spec_key,
-                input.cloud_source,
-            )
             if not input.spec_prefix and not input.spec_key:
                 raise ValueError(
                     "spec_prefix or spec_key required when import_type='CLOUD'"
@@ -465,11 +443,6 @@ class OpenAPIConnector(App):
                 )
             )
             spec_urls = cloud_result.spec_paths
-            self.logger.info(
-                "cloud download complete spec_count=%d paths=%s",
-                len(spec_urls),
-                spec_urls,
-            )
         elif input.import_type == "DIRECT":
             raise ValueError(
                 "import_type='DIRECT' is not supported — it was never exposed in the UI. "
@@ -478,7 +451,6 @@ class OpenAPIConnector(App):
         elif input.import_type == "URL":
             if not input.spec_url:
                 raise ValueError("spec_url is required when import_type='URL'")
-            self.logger.info("import mode=URL spec_url=%s", input.spec_url)
             spec_urls = [input.spec_url]
         else:
             raise ValueError(f"Unknown import_type: {input.import_type}")
@@ -546,16 +518,13 @@ class OpenAPIConnector(App):
         transformed_data_prefix = ""
 
         if input.load_to_atlan and output_file_path:
-            storage_dest = f"artifacts/apps/{self.context.app_name}/workflows/{input.workflow_id}/{self.run_id}/transformed/{Path(output_file_path).name}"
-            self.logger.info(
-                "uploading transformed output local_path=%s storage_path=%s",
-                output_file_path,
-                storage_dest,
-            )
+            # Upload to SDK default path + /transformed/ subdirectory:
+            #   artifacts/apps/{app}/workflows/{workflow_id}/{run_id}/transformed/{filename}
+            # The SDK computes the prefix from context; we just append /transformed/.
             upload_result = await self.upload(
                 UploadInput(
                     local_path=output_file_path,
-                    storage_path=storage_dest,
+                    storage_path=f"artifacts/apps/{self.context.app_name}/workflows/{input.workflow_id}/{self.run_id}/transformed/{Path(output_file_path).name}",
                 )
             )
             if not upload_result.ref.storage_path:
@@ -567,14 +536,6 @@ class OpenAPIConnector(App):
             self.logger.info(
                 "upload complete transformed_data_prefix=%s", transformed_data_prefix
             )
-
-        if not publish_completed:
-            if not input.load_to_atlan:
-                self.logger.info("skipping upload load_to_atlan=False")
-            elif not output_file_path:
-                self.logger.info(
-                    "skipping upload no output file produced (0 records extracted)"
-                )
 
         self.logger.info(
             "openapi connector completed api_spec_count=%d api_path_count=%d total_scanned=%d publish_completed=%s",
