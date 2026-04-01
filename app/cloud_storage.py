@@ -76,24 +76,9 @@ def _create_store(creds: dict[str, Any]) -> Any:
         if role_arn:
             config["aws_role_arn"] = role_arn
             config["aws_role_session_name"] = "openapi-cloud-download"
-
-        if role_arn:
-            logger.info(
-                "S3 external store: role-based auth bucket=%s region=%s role_arn=%s",
-                bucket,
-                region,
-                role_arn,
-            )
-        elif access_key and secret_key:
-            logger.info(
-                "S3 external store: key-based auth bucket=%s region=%s", bucket, region
-            )
-        else:
-            logger.info(
-                "S3 external store: default credentials chain bucket=%s region=%s",
-                bucket,
-                region,
-            )
+            logger.info("using S3 role-based auth role_arn=%s", role_arn)
+        # If no keys and no role: obstore uses default credentials chain
+        # (IAM/instance profile/EKS IRSA)
 
         return S3Store(bucket=bucket, config=config)  # type: ignore[reportCallIssue]
 
@@ -106,9 +91,6 @@ def _create_store(creds: dict[str, Any]) -> Any:
         sa_json = creds.get("password") or ""
         if sa_json:
             gcs_config["google_service_account_key"] = sa_json
-            logger.info("GCS external store: service-account auth bucket=%s", bucket)
-        else:
-            logger.info("GCS external store: default credentials bucket=%s", bucket)
 
         return GCSStore(bucket=bucket, config=gcs_config if gcs_config else None)  # type: ignore[reportCallIssue]
 
@@ -129,29 +111,12 @@ def _create_store(creds: dict[str, Any]) -> Any:
 
         if access_key and not tenant_id:
             az_config["azure_storage_account_key"] = access_key
-            logger.info(
-                "ADLS external store: account-key auth storage_account=%s container=%s",
-                storage_account,
-                container,
-            )
         elif tenant_id and client_id:
             az_config["azure_storage_client_id"] = client_id
             az_config["azure_storage_tenant_id"] = tenant_id
             client_secret = creds.get("password") or ""
             if client_secret:
                 az_config["azure_storage_client_secret"] = client_secret
-            logger.info(
-                "ADLS external store: service-principal auth storage_account=%s container=%s tenant_id=%s",
-                storage_account,
-                container,
-                tenant_id,
-            )
-        else:
-            logger.info(
-                "ADLS external store: default credentials storage_account=%s container=%s",
-                storage_account,
-                container,
-            )
 
         return AzureStore(container_name=container, config=az_config)  # type: ignore[reportCallIssue]
 
@@ -272,16 +237,9 @@ async def download_spec_from_cloud(
 
     if credential_data is not None and _has_valid_auth(credential_data):
         # Path A: External storage — use credential's own bucket/keys
-        auth_type = credential_data.get("authType", "unknown")
-        extra = credential_data.get("extra", {})
-        if isinstance(extra, str):
-            extra = json.loads(extra) if extra else {}
-        role_arn = extra.get("aws_role_arn", "")
         logger.info(
-            "cloud download: using EXTERNAL storage auth_type=%s has_keys=%s role_arn=%s",
-            auth_type,
-            bool(credential_data.get("username") and credential_data.get("password")),
-            role_arn or "(none)",
+            "using external storage credentials auth_type=%s",
+            credential_data.get("authType", "unknown"),
         )
         store = _create_store(credential_data)
         return await _download_from_external_store(
@@ -290,14 +248,9 @@ async def download_spec_from_cloud(
 
     # Path B: Tenant's own Dapr-configured store
     if credential_data is not None:
-        logger.info(
-            "cloud download: using TENANT DEFAULT store (credential has no key/role auth, auth_type=%s)",
-            credential_data.get("authType", "unknown"),
-        )
+        logger.info("credential has no key/role auth, falling back to tenant store")
     else:
-        logger.info(
-            "cloud download: using TENANT DEFAULT store (no cloud_source credential)"
-        )
+        logger.info("no cloud_source credential, using tenant store")
 
     if tenant_store is None:
         raise RuntimeError(
