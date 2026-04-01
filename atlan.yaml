@@ -2,14 +2,13 @@ name: openapi
 app_id: 019d1f6b-6fea-7db3-96d8-e61e159d0351
 display_name: OpenAPI Spec Loader
 type: connector
-execution_mode: native
+execution_mode: crossover_2_0
 icon_url: http://assets.atlan.com/assets/apispec.png
 visibility: public
+argo_package_names:
+  - "@csa/openapi-spec-loader"
 build_tag: v1
 self_deployed_runtime: false
-
-# If set to true, images will be pushed to a shared repository where customers can also pull
-
 deploy:
   splitDeploymentEnabled: true
   keda:
@@ -26,4 +25,3 @@ deploy:
     subscription: false
     configurationstore: false
     lock: false
-
