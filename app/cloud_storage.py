@@ -57,6 +57,15 @@ def _create_store(creds: dict[str, Any]) -> Any:
         extra = json.loads(extra) if extra else {}
     auth_type = creds.get("authType") or creds.get("auth_type") or ""
 
+    # Infer auth_type from extra fields when not explicitly set
+    if not auth_type:
+        if extra.get("s3_bucket"):
+            auth_type = "s3"
+        elif extra.get("gcs_bucket"):
+            auth_type = "gcs"
+        elif extra.get("adls_container") or extra.get("storage_account_name"):
+            auth_type = "adls"
+
     if auth_type == "s3":
         bucket = extra.get("s3_bucket", "")
         region = extra.get("region", "")
@@ -239,7 +248,9 @@ async def download_spec_from_cloud(
         # Path A: External storage — use credential's own bucket/keys
         logger.info(
             "using external storage credentials auth_type=%s",
-            credential_data.get("authType") or credential_data.get("auth_type") or "unknown",
+            credential_data.get("authType")
+            or credential_data.get("auth_type")
+            or "unknown",
         )
         store = _create_store(credential_data)
         return await _download_from_external_store(
