@@ -18,8 +18,8 @@ uiConfig {
       inputs {
         ["import_type"] = new Config.Radio {
           title = "Import type"
-          helpText = "How to provide the spec: 'URL' (HTTP fetch), 'CLOUD' (object storage), 'DIRECT' (UI file upload)."
-          possibleValues { ["URL"] = "URL"; ["CLOUD"] = "Cloud"; ["DIRECT"] = "Direct" }
+          helpText = "How to provide the spec: 'URL' (HTTP fetch) or 'CLOUD' (object storage)."
+          possibleValues { ["URL"] = "URL"; ["CLOUD"] = "Cloud" }
           default = "URL"
           required = true
         }
@@ -29,13 +29,7 @@ uiConfig {
           required = true
           placeholderText = "https://petstore3.swagger.io/api/v3/openapi.json"
         }
-        ["spec_file"] = new Config.FileUploader {
-          title = "Spec file"
-          helpText = "Uploaded file reference. Required when import_type='DIRECT'."
-          hide = true
-          fileTypes { "application/json"; "application/zip"; "application/x-yaml"; "text/yaml" }
-        }
-        ["spec_prefix"] = new Config.TextInput {
+["spec_prefix"] = new Config.TextInput {
           title = "Object store path"
           helpText = "Object store directory path. Required when import_type='CLOUD'."
           width = 4
@@ -90,11 +84,7 @@ uiConfig {
       whenInputs { ["import_type"] = "CLOUD" }
       required { "cloud_source"; "spec_prefix"; "spec_key" }
     }
-    new Config.UIRule {
-      whenInputs { ["import_type"] = "DIRECT" }
-      required { "spec_file" }
-    }
-    new Config.UIRule {
+new Config.UIRule {
       whenInputs { ["connection_usage"] = "REUSE" }
       required { "connection_qualified_name" }
     }
