@@ -17,7 +17,7 @@
         "default": "URL",
         "enum": [
           "URL",
-          "CLOUD",
+          "CLOUD"
         ],
         "enumNames": [
           "URL",
