@@ -3,7 +3,7 @@
 from __future__ import annotations
 from typing import ClassVar
 from application_sdk.contracts.base import Input
-from application_sdk.contracts.types import ConnectionRef, FileReference
+from application_sdk.contracts.types import ConnectionRef
 
 
 class AppInputContract(Input):
@@ -15,11 +15,9 @@ class AppInputContract(Input):
     }
 
     import_type: str = "URL"
-    """How to provide the spec: 'URL' (HTTP fetch), 'CLOUD' (object storage), 'DIRECT' (UI file upload)."""
+    """How to provide the spec: 'URL' (HTTP fetch) or 'CLOUD' (object storage)."""
     spec_url: str = ""
     """URL to the OpenAPI spec JSON/YAML document. Required when import_type='URL'."""
-    spec_file: FileReference | None = None
-    """Uploaded file reference. Required when import_type='DIRECT'."""
     spec_prefix: str = ""
     """Object store directory path. Required when import_type='CLOUD'."""
     spec_key: str = ""
