@@ -1,9 +1,3 @@
-# TODO(v3-migration): several tests need manual updates:
-# - test_frozen_dataclass: OpenAPICredential is no longer a frozen dataclass; mutation won't raise
-# - test_validate_always_succeeds / test_validate_succeeds_with_auth_header: validate() now returns
-#   None instead of a ValidationResult object — assertions on result.success will fail
-# - TestAutoRegistration methods: CredentialTypeRegistry no longer has get_instance(); use
-#   CredentialTypeRegistry() directly; registry.get() → registry.get_class(); list_types() → registered_types()
 """Unit tests for OpenAPI credential parsing and factory functions."""
 
 from application_sdk.credentials.registry import CredentialTypeRegistry

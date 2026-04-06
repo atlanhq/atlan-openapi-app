@@ -49,14 +49,16 @@ class OpenAPIApiClient:
         await self._client.aclose()
 
     async def fetch_spec(self, spec_url: str) -> list[dict]:
-        """Fetch and parse an OpenAPI spec document from the given URL.
+        """Fetch and parse an OpenAPI spec document from a URL or local file path.
 
-        Detects JSON, YAML, or ZIP from the Content-Type header or URL
-        extension and parses accordingly. ZIP archives may contain multiple
-        JSON/YAML spec files — each is returned as a separate dict.
+        Detects JSON, YAML, or ZIP from the Content-Type header (URL) or file
+        extension (local path) and parses accordingly. ZIP archives may contain
+        multiple JSON/YAML spec files — each is returned as a separate dict.
 
         Args:
-            spec_url: Full URL to the OpenAPI JSON, YAML, or ZIP document.
+            spec_url: Full URL to the OpenAPI JSON, YAML, or ZIP document,
+                OR a local file path (for CLOUD import mode where the file
+                has already been downloaded).
 
         Returns:
             List of parsed spec documents. Typically one item; multiple for ZIP.
@@ -65,6 +67,30 @@ class OpenAPIApiClient:
             httpx.HTTPStatusError: If the HTTP response indicates an error.
             ValueError: If the response cannot be parsed.
         """
+        # Local file path (from CLOUD download) — read directly
+        import os
+
+        if "://" not in spec_url and os.path.isfile(spec_url):
+            logger.info("reading OpenAPI spec from local file=%s", spec_url)
+            with open(spec_url, "rb") as f:
+                content = f.read()
+            content_type = ""
+            is_zip = spec_url.endswith(".zip")
+            if is_zip:
+                return self._parse_zip(content, spec_url)
+            spec = self._parse_body(content, content_type, spec_url)
+            path_count = len(spec.get("paths", {}))
+            title = spec.get("info", {}).get("title", "<unknown>")
+            openapi_version = spec.get("openapi", spec.get("swagger", "?"))
+            logger.info(
+                "spec read from file title=%s openapi=%s paths=%d",
+                title,
+                openapi_version,
+                path_count,
+            )
+            return [spec]
+
+        # HTTP URL — fetch remotely
         logger.info("fetching OpenAPI spec url=%s", spec_url)
         response = await self._client.get(spec_url)
         response.raise_for_status()
@@ -122,10 +148,8 @@ class OpenAPIApiClient:
                 )
                 try:
                     spec = self._parse_body(raw, content_type, name)
-                    if (
-                        isinstance(spec, dict)
-                        and "openapi" in spec
-                        or "swagger" in spec
+                    if isinstance(spec, dict) and (
+                        "openapi" in spec or "swagger" in spec
                     ):
                         logger.info("extracted spec from ZIP file=%s", name)
                         specs.append(spec)
