@@ -546,9 +546,7 @@ class OpenAPIConnector(App):
         )
 
         return OpenAPIConnectorOutput(
-            connection_qualified_name=conn_qn
-            if input.connection_usage == "REUSE"
-            else "",
+            connection_qualified_name=conn_qn,
             transformed_data_prefix=transformed_data_prefix,
             api_spec_count=api_spec_count,
             api_path_count=api_path_count,
