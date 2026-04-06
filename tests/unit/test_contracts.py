@@ -84,7 +84,6 @@ class TestOpenAPIConnectorInput:
         assert decoded.spec_prefix == ""
         assert decoded.spec_key == ""
         assert decoded.cloud_source == ""
-        assert decoded.spec_file is None
 
     def test_round_trip_connection_usage_reuse(self) -> None:
         """REUSE connection_usage path survives round-trip."""
@@ -121,20 +120,6 @@ class TestOpenAPIConnectorInput:
         assert decoded.spec_prefix == "path/to/specs"
         assert decoded.spec_key == "openapi.json"
         assert decoded.cloud_source == "cred-guid-abc123"
-
-    def test_round_trip_spec_file_field(self) -> None:
-        """spec_file field (DIRECT import, unsupported) survives round-trip."""
-        from application_sdk.contracts.types import FileReference
-
-        ref = FileReference(local_path="/tmp/upload/spec.json")
-        original = OpenAPIConnectorInput(
-            import_type="DIRECT",
-            spec_file=ref,
-        )
-        decoded = _round_trip(original, OpenAPIConnectorInput)
-        assert decoded.import_type == "DIRECT"
-        assert decoded.spec_file is not None
-        assert decoded.spec_file.local_path == "/tmp/upload/spec.json"
 
 
 # =============================================================================
