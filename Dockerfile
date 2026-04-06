@@ -13,7 +13,7 @@
 
 FROM registry.atlan.com/public/app-runtime-base:refactor-v3-latest
 
-ARG APP_MODULE
+ARG APP_MODULE=app.connector:OpenAPIConnector
 
 # git is required for uv to fetch git-sourced dependencies (atlan-application-sdk)
 USER root
