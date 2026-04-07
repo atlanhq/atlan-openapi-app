@@ -443,11 +443,6 @@ class OpenAPIConnector(App):
                 )
             )
             spec_urls = cloud_result.spec_paths
-        elif input.import_type == "DIRECT":
-            raise ValueError(
-                "import_type='DIRECT' is not supported — it was never exposed in the UI. "
-                "Use import_type='URL' or import_type='CLOUD'."
-            )
         elif input.import_type == "URL":
             if not input.spec_url:
                 raise ValueError("spec_url is required when import_type='URL'")
@@ -546,9 +541,7 @@ class OpenAPIConnector(App):
         )
 
         return OpenAPIConnectorOutput(
-            connection_qualified_name=conn_qn
-            if input.connection_usage == "REUSE"
-            else "",
+            connection_qualified_name=conn_qn,
             transformed_data_prefix=transformed_data_prefix,
             api_spec_count=api_spec_count,
             api_path_count=api_path_count,
