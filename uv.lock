@@ -166,7 +166,7 @@ wheels = [
 [[package]]
 name = "atlan-application-sdk"
 version = "3.0.0"
-source = { git = "https://github.com/atlanhq/application-sdk?branch=output-interceptor-v3#ee1642b60edc38ce57db7ee642c8db97e88d990b" }
+source = { git = "https://github.com/atlanhq/application-sdk?branch=output-interceptor-v3#473adce69ee991fa1040b6b67d9a263cf733bb0e" }
 dependencies = [
     { name = "aiohttp" },
     { name = "duckdb" },
