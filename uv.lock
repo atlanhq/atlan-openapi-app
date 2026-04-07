@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -166,7 +166,7 @@ wheels = [
 [[package]]
 name = "atlan-application-sdk"
 version = "3.0.0"
-source = { git = "https://github.com/atlanhq/application-sdk?branch=refactor-v3#f911a28cfc35e1b6826d7f99e83cfed5999e4ea8" }
+source = { git = "https://github.com/atlanhq/application-sdk?branch=output-interceptor-v3#ee1642b60edc38ce57db7ee642c8db97e88d990b" }
 dependencies = [
     { name = "aiohttp" },
     { name = "duckdb" },
@@ -1708,7 +1708,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "atlan-application-sdk", extras = ["workflows"], git = "https://github.com/atlanhq/application-sdk?branch=refactor-v3" },
+    { name = "atlan-application-sdk", extras = ["workflows"], git = "https://github.com/atlanhq/application-sdk?branch=output-interceptor-v3" },
     { name = "pyyaml", specifier = ">=6.0" },
 ]
 
