@@ -11,19 +11,17 @@
           "widget": "radio",
           "label": "Import type",
           "hidden": false,
-          "help": "How to provide the spec: 'URL' (HTTP fetch), 'CLOUD' (object storage), 'DIRECT' (UI file upload).",
+          "help": "How to provide the spec: 'URL' (HTTP fetch) or 'CLOUD' (object storage).",
           "grid": 8
         },
         "default": "URL",
         "enum": [
           "URL",
-          "CLOUD",
-          "DIRECT"
+          "CLOUD"
         ],
         "enumNames": [
           "URL",
-          "Cloud",
-          "Direct"
+          "Cloud"
         ]
       },
       "spec_url": {
@@ -38,26 +36,7 @@
           "grid": 8
         }
       },
-      "spec_file": {
-        "type": "string",
-        "required": false,
-        "ui": {
-          "widget": "fileUpload",
-          "label": "Spec file",
-          "hidden": true,
-          "help": "Uploaded file reference. Required when import_type='DIRECT'.",
-          "placeholder": "",
-          "grid": 8,
-          "accept": [
-            "application/json",
-            "application/zip",
-            "application/x-yaml",
-            "text/yaml"
-          ],
-          "fileMetadata": true
-        }
-      },
-      "spec_prefix": {
+"spec_prefix": {
         "type": "string",
         "required": false,
         "ui": {
@@ -163,17 +142,7 @@
           "spec_key"
         ]
       },
-      {
-        "properties": {
-          "import_type": {
-            "const": "DIRECT"
-          }
-        },
-        "required": [
-          "spec_file"
-        ]
-      },
-      {
+{
         "properties": {
           "connection_usage": {
             "const": "REUSE"
@@ -202,7 +171,6 @@
         "properties": [
           "import_type",
           "spec_url",
-          "spec_file",
           "spec_prefix",
           "spec_key",
           "cloud_source"
