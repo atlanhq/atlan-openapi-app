@@ -166,7 +166,7 @@ wheels = [
 [[package]]
 name = "atlan-application-sdk"
 version = "3.0.0"
-source = { git = "https://github.com/atlanhq/application-sdk?branch=output-interceptor-v3#87c0c97e4b19de7e7ef531c665152caca0132db6" }
+source = { git = "https://github.com/atlanhq/application-sdk?branch=refactor-v3#369dc59d17eead6eb995e9c4d9716620666827db" }
 dependencies = [
     { name = "aiohttp" },
     { name = "duckdb" },
@@ -1708,7 +1708,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "atlan-application-sdk", extras = ["workflows"], git = "https://github.com/atlanhq/application-sdk?branch=output-interceptor-v3" },
+    { name = "atlan-application-sdk", extras = ["workflows"], git = "https://github.com/atlanhq/application-sdk?branch=refactor-v3" },
     { name = "pyyaml", specifier = ">=6.0" },
 ]
 
