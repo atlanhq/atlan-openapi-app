@@ -169,10 +169,11 @@ async def _extract_spec_async(
                     m.upper() for m in _TRACKED_METHODS if path_item.get(m) is not None
                 ]
 
-                # Build markdown description table (format matches Kotlin exactly)
+                # Build markdown description: method/summary table + operation descriptions
                 description = ""
                 if operations:
                     rows = ["| Method | Summary|", "|---|---|"]
+                    op_descriptions: list[str] = []
                     for method in _TRACKED_METHODS:
                         op = path_item.get(method)
                         if op is not None:
@@ -180,7 +181,18 @@ async def _extract_spec_async(
                                 op.get("summary", "") if isinstance(op, dict) else ""
                             )
                             rows.append(f"| `{method.upper()}` |{op_summary} |")
+                            op_desc = (
+                                op.get("description", "")
+                                if isinstance(op, dict)
+                                else ""
+                            )
+                            if op_desc:
+                                op_descriptions.append(
+                                    f"**{method.upper()}**\n{op_desc}"
+                                )
                     description = "\n".join(rows)
+                    if op_descriptions:
+                        description += "\n\n" + "\n\n".join(op_descriptions)
 
                 path_record = OpenAPIPathRecord(
                     path_url=path_url,
