@@ -9,7 +9,7 @@ argo_package_names:
 build_tag: v1
 self_deployed_runtime: false
 deploy:
-  execution_mode: crossover_2_0
+  execution_mode: native
   source: api
   splitDeploymentEnabled: true
   keda:
