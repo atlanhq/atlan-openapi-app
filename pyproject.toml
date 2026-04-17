@@ -9,7 +9,7 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-atlan-application-sdk = { git = "https://github.com/atlanhq/application-sdk", branch = "refactor-v3" }
+atlan-application-sdk = { git = "https://github.com/atlanhq/application-sdk", branch = "gaurav/app-vitals" }
 
 [build-system]
 requires = ["hatchling"]
