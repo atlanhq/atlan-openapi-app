@@ -95,7 +95,7 @@ jobs:
 
       - name: Comment profiling metrics on PR
         if: ${{ always() && github.event_name == 'pull_request' }}
-        uses: mshick/add-pr-comment@b8f338c590a895d50bcbfa6c5859251edc8952fc # v2.8.2
+        uses: mshick/add-pr-comment@64b8e914979889d746c99dea15a76e77ef64580a # v3.10.0
         with:
           message-id: "integration_test_profiling"
           message-path: metrics.md
