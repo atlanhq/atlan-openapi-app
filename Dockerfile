@@ -11,7 +11,7 @@
 #     --build-arg APP_MODULE=app.connector:OpenAPIConnector \
 #     -t openapi:latest .
 
-FROM registry.atlan.com/public/app-runtime-base:refactor-v3-latest
+FROM registry.atlan.com/public/app-runtime-base:3.0.0
 
 ARG APP_MODULE=app.connector:OpenAPIConnector
 
