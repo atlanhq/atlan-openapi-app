@@ -21,7 +21,7 @@ jobs:
         repo: ['atlanhq/atlan-apps-deployment']
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
-      - uses: actions/checkout@v4.0.0
+      - uses: actions/checkout@v6.0.2
         with:
           token: ${{ secrets.ORG_PAT_GITHUB }}
           fetch-depth: 0
