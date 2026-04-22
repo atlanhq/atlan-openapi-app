@@ -24,6 +24,7 @@ from application_sdk.app import App, task
 from application_sdk.contracts.storage import UploadInput
 from application_sdk.contracts.types import FileReference, StorageTier
 from application_sdk.observability.logger_adaptor import AtlanLoggerAdapter as Logger
+from application_sdk.outputs import Artifact, Metric, get_outputs
 
 from app.api_types import OpenAPIPathRecord, OpenAPISpecRecord
 from app.asset_mapper import (
@@ -398,6 +399,25 @@ class OpenAPIConnector(App):
             spec_count,
             path_count,
         )
+
+        # Emit CUE metrics — surfaced in the Automation Engine DAG run's
+        # Gantt chart tooltip and metrics cards.
+        outputs = get_outputs()
+        outputs.add_metric(
+            Metric(
+                name="api-specs-extracted",
+                value=spec_count,
+                display_name="API Specs Extracted",
+            )
+        )
+        outputs.add_metric(
+            Metric(
+                name="api-paths-extracted",
+                value=path_count,
+                display_name="API Paths Extracted",
+            )
+        )
+
         return ExtractSpecOutput(
             api_spec_file=spec_file,
             api_path_file=path_file,
@@ -421,6 +441,43 @@ class OpenAPIConnector(App):
             result.api_spec_count,
             result.api_path_count,
         )
+
+        # Emit CUE metrics + artifacts.
+        # Input FileReferences have storage_path populated (SDK uploaded them
+        # between extract_spec and transform), so they're safe to reference as
+        # downloadable artifacts via the AE download-csv endpoint.
+        outputs = get_outputs()
+        outputs.add_metric(
+            Metric(
+                name="api-specs-transformed",
+                value=result.api_spec_count,
+                display_name="API Specs Transformed",
+            )
+        )
+        outputs.add_metric(
+            Metric(
+                name="api-paths-transformed",
+                value=result.api_path_count,
+                display_name="API Paths Transformed",
+            )
+        )
+        if input.api_spec_file and input.api_spec_file.storage_path:
+            outputs.add_artifact(
+                Artifact(
+                    name="api-spec-raw",
+                    path=input.api_spec_file.storage_path,
+                    display_name="API Spec (raw JSONL)",
+                )
+            )
+        if input.api_path_file and input.api_path_file.storage_path:
+            outputs.add_artifact(
+                Artifact(
+                    name="api-paths-raw",
+                    path=input.api_path_file.storage_path,
+                    display_name="API Paths (raw JSONL)",
+                )
+            )
+
         return result
 
     async def run(self, input: OpenAPIConnectorInput) -> OpenAPIConnectorOutput:  # type: ignore[override]
