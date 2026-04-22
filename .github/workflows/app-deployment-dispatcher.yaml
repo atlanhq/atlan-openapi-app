@@ -21,7 +21,7 @@ jobs:
         repo: ['atlanhq/atlan-apps-deployment']
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
-      - uses: actions/checkout@v4.0.0
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           token: ${{ secrets.ORG_PAT_GITHUB }}
           fetch-depth: 0
@@ -49,7 +49,7 @@ jobs:
           echo "app_name=${app_name}" >> $GITHUB_OUTPUT
 
       - name: Repository Dispatch
-        uses: peter-evans/repository-dispatch@v3.0.0
+        uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4.0.1
         with:
           token: ${{ secrets.ORG_PAT_GITHUB }}
           repository: ${{ matrix.repo }}
