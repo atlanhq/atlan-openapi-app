@@ -24,7 +24,7 @@ from application_sdk.app import App, task
 from application_sdk.contracts.storage import UploadInput
 from application_sdk.contracts.types import FileReference, StorageTier
 from application_sdk.observability.logger_adaptor import AtlanLoggerAdapter as Logger
-from application_sdk.workflows.outputs import Metric, get_outputs
+from application_sdk.outputs import Metric, get_outputs
 
 from app.api_types import OpenAPIPathRecord, OpenAPISpecRecord
 from app.asset_mapper import (
