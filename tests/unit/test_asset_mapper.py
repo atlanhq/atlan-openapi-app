@@ -372,7 +372,7 @@ def _sample_path_record(**kwargs) -> OpenAPIPathRecord:
         spec_qualified_name=SPEC_QN,
         summary="Find pet by ID",
         available_operations=["GET", "POST", "DELETE"],
-        description="| Method | Summary|\n|---|---|\n| `GET` |Find pet by ID |",
+        description="| Method | Summary|\n|---|---|\n| `GET` |Find pet by ID |\n\n**GET**\nReturns a single pet by ID.",
         is_templated=True,
     )
     defaults.update(kwargs)
