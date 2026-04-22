@@ -11,14 +11,9 @@
 #     --build-arg APP_MODULE=app.connector:OpenAPIConnector \
 #     -t openapi:latest .
 
-FROM registry.atlan.com/public/app-runtime-base:refactor-v3-latest
+FROM registry.atlan.com/public/app-runtime-base:3
 
 ARG APP_MODULE=app.connector:OpenAPIConnector
-
-# git is required for uv to fetch git-sourced dependencies (atlan-application-sdk)
-USER root
-RUN apk add --no-cache git
-USER appuser
 
 WORKDIR /app
 

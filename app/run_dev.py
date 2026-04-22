@@ -44,7 +44,7 @@ import asyncio
 import json
 import os
 
-from application_sdk.infrastructure.secrets import InMemorySecretStore
+from application_sdk.testing.mocks import MockSecretStore
 from application_sdk.main import run_dev_combined
 
 # Import credential types to register them with the credential registry
@@ -77,7 +77,7 @@ async def main() -> None:
             }
         )
 
-    credential_stores = {"default": InMemorySecretStore(secrets)}
+    credential_stores = {"default": MockSecretStore(secrets)}
 
     spec_url = os.environ.get(
         "OPENAPI_SPEC_URL", "https://petstore3.swagger.io/api/v3/openapi.json"
