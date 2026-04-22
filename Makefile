@@ -1,7 +1,7 @@
 .PHONY: generate check-generate
 
 generate:
-	pkl eval --project-dir contract -m app/generated contract/app.pkl
+	pkl eval --project-dir contract -m app/generated contract/app.pkl contract/csa-connectors-objectstore.pkl
 
 check-generate: generate
 	@git diff --exit-code app/generated/ \
