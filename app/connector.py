@@ -24,6 +24,7 @@ from application_sdk.app import App, task
 from application_sdk.contracts.storage import UploadInput
 from application_sdk.contracts.types import FileReference, StorageTier
 from application_sdk.observability.logger_adaptor import AtlanLoggerAdapter as Logger
+from application_sdk.outputs import Metric, get_outputs
 
 from app.api_types import OpenAPIPathRecord, OpenAPISpecRecord
 from app.asset_mapper import (
@@ -397,6 +398,20 @@ class OpenAPIConnector(App):
             "extract_spec task completed api_spec_count=%d api_path_count=%d",
             spec_count,
             path_count,
+        )
+        get_outputs().add_metric(
+            Metric(
+                name="specs-extracted",
+                value=spec_count,
+                display_name="API Specs Extracted",
+            )
+        )
+        get_outputs().add_metric(
+            Metric(
+                name="endpoints-extracted",
+                value=path_count,
+                display_name="API Endpoints Extracted",
+            )
         )
         return ExtractSpecOutput(
             api_spec_file=spec_file,
