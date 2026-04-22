@@ -109,8 +109,10 @@ async def _extract_spec_async(
     finally:
         await client.close()
 
-    spec_file_path = out_dir / "api_spec.jsonl"
-    path_file_path = out_dir / "api_path.jsonl"
+    # .json extension (NDJSON content) so AE's download-csv endpoint recognizes
+    # the files — it only accepts .json / .parquet, not .jsonl.
+    spec_file_path = out_dir / "api_spec.json"
+    path_file_path = out_dir / "api_path.json"
     spec_count = 0
     path_count = 0
 
@@ -315,7 +317,7 @@ class OpenAPIConnector(App):
     both APISpec and APIPath data in the same response).
 
     Tasks:
-    1. extract_spec — fetch spec URL, emit api_spec.jsonl + api_path.jsonl
+    1. extract_spec — fetch spec URL, emit api_spec.json + api_path.json (NDJSON)
     2. transform — map to Atlan Atlas entity format
     3. publish — upload NDJSON to object storage and call publish-app (if load_to_atlan=True)
     """
