@@ -19,17 +19,17 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6.0.2
 
       - name: Login to GitHub Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: $GITHUB_ACTOR
           password: ${{ secrets.ORG_PAT_GITHUB }}
 
       - name: Build and push docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
@@ -39,7 +39,7 @@ jobs:
           tags: "docker-trivy-tag"
 
       - name: Post Trivy scan results as PR comment
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'docker-trivy-tag:latest'
           ignore-unfixed: true
@@ -53,7 +53,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.ORG_PAT_GITHUB }}
 
       - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         continue-on-error: true
         with:
           sarif_file: 'trivy-results.sarif'
