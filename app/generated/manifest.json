@@ -4,9 +4,12 @@
     "extract": {
       "activity_name": "execute_workflow",
       "activity_display_name": "Extract OpenAPI Spec Loader Metadata",
-      "app_name": "automation-engine",
+      "app_name": "openapi",
       "inputs": {
         "workflow_type": "openapi",
+        "app_name": "openapi",
+        "app_id": "",
+        "argo_workflow_slug": "",
         "task_queue": "atlan-openapi-{deployment_name}",
         "args": {
           "credential": "{{credential}}",
@@ -27,6 +30,7 @@
       "app_name": "publish",
       "inputs": {
         "workflow_type": "PublishWorkflow",
+        "app_name": "publish",
         "task_queue": "atlan-publish-{deployment_name}",
         "args": {
           "connection_qualified_name": "$.extract.outputs.connection_qualified_name",
