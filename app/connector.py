@@ -170,8 +170,19 @@ async def _extract_spec_async(
                     m.upper() for m in _TRACKED_METHODS if path_item.get(m) is not None
                 ]
 
-                # Build markdown description table (format matches Kotlin exactly)
-                description = ""
+                # Build markdown description from path-item and operation details
+                description_parts: list[str] = []
+
+                # Include path-item level description if present
+                path_description = (
+                    path_item.get("description", "")
+                    if isinstance(path_item, dict)
+                    else ""
+                )
+                if path_description:
+                    description_parts.append(path_description)
+
+                # Build operations summary table
                 if operations:
                     rows = ["| Method | Summary|", "|---|---|"]
                     for method in _TRACKED_METHODS:
@@ -181,7 +192,19 @@ async def _extract_spec_async(
                                 op.get("summary", "") if isinstance(op, dict) else ""
                             )
                             rows.append(f"| `{method.upper()}` |{op_summary} |")
-                    description = "\n".join(rows)
+                    description_parts.append("\n".join(rows))
+
+                # Append operation-level descriptions
+                for method in _TRACKED_METHODS:
+                    op = path_item.get(method)
+                    if op is not None and isinstance(op, dict):
+                        op_desc = op.get("description", "")
+                        if op_desc:
+                            description_parts.append(
+                                f"**{method.upper()}**\n\n{op_desc}"
+                            )
+
+                description = "\n\n".join(description_parts)
 
                 path_record = OpenAPIPathRecord(
                     path_url=path_url,
@@ -312,9 +335,10 @@ class OpenAPIConnector(App):
         """Download OpenAPI spec from cloud storage. Runs as activity (has I/O)."""
         credential_data = None
         if input.cloud_source:
-            from application_sdk.services.secretstore import SecretStore
+            from application_sdk.credentials.ref import CredentialRef
 
-            credential_data = await SecretStore.get_credentials(input.cloud_source)
+            ref = CredentialRef(credential_guid=input.cloud_source)
+            credential_data = await self.context.resolve_credential_raw(ref)
             self.logger.info(
                 "resolved cloud_source credential keys=%s",
                 list(credential_data.keys()),
@@ -376,10 +400,18 @@ class OpenAPIConnector(App):
             path_count,
         )
         get_outputs().add_metric(
-            Metric(name="specs-extracted", value=spec_count, display_name="API Specs Extracted")
+            Metric(
+                name="specs-extracted",
+                value=spec_count,
+                display_name="API Specs Extracted",
+            )
         )
         get_outputs().add_metric(
-            Metric(name="endpoints-extracted", value=path_count, display_name="API Endpoints Extracted")
+            Metric(
+                name="endpoints-extracted",
+                value=path_count,
+                display_name="API Endpoints Extracted",
+            )
         )
         return ExtractSpecOutput(
             api_spec_file=spec_file,
