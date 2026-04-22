@@ -165,7 +165,7 @@ wheels = [
 [[package]]
 name = "atlan-application-sdk"
 version = "3.0.1"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/atlanhq/application-sdk?branch=main#58ed0c3f09855e1a0ff8c76e242cdd2ff1aa76d2" }
 dependencies = [
     { name = "aiohttp" },
     { name = "fastapi", extra = ["standard"] },
@@ -175,17 +175,12 @@ dependencies = [
     { name = "opentelemetry-exporter-otlp" },
     { name = "opentelemetry-exporter-prometheus" },
     { name = "orjson" },
-    { name = "psutil" },
     { name = "pyatlan" },
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "temporalio" },
     { name = "uvloop", marker = "sys_platform != 'win32'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/26/92/7a16548a27f2628f43823d7eaf3ce4b26f951e18af16a3534216a9f555d5/atlan_application_sdk-3.0.1.tar.gz", hash = "sha256:2cd0060eb9d3d3ba060f5158b0d77ba4900dfb23cf3218e44b9df2f1c53651fd", size = 1811146, upload-time = "2026-04-21T15:25:20.06Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/bb/b7/92c45719f29e02668d6710a4898f301c0aae018c0de802308616d5348dc9/atlan_application_sdk-3.0.1-py3-none-any.whl", hash = "sha256:260f897d22ac124a1e76bc55852104e0b9d3c656adf1e4b347678533d4339556", size = 567862, upload-time = "2026-04-21T15:25:18.303Z" },
 ]
 
 [package.optional-dependencies]
@@ -1740,13 +1735,13 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "atlan-application-sdk", specifier = ">=3.0.0,<4.0.0" },
+    { name = "atlan-application-sdk", git = "https://github.com/atlanhq/application-sdk?branch=main" },
     { name = "pyyaml", specifier = ">=6.0" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "atlan-application-sdk", extras = ["tests"], specifier = ">=3.0.0,<4.0.0" },
+    { name = "atlan-application-sdk", extras = ["tests"], git = "https://github.com/atlanhq/application-sdk?branch=main" },
     { name = "coverage", extras = ["toml"], specifier = ">=7.13.5" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "pre-commit", specifier = ">=4.2.0" },
