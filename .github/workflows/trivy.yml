@@ -39,7 +39,7 @@ jobs:
           tags: "docker-trivy-tag"
 
       - name: Post Trivy scan results as PR comment
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: 'docker-trivy-tag:latest'
           ignore-unfixed: true
@@ -53,7 +53,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.ORG_PAT_GITHUB }}
 
       - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@b25d0ebf40e5b63ee81e1bd6e5d2a12b7c2aeb61 # v4
+        uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4
         continue-on-error: true
         with:
           sarif_file: 'trivy-results.sarif'
