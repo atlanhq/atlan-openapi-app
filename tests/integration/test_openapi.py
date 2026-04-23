@@ -15,7 +15,7 @@ Run with:
 
 from __future__ import annotations
 
-import json
+import orjson
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -127,15 +127,13 @@ class TestOpenAPIConnectorExtraction:
         self, extraction_result: OpenAPIConnectorOutput, store_root: Path
     ) -> None:
         """Output JSONL should contain Connection, APISpec, and APIPath."""
-        import json
-
         output_path = store_root / extraction_result.output_file.storage_path
         type_names: set[str] = set()
         with output_path.open() as f:
             for line in f:
                 line = line.strip()
                 if line:
-                    record = json.loads(line)
+                    record = orjson.loads(line)
                     if "typeName" in record:
                         type_names.add(record["typeName"])
 
@@ -147,8 +145,6 @@ class TestOpenAPIConnectorExtraction:
         self, extraction_result: OpenAPIConnectorOutput, store_root: Path
     ) -> None:
         """All qualifiedName values should start with the connection prefix."""
-        import json
-
         output_path = store_root / extraction_result.output_file.storage_path
         prefix = f"{CONNECTION_QN}/"
         with output_path.open() as f:
@@ -156,7 +152,7 @@ class TestOpenAPIConnectorExtraction:
                 line = line.strip()
                 if not line:
                     continue
-                record = json.loads(line)
+                record = orjson.loads(line)
                 qn = record.get("attributes", {}).get("qualifiedName", "")
                 if not qn:
                     qn = record.get("qualifiedName", "")
@@ -190,13 +186,14 @@ class TestOpenAPIConnectorCloudWiring:
     """CLOUD import mode wiring test.
 
     Tests the full CLOUD path: connector.run() reads import_type=CLOUD →
-    calls download_spec_from_cloud → api_client.fetch_spec reads local file
-    → extract → transform. Uses a local spec file to simulate the download.
+    download_cloud_spec task uses CloudStore → api_client.fetch_spec reads
+    local file → extract → transform. Uses a local spec file to simulate
+    the download.
 
     This is tested at the unit level (not via Temporal) because the integration
     test executor doesn't wire self.context.storage, and patching inside a
-    Temporal sandbox isn't feasible. The cloud_storage module itself is
-    thoroughly tested in tests/unit/test_cloud_storage.py (25 tests).
+    Temporal sandbox isn't feasible. Download dispatch logic (_has_valid_auth)
+    is unit-tested in tests/unit/test_cloud_storage.py.
     """
 
     async def test_cloud_local_file_extraction(self, tmp_path: Path) -> None:
@@ -204,7 +201,7 @@ class TestOpenAPIConnectorCloudWiring:
         from app.api_client import OpenAPIApiClient
 
         spec_path = tmp_path / "petstore.json"
-        spec_path.write_text(json.dumps(_PETSTORE_SPEC))
+        spec_path.write_bytes(orjson.dumps(_PETSTORE_SPEC))
 
         client = OpenAPIApiClient()
         try:
@@ -262,8 +259,8 @@ paths:
 
         zip_path = tmp_path / "specs.zip"
         with zipfile.ZipFile(zip_path, "w") as zf:
-            zf.writestr("spec1.json", json.dumps(spec1))
-            zf.writestr("spec2.json", json.dumps(spec2))
+            zf.writestr("spec1.json", orjson.dumps(spec1))
+            zf.writestr("spec2.json", orjson.dumps(spec2))
 
         client = OpenAPIApiClient()
         try:
@@ -282,7 +279,7 @@ paths:
         from application_sdk.observability.logger_adaptor import get_logger
 
         spec_path = tmp_path / "petstore.json"
-        spec_path.write_text(json.dumps(_PETSTORE_SPEC))
+        spec_path.write_bytes(orjson.dumps(_PETSTORE_SPEC))
         output_dir = tmp_path / "raw"
 
         spec_file, path_file, spec_count, path_count = await _extract_spec_async(

@@ -41,7 +41,7 @@ Usage:
 """
 
 import asyncio
-import json
+import orjson
 import os
 
 from application_sdk.testing.mocks import MockSecretStore
@@ -59,23 +59,23 @@ async def main() -> None:
     # Optional: OpenAPI credential for private spec endpoints
     auth_header = os.environ.get("OPENAPI_AUTH_HEADER", "")
     if auth_header:
-        secrets["openapi"] = json.dumps(
+        secrets["openapi"] = orjson.dumps(
             {
                 "type": "openapi",
                 "auth_header": auth_header,
             }
-        )
+        ).decode()
 
     # Atlan credential for loading (optional)
     atlan_key = os.environ.get("ATLAN_API_KEY", "")
     if atlan_key:
-        secrets["atlan"] = json.dumps(
+        secrets["atlan"] = orjson.dumps(
             {
                 "type": "atlan_api_token",
                 "token": atlan_key,
                 "base_url": os.environ.get("ATLAN_BASE_URL", ""),
             }
-        )
+        ).decode()
 
     credential_stores = {"default": MockSecretStore(secrets)}
 
