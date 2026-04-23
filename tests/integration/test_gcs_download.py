@@ -69,6 +69,7 @@ _FAKE_SA_JSON = orjson.dumps(
         "disable_oauth": True,
         "client_email": "",
         "private_key": "",
+        "private_key_id": "",
     }
 ).decode()
 
