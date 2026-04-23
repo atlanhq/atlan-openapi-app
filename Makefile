@@ -24,25 +24,27 @@ test-cloud-integration:
 	docker stop minio-test
 
 test-gcs-integration:
-	@echo "Starting fake-gcs-server..."
-	docker run -d --rm --name fake-gcs-test -p 4443:4443 \
-		fsouza/fake-gcs-server:1.54.0 -scheme http -port 4443
-	@echo "Waiting for fake-gcs-server..." && until curl -sf http://localhost:4443/storage/v1/b > /dev/null; do sleep 1; done
+	@echo "Starting MinIO (for GCS credential path tests)..."
+	docker run -d --rm --name minio-gcs-test -p 9000:9000 \
+		-e MINIO_ROOT_USER=minioadmin \
+		-e MINIO_ROOT_PASSWORD=minioadmin \
+		minio/minio server /data
+	@echo "Waiting for MinIO..." && until curl -sf http://localhost:9000/minio/health/live; do sleep 1; done
 	@echo "Creating test bucket..."
-	curl -s -X POST http://localhost:4443/storage/v1/b \
-		-H "Content-Type: application/json" \
-		-d '{"name": "test-openapi-specs"}'
-	GCS_ENDPOINT_URL=http://localhost:4443 \
+	AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin \
+		aws --endpoint-url http://localhost:9000 \
+		s3api create-bucket --bucket test-openapi-specs --region us-east-1
+	AWS_ENDPOINT_URL=http://localhost:9000 MINIO_ROOT_USER=minioadmin MINIO_ROOT_PASSWORD=minioadmin \
 		uv run pytest tests/integration/test_gcs_download.py -v -m gcs_integration \
-		|| (docker stop fake-gcs-test; exit 1)
-	docker stop fake-gcs-test
+		|| (docker stop minio-gcs-test; exit 1)
+	docker stop minio-gcs-test
 
 test-azure-integration:
 	@echo "Starting Azurite..."
 	docker run -d --rm --name azurite-test -p 10000:10000 \
 		mcr.microsoft.com/azure-storage/azurite:3.35.0 \
 		azurite-blob --blobHost 0.0.0.0
-	@echo "Waiting for Azurite..." && until curl -sf http://127.0.0.1:10000/devstoreaccount1 > /dev/null 2>&1; do sleep 1; done
+	@echo "Waiting for Azurite..." && until curl -s --max-time 2 http://127.0.0.1:10000/devstoreaccount1 > /dev/null 2>&1; do sleep 1; done
 	@echo "Creating test container..."
 	az storage container create --name test-openapi-specs \
 		--connection-string "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
