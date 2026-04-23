@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
+import orjson
 import os
 import socket
 import subprocess
@@ -304,7 +304,7 @@ def _to_json_dict(obj: Any) -> dict[str, Any]:
     if isinstance(obj, dict):
         return obj
     if hasattr(obj, "model_dump_json"):
-        return json.loads(obj.model_dump_json())
+        return orjson.loads(obj.model_dump_json())
     raise TypeError(
         f"Cannot serialize {type(obj).__name__} to dict — expected a Pydantic model or dict"
     )

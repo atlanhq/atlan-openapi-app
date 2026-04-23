@@ -18,7 +18,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 import os
 import shutil
 import sys
@@ -67,23 +67,23 @@ def _build_dapr_secrets() -> dict[str, str]:
     # Atlan API token (for dry-run validation)
     atlan_key = os.environ.get("ATLAN_API_KEY", "")
     if atlan_key:
-        secrets["atlan"] = json.dumps(
+        secrets["atlan"] = orjson.dumps(
             {
                 "type": "atlan_api_token",
                 "token": atlan_key,
                 "base_url": os.environ.get("ATLAN_BASE_URL", ""),
             }
-        )
+        ).decode()
 
     # OpenAPI credential (optional — only needed for private spec endpoints)
     openapi_auth_header = os.environ.get("OPENAPI_AUTH_HEADER", "")
     if openapi_auth_header:
-        secrets["openapi"] = json.dumps(
+        secrets["openapi"] = orjson.dumps(
             {
                 "type": "openapi",
                 "auth_header": openapi_auth_header,
             }
-        )
+        ).decode()
 
     return secrets
 
@@ -194,7 +194,7 @@ def _format_result_text(results: list[LocalTestResult]) -> str:
 
 
 def _format_result_json(results: list[LocalTestResult]) -> str:
-    return json.dumps(
+    return orjson.dumps(
         [
             {
                 "name": r.name,
@@ -206,8 +206,8 @@ def _format_result_json(results: list[LocalTestResult]) -> str:
             }
             for r in results
         ],
-        indent=2,
-    )
+        option=orjson.OPT_INDENT_2,
+    ).decode()
 
 
 async def _run_all(selected: list[str] | None) -> list[LocalTestResult]:

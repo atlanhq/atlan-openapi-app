@@ -26,12 +26,12 @@ jobs:
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Install Temporal CLI and start dev server
+      - name: Install Temporal CLI
+        uses: temporalio/setup-temporal@2c191895c5712a783cd2917236760ce3dab7398b # v0.1.0
+
+      - name: Start Temporal dev server
         run: |
-          curl -sSf https://temporal.download/cli.sh | sh
-          echo "$HOME/.temporalio/bin" >> "$GITHUB_PATH"
-          "$HOME/.temporalio/bin/temporal" server start-dev \
-            --db-filename /tmp/temporal.db --headless &
+          temporal server start-dev --db-filename /tmp/temporal.db --headless &
           sleep 5
 
       - uses: atlanhq/application-sdk/.github/actions/setup-deps@main
