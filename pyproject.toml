@@ -38,6 +38,7 @@ reportMissingImports = false
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 markers = [
-    "cloud_integration: requires a running cloud object store emulator (skipped by default)",
+    "cloud_integration: requires a running S3-compatible emulator (MinIO)",
+    "azure_integration: requires a running Azure blob storage emulator (Azurite)",
 ]
-addopts = "-m 'not cloud_integration'"
+addopts = "-m 'not cloud_integration and not azure_integration'"
