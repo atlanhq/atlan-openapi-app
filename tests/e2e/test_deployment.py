@@ -18,7 +18,7 @@ standalone script instead::
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 import socket
 import subprocess
 import time
@@ -127,7 +127,7 @@ async def test_all_pods_ready(deployed_app: DeployedApp) -> None:
     stdout_bytes, stderr_bytes = await proc.communicate()
     assert proc.returncode == 0, f"kubectl get pods failed: {stderr_bytes.decode()}"
 
-    data = json.loads(stdout_bytes)
+    data = orjson.loads(stdout_bytes)
     items = data.get("items", [])
     assert items, f"No pods found in namespace '{deployed_app.namespace}'"
 
@@ -176,7 +176,7 @@ async def test_keda_scaled_object_exists(deployed_app: DeployedApp) -> None:
         f"kubectl get scaledobject failed: {stderr_bytes.decode()}"
     )
 
-    data = json.loads(stdout_bytes)
+    data = orjson.loads(stdout_bytes)
     items = data.get("items", [])
     assert items, f"No ScaledObjects found in namespace '{namespace}'"
 
@@ -193,7 +193,9 @@ async def test_keda_scaled_object_exists(deployed_app: DeployedApp) -> None:
     ready = next((c for c in conditions if c.get("type") == "Ready"), None)
     assert ready is not None, (
         f"ScaledObject '{target_name}' has no Ready condition; status: "
-        + json.dumps(scaled_obj.get("status", {}), indent=2)
+        + orjson.dumps(
+            scaled_obj.get("status", {}), option=orjson.OPT_INDENT_2
+        ).decode()
     )
     assert ready.get("status") == "True", (
         f"ScaledObject '{target_name}' Ready={ready.get('status')}: "
