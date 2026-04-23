@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import json
+import orjson
 import os
 import signal
 import socket
@@ -103,8 +103,7 @@ def prepare_dapr_components(secrets: dict[str, str]) -> str:
     components_dir.mkdir(parents=True)
 
     secrets_file = tmp_dir / "secrets.json"
-    with secrets_file.open("w") as f:
-        json.dump(secrets, f)
+    secrets_file.write_bytes(orjson.dumps(secrets))
 
     secretstore_yaml = f"""apiVersion: dapr.io/v1alpha1
 kind: Component

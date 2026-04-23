@@ -14,7 +14,7 @@ Requires: temporal server start-dev
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 import os
 from pathlib import Path
 from typing import Any
@@ -97,9 +97,9 @@ def infrastructure(store_root: Path) -> InfrastructureContext:
     openapi_auth_header = os.environ.get("OPENAPI_AUTH_HEADER", "")
     secrets: dict[str, str] = {}
     if openapi_auth_header:
-        secrets["openapi"] = json.dumps(
+        secrets["openapi"] = orjson.dumps(
             {"type": "openapi", "auth_header": openapi_auth_header}
-        )
+        ).decode()
 
     ctx = InfrastructureContext(
         state_store=MockStateStore(),

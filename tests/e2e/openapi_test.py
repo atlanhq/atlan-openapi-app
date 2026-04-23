@@ -15,7 +15,7 @@ Prerequisites:
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 import os
 import sys
 import time
@@ -401,7 +401,7 @@ async def main() -> int:
                 },
                 "errors": result.errors,
             }
-            output_text = json.dumps(output_data, indent=2)
+            output_text = orjson.dumps(output_data, option=orjson.OPT_INDENT_2).decode()
         else:
             output_text = format_result(result, args.connection_name)
 

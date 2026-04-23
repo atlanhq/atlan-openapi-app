@@ -15,6 +15,7 @@ both APISpec and APIPath data; splitting would require downloading twice).
 
 from __future__ import annotations
 
+import orjson
 import tempfile
 from pathlib import Path
 from typing import Any, TypeVar, cast
@@ -50,6 +51,20 @@ T = TypeVar("T")
 # =============================================================================
 # Module-level constants
 # =============================================================================
+
+
+def _has_valid_auth(credentials: dict[str, Any]) -> bool:
+    """Return True if credentials have explicit key-based or role-based auth.
+
+    Determines whether to use an external cloud store (Path A) or fall back
+    to the tenant's own Dapr-configured store (Path B).
+    """
+    has_key_auth = bool(credentials.get("username") and credentials.get("password"))
+    extra = credentials.get("extra") or credentials.get("extras") or {}
+    if isinstance(extra, str):
+        extra = orjson.loads(extra) if extra else {}
+    has_role_auth = bool(extra.get("aws_role_arn"))
+    return has_key_auth or has_role_auth
 
 
 def _enc_hook(obj: Any) -> Any:
@@ -333,6 +348,8 @@ class OpenAPIConnector(App):
         self, input: DownloadCloudSpecInput
     ) -> DownloadCloudSpecOutput:
         """Download OpenAPI spec from cloud storage. Runs as activity (has I/O)."""
+        from application_sdk.storage.cloud import CloudStore
+
         credential_data = None
         if input.cloud_source:
             from application_sdk.credentials.ref import CredentialRef
@@ -344,16 +361,42 @@ class OpenAPIConnector(App):
                 list(credential_data.keys()),
             )
 
-        from app.cloud_storage import download_spec_from_cloud
+        if credential_data is not None and _has_valid_auth(credential_data):
+            self.logger.info(
+                "using external cloud storage auth_type=%s",
+                credential_data.get("authType")
+                or credential_data.get("auth_type")
+                or "unknown",
+            )
+            store = CloudStore.from_credentials(credential_data)
+        else:
+            if credential_data is not None:
+                self.logger.info(
+                    "credential has no key/role auth, falling back to tenant store"
+                )
+            else:
+                self.logger.info("no cloud_source credential, using tenant store")
+            if self.context.storage is None:
+                raise RuntimeError(
+                    "No tenant object store available. Ensure Dapr objectstore binding "
+                    "is configured on this deployment."
+                )
+            store = CloudStore(self.context.storage, provider="tenant")
 
-        local_spec_paths = await download_spec_from_cloud(
-            spec_prefix=input.spec_prefix,
-            spec_key=input.spec_key,
-            credential_data=credential_data,
-            output_dir=input.output_dir,
-            tenant_store=self.context.storage,
-        )
-        return DownloadCloudSpecOutput(spec_paths=local_spec_paths)
+        prefix = input.spec_prefix.strip("/") if input.spec_prefix else ""
+        key = input.spec_key.strip("/") if input.spec_key else ""
+        if key:
+            full_key = f"{prefix}/{key}" if prefix else key
+            local_paths = await store.download(
+                key=full_key, output_dir=input.output_dir
+            )
+        else:
+            local_paths = await store.download(
+                prefix=prefix,
+                output_dir=input.output_dir,
+                suffix_filter={".json", ".yaml", ".yml", ".zip"},
+            )
+        return DownloadCloudSpecOutput(spec_paths=[str(p) for p in local_paths])
 
     @task(
         timeout_seconds=3600,

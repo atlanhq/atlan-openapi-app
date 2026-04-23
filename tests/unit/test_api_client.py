@@ -8,7 +8,7 @@ No real network calls are made.
 from __future__ import annotations
 
 import io
-import json
+import orjson
 import zipfile
 
 import pytest
@@ -23,7 +23,7 @@ from app.api_client import OpenAPIApiClient
 # =============================================================================
 
 
-PETSTORE_JSON = json.dumps(
+PETSTORE_JSON = orjson.dumps(
     {
         "openapi": "3.0.4",
         "info": {"title": "Petstore", "version": "1.0.0"},
@@ -35,7 +35,7 @@ PETSTORE_JSON = json.dumps(
             },
         },
     }
-).encode()
+)
 
 PETSTORE_YAML = b"""
 openapi: "3.0.4"
