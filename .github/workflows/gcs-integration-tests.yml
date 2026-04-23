@@ -1,4 +1,4 @@
-name: Cloud Integration Tests (GCS/fake-gcs-server)
+name: Cloud Integration Tests (GCS credential path)
 
 on:
   pull_request:
@@ -10,7 +10,7 @@ on:
 
 jobs:
   gcs-integration-tests:
-    name: Cloud integration tests (fake-gcs-server + Temporal)
+    name: Cloud integration tests (GCS credential path + Temporal)
     runs-on: ubuntu-latest
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}
@@ -33,18 +33,19 @@ jobs:
           temporal server start-dev --db-filename /tmp/temporal.db --headless &
           sleep 5
 
-      - name: Start fake-gcs-server
+      - name: Start MinIO
         run: |
-          docker run -d --name fake-gcs-server \
-            -p 4443:4443 \
-            fsouza/fake-gcs-server:1.54.0@sha256:28caaea87a75a7edce77dd8a5a58ef05c625c7974fb7a916a4f9ebd7d494166b \
-            -scheme http -port 4443
-          echo "Waiting for fake-gcs-server to be ready..."
-          until curl -sf http://localhost:4443/storage/v1/b > /dev/null; do sleep 1; done
-          echo "fake-gcs-server is ready."
-          curl -s -X POST http://localhost:4443/storage/v1/b \
-            -H "Content-Type: application/json" \
-            -d '{"name": "test-openapi-specs"}'
+          docker run -d --name minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data
+          echo "Waiting for MinIO to be ready..."
+          until curl -sf http://localhost:9000/minio/health/live; do sleep 1; done
+          echo "MinIO is ready."
+          AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin \
+            aws --endpoint-url http://localhost:9000 \
+            s3api create-bucket --bucket test-openapi-specs --region us-east-1
 
       - uses: atlanhq/application-sdk/.github/actions/setup-deps@main
 
@@ -59,7 +60,9 @@ jobs:
           ATLAN_LOCAL_DEVELOPMENT: "true"
           ATLAN_APPLICATION_NAME: ${{ github.event.repository.name }}
           TEMPORAL_HOST: localhost:7233
-          GCS_ENDPOINT_URL: http://localhost:4443
+          AWS_ENDPOINT_URL: http://localhost:9000
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
         run: |
           uv run pytest tests/integration/test_gcs_download.py \
             -v -m gcs_integration --capture=no --log-cli-level=INFO
@@ -67,5 +70,5 @@ jobs:
       - name: Stop services
         if: always()
         run: |
-          docker stop fake-gcs-server || true
+          docker stop minio || true
           pkill -f "temporal server" || true

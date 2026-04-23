@@ -1,34 +1,35 @@
-"""Integration tests for cloud object store download (GCS via fake-gcs-server).
+"""Integration tests for the GCS cloud credential code path.
 
-Tests two complementary layers:
+Validates that the connector correctly routes ``authType="gcs"`` credentials
+through ``_create_gcs_store`` and runs the full Temporal-orchestrated
+``import_type="CLOUD"`` workflow.
 
-1. ``TestGCSStoreDirectOperations`` — exercises the CloudStore API (upload,
-   download, list) directly against fake-gcs-server without going through
-   Temporal.  Validates real HTTP I/O for the full SDK abstraction.
+Why not fake-gcs-server?
+    The upstream ``object_store`` Rust crate, when given a ``gcs_base_url``
+    override, issues XML API-style requests (``PUT /{bucket}/{key}``) rather
+    than JSON API paths (``POST /upload/storage/v1/b/{bucket}/o``).
+    ``fake-gcs-server`` only handles JSON API routes, so object store I/O
+    against it always returns 404.  No widely-available GCS emulator supports
+    the XML API format that object_store generates.
 
-2. ``TestGCSCloudDownloadWorkflow`` — runs the full Temporal-orchestrated
-   ``import_type="CLOUD"`` workflow, using monkeypatches to bypass Dapr
-   credential resolution (GUID path) and redirect GCSStore to the local
-   emulator.
-
-The emulator redirect works by passing a service account JSON that contains
-``gcs_base_url`` and ``disable_oauth: true`` as documented by the upstream
-Rust ``object_store`` crate.  The in-process worker means both patches are
-active for the full task execution.
+    Instead, we monkeypatch ``_create_gcs_store`` to return an S3Store backed
+    by MinIO.  This exercises the full connector workflow for a GCS credential
+    shape without requiring a compatible GCS wire-protocol server.
 
 Requires:
-    - fake-gcs-server at ``GCS_ENDPOINT_URL`` (default: http://localhost:4443)
+    - MinIO at ``AWS_ENDPOINT_URL`` (default: http://localhost:9000)
     - Temporal server at ``TEMPORAL_HOST`` (default: localhost:7233)
 
 Run locally:
-    docker run -d --rm -p 4443:4443 --name fake-gcs-server \\
-        fsouza/fake-gcs-server:1.54.0 -scheme http -port 4443
+    docker run -d --rm -p 9000:9000 --name minio \\
+        -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \\
+        minio/minio server /data
     # create bucket
-    curl -X POST http://localhost:4443/storage/v1/b \\
-        -H 'Content-Type: application/json' \\
-        -d '{"name": "test-openapi-specs"}'
+    AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin \\
+        aws --endpoint-url http://localhost:9000 \\
+        s3api create-bucket --bucket test-openapi-specs --region us-east-1
     temporal server start-dev &
-    GCS_ENDPOINT_URL=http://localhost:4443 \\
+    AWS_ENDPOINT_URL=http://localhost:9000 \\
         uv run pytest tests/integration/test_gcs_download.py -v -m gcs_integration
 """
 
@@ -57,15 +58,17 @@ pytestmark = pytest.mark.gcs_integration
 # Constants
 # ---------------------------------------------------------------------------
 
-_GCS_ENDPOINT = os.environ.get("GCS_ENDPOINT_URL", "http://localhost:4443")
+_MINIO_ENDPOINT = os.environ.get("AWS_ENDPOINT_URL", "http://localhost:9000")
+_MINIO_USER = os.environ.get("MINIO_ROOT_USER", "minioadmin")
+_MINIO_PASS = os.environ.get("MINIO_ROOT_PASSWORD", "minioadmin")
 _BUCKET = "test-openapi-specs"
 
-# Service account JSON understood by object_store's GCS backend:
-# gcs_base_url overrides the default storage.googleapis.com endpoint,
-# and disable_oauth skips token fetching (safe for emulators).
+# Synthetic GCS service account JSON — used as the credential password field
+# to verify the connector accepts the gcs authType shape.  Not used for real
+# GCS HTTP calls (the store is monkeypatched to MinIO in the workflow test).
 _FAKE_SA_JSON = orjson.dumps(
     {
-        "gcs_base_url": _GCS_ENDPOINT,
+        "gcs_base_url": "http://unused",
         "disable_oauth": True,
         "client_email": "",
         "private_key": "",
@@ -99,22 +102,22 @@ _CONNECTION_QN = f"default/api/{_CONNECTION_NAME}"
 
 
 # ---------------------------------------------------------------------------
-# Module-level emulator check — skip the entire module if not reachable
+# Module-level MinIO check — skip the entire module if not reachable
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture(scope="module", autouse=True)
-def require_fake_gcs() -> None:
-    """Skip all tests in this module if fake-gcs-server is not reachable."""
+def require_minio() -> None:
+    """Skip all tests in this module if MinIO is not reachable."""
     import httpx
 
     try:
         with httpx.Client(timeout=3.0) as client:
-            resp = client.get(f"{_GCS_ENDPOINT}/storage/v1/b")
+            resp = client.get(f"{_MINIO_ENDPOINT}/minio/health/live")
             if resp.status_code >= 500:
-                pytest.skip(f"fake-gcs-server not healthy at {_GCS_ENDPOINT}")
+                pytest.skip(f"MinIO not healthy at {_MINIO_ENDPOINT}")
     except Exception as exc:
-        pytest.skip(f"fake-gcs-server not reachable at {_GCS_ENDPOINT}: {exc}")
+        pytest.skip(f"MinIO not reachable at {_MINIO_ENDPOINT}: {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -124,19 +127,20 @@ def require_fake_gcs() -> None:
 
 @pytest.fixture(scope="module")
 async def seeded_bucket() -> str:
-    """Seed the pre-created test bucket with spec files.
+    """Seed the pre-created MinIO bucket with spec files."""
+    from obstore.store import S3Store
 
-    Bucket creation is handled externally (CI: curl POST to GCS admin API;
-    local dev: see module docstring).
-    """
-    from obstore.store import GCSStore
-
-    store = GCSStore(
+    store = S3Store(
         bucket=_BUCKET,
-        config={"service_account_key": _FAKE_SA_JSON},
+        config={
+            "aws_access_key_id": _MINIO_USER,
+            "aws_secret_access_key": _MINIO_PASS,
+            "aws_region": "us-east-1",
+            "endpoint": _MINIO_ENDPOINT,
+        },
         client_options={"allow_http": True},
     )
-    cloud_store = CloudStore(store, provider="gcs")
+    cloud_store = CloudStore(store, provider="s3")
 
     spec_bytes = orjson.dumps(_PETSTORE_SPEC)
     for key in ("single/petstore.json", "multi/specA.json", "multi/specB.json"):
@@ -146,99 +150,17 @@ async def seeded_bucket() -> str:
 
 
 # ---------------------------------------------------------------------------
-# TestGCSStoreDirectOperations
-# ---------------------------------------------------------------------------
-
-
-class TestGCSStoreDirectOperations:
-    """Exercises CloudStore methods directly against fake-gcs-server — no Temporal.
-
-    Constructs GCSStore with a synthetic service account JSON that sets
-    ``gcs_base_url`` to the local emulator and disables OAuth, per the
-    object_store Rust crate's documented emulator support.
-    """
-
-    @pytest.fixture(scope="class")
-    def cloud_store(self, seeded_bucket: str) -> CloudStore:
-        from obstore.store import GCSStore
-
-        store = GCSStore(
-            bucket=seeded_bucket,
-            config={"service_account_key": _FAKE_SA_JSON},
-            client_options={"allow_http": True},
-        )
-        return CloudStore(store, provider="gcs")
-
-    async def test_list_returns_seeded_keys(self, cloud_store: CloudStore) -> None:
-        keys = await cloud_store.list(prefix="single")
-        assert any("petstore.json" in k for k in keys), (
-            f"petstore.json not found in {keys}"
-        )
-
-    async def test_get_bytes_single_key(self, cloud_store: CloudStore) -> None:
-        data = await cloud_store.get_bytes("single/petstore.json")
-        parsed = orjson.loads(data)
-        assert parsed["info"]["title"] == "Petstore (GCS test)"
-        assert len(parsed["paths"]) == 2
-
-    async def test_download_single_key(
-        self, cloud_store: CloudStore, tmp_path: Path
-    ) -> None:
-        paths = await cloud_store.download(
-            key="single/petstore.json", output_dir=str(tmp_path / "single")
-        )
-        assert len(paths) == 1
-        assert paths[0].exists()
-        parsed = orjson.loads(paths[0].read_bytes())
-        assert "paths" in parsed
-
-    async def test_download_prefix(
-        self, cloud_store: CloudStore, tmp_path: Path
-    ) -> None:
-        paths = await cloud_store.download(
-            prefix="multi",
-            output_dir=str(tmp_path / "multi"),
-            suffix_filter={".json"},
-        )
-        assert len(paths) == 2
-        for p in paths:
-            assert p.suffix == ".json"
-            assert p.exists()
-
-    async def test_upload_then_download(
-        self, cloud_store: CloudStore, tmp_path: Path
-    ) -> None:
-        upload_spec = {
-            "openapi": "3.0.0",
-            "info": {"title": "Upload Test GCS", "version": "1.0"},
-            "paths": {"/ping": {"get": {"summary": "Ping"}}},
-        }
-        spec_bytes = orjson.dumps(upload_spec)
-
-        uploaded = await cloud_store.upload_bytes("upload-test/spec.json", spec_bytes)
-        assert uploaded == len(spec_bytes)
-
-        paths = await cloud_store.download(
-            key="upload-test/spec.json", output_dir=str(tmp_path / "upload")
-        )
-        assert len(paths) == 1
-        parsed = orjson.loads(paths[0].read_bytes())
-        assert parsed["info"]["title"] == "Upload Test GCS"
-
-
-# ---------------------------------------------------------------------------
 # TestGCSCloudDownloadWorkflow
 # ---------------------------------------------------------------------------
 
 
 class TestGCSCloudDownloadWorkflow:
-    """Full Temporal-orchestrated workflow with import_type='CLOUD' via fake-gcs-server.
+    """Full Temporal-orchestrated workflow with import_type='CLOUD' for a GCS credential.
 
     Two monkeypatches are applied for the duration of the Temporal execution:
 
-    * ``_create_gcs_store`` — builds a GCSStore pointing at the local emulator
-      by injecting the synthetic service account JSON (gcs_base_url + disable_oauth)
-      and ``client_options={"allow_http": True}``.
+    * ``_create_gcs_store`` — substitutes an S3Store pointing at MinIO so that
+      real object I/O works without a compatible GCS wire-protocol emulator.
 
     * ``CredentialResolver._resolve_by_guid`` — returns the test GCS credential
       dict without calling ``DaprCredentialVault``.
@@ -255,10 +177,10 @@ class TestGCSCloudDownloadWorkflow:
         tmp_dir_class: Path,
         seeded_bucket: str,
     ) -> OpenAPIConnectorOutput:
-        """Run the full CLOUD-import workflow against fake-gcs-server."""
+        """Run the full CLOUD-import workflow using GCS credentials against MinIO."""
         import application_sdk.storage.cloud as cloud_mod
         from application_sdk.credentials.resolver import CredentialResolver
-        from obstore.store import GCSStore
+        from obstore.store import S3Store
 
         output_dir = tmp_dir_class / "output"
         output_dir.mkdir()
@@ -269,9 +191,14 @@ class TestGCSCloudDownloadWorkflow:
 
             if not bucket:
                 raise StorageConfigError("GCS bucket is required (extra.gcs_bucket)")
-            return GCSStore(
+            return S3Store(
                 bucket=bucket,
-                config={"service_account_key": _FAKE_SA_JSON},
+                config={
+                    "aws_access_key_id": _MINIO_USER,
+                    "aws_secret_access_key": _MINIO_PASS,
+                    "aws_region": "us-east-1",
+                    "endpoint": _MINIO_ENDPOINT,
+                },
                 client_options={"allow_http": True},
             )
 
