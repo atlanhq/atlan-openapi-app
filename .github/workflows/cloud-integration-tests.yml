@@ -64,7 +64,7 @@ jobs:
           MINIO_ROOT_USER: minioadmin
           MINIO_ROOT_PASSWORD: minioadmin
         run: |
-          uv run pytest tests/integration/test_cloud_download.py \
+          uv run pytest tests/integration/test_s3_download.py \
             -v -m cloud_integration --capture=no --log-cli-level=INFO
 
       - name: Stop services
