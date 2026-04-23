@@ -19,7 +19,7 @@ test-cloud-integration:
 		aws --endpoint-url http://localhost:9000 \
 		s3api create-bucket --bucket test-openapi-specs --region us-east-1
 	AWS_ENDPOINT_URL=http://localhost:9000 \
-		uv run pytest tests/integration/test_cloud_download.py -v -m cloud_integration \
+		uv run pytest tests/integration/test_s3_download.py -v -m cloud_integration \
 		|| (docker stop minio-test; exit 1)
 	docker stop minio-test
 
