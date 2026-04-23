@@ -38,7 +38,7 @@ jobs:
           docker run -d --name azurite \
             -p 10000:10000 \
             "mcr.microsoft.com/azure-storage/azurite:3.35.0@sha256:dae2a5f96553962901304b94e72ef87e299d0825e4b679673bcc527a25076fe4" \
-            azurite-blob --blobHost 0.0.0.0
+            azurite-blob --blobHost 0.0.0.0 --skipApiVersionCheck
           echo "Waiting for Azurite to be ready..."
           until curl -s --max-time 2 http://127.0.0.1:10000/devstoreaccount1 > /dev/null 2>&1; do sleep 1; done
           echo "Azurite is ready."
