@@ -135,7 +135,7 @@ async def seeded_container() -> str:
         config={
             "account_name": _AZURITE_ACCOUNT,
             "account_key": _AZURITE_KEY,
-            "endpoint": _AZURITE_ENDPOINT,
+            "endpoint": f"{_AZURITE_ENDPOINT}/{_AZURITE_ACCOUNT}",
         },
         client_options={"allow_http": True},
     )
@@ -170,7 +170,7 @@ class TestAzureStoreDirectOperations:
             config={
                 "account_name": _AZURITE_ACCOUNT,
                 "account_key": _AZURITE_KEY,
-                "endpoint": _AZURITE_ENDPOINT,
+                "endpoint": f"{_AZURITE_ENDPOINT}/{_AZURITE_ACCOUNT}",
             },
             client_options={"allow_http": True},
         )
@@ -282,7 +282,7 @@ class TestAzureCloudDownloadWorkflow:
                 config={
                     "account_name": _AZURITE_ACCOUNT,
                     "account_key": _AZURITE_KEY,
-                    "endpoint": _AZURITE_ENDPOINT,
+                    "endpoint": f"{_AZURITE_ENDPOINT}/{_AZURITE_ACCOUNT}",
                 },
                 client_options={"allow_http": True},
             )
