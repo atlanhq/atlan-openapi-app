@@ -81,10 +81,10 @@ _PETSTORE_SPEC = {
 }
 
 # Credential shape expected by CloudStore.from_credentials / _create_azure_store.
-# username is not used in account-key auth; password is the storage account key.
+# username is the storage account name; password is the storage account key.
 _AZURE_CREDENTIAL: dict = {
     "authType": "adls",
-    "username": "",
+    "username": _AZURITE_ACCOUNT,
     "password": _AZURITE_KEY,
     "extra": {
         "storage_account_name": _AZURITE_ACCOUNT,
