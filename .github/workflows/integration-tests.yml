@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Install Temporal CLI
-        uses: temporalio/setup-temporal@2c191895c5712a783cd2917236760ce3dab7398b # v0.1.0
+        uses: temporalio/setup-temporal@6d04211d9dfbd5cb2493a4a6637b2ad784a60ccc
 
       - name: Start Temporal dev server
         run: |
