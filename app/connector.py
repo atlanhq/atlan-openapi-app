@@ -21,7 +21,8 @@ from pathlib import Path
 from typing import Any, TypeVar, cast
 
 import msgspec
-from application_sdk.app import App, task
+from application_sdk.app import App, AtlanClientMixin, task
+from application_sdk.credentials import atlan_oauth_client_ref
 from application_sdk.contracts.storage import UploadInput
 from application_sdk.contracts.types import FileReference, StorageTier
 from application_sdk.observability.logger_adaptor import AtlanLoggerAdapter as Logger
@@ -39,6 +40,8 @@ from app.contracts import (
     DownloadCloudSpecOutput,
     ExtractSpecInput,
     ExtractSpecOutput,
+    FetchConnectionInput,
+    FetchConnectionOutput,
     OpenAPIConnectorInput,
     OpenAPIConnectorOutput,
     TransformInput,
@@ -277,10 +280,12 @@ def _transform_blocking(
     api_path_count = 0
 
     with output_file.open("wb") as out_f:
-        # Emit Connection only on CREATE — REUSE means the connection already exists
-        if connection is not None:
-            conn_asset = map_connection(connection)
-            out_f.write(conn_asset.to_nested_bytes() + b"\n")
+        # Connection is always set — CREATE receives it from input, REUSE fetches it
+        # via fetch_connection before calling transform. Without this emit the diff
+        # engine would archive the Connection (present in old cache, absent in new).
+        if connection is None:
+            raise ValueError("connection must be set before calling transform")
+        out_f.write(map_connection(connection).to_nested_bytes() + b"\n")
 
         # Emit APISpec records
         for record in _iter_jsonl(input.api_spec_file, OpenAPISpecRecord):
@@ -320,7 +325,7 @@ def _transform_blocking(
 # =============================================================================
 
 
-class OpenAPIConnector(App):
+class OpenAPIConnector(AtlanClientMixin, App):
     """OpenAPI Spec Loader connector app.
 
     Extracts APISpec + APIPath metadata from an OpenAPI spec document and
@@ -464,6 +469,45 @@ class OpenAPIConnector(App):
         )
 
     @task(
+        timeout_seconds=60,
+        heartbeat_timeout_seconds=30,
+        auto_heartbeat_seconds=10,
+    )
+    async def fetch_connection(
+        self, input: FetchConnectionInput
+    ) -> FetchConnectionOutput:
+        """Fetch an existing Connection from Atlan by qualified name.
+
+        Used in REUSE mode to obtain the real connection attributes (name, category,
+        etc.) so the transform can emit a complete Connection entity.  Without the
+        real name the diff engine would still archive the Connection.
+        """
+        from typing import cast
+
+        from application_sdk.contracts.types import ConnectionRef
+        from pyatlan_v9.client.aio import AsyncAtlanClient
+        from pyatlan_v9.model.assets import Connection as PyatlanConnection  # type: ignore[import]
+
+        client = cast(
+            AsyncAtlanClient,
+            await self.get_or_create_async_atlan_client(
+                atlan_oauth_client_ref("atlan")
+            ),
+        )
+        conn = await client.asset.get_by_qualified_name(
+            qualified_name=input.connection_qualified_name,
+            asset_type=PyatlanConnection,
+            ignore_relationships=True,
+        )
+
+        self.logger.info(
+            "fetched connection name=%s connection_qualified_name=%s",
+            conn.name,
+            input.connection_qualified_name,
+        )
+        return FetchConnectionOutput(connection=ConnectionRef.from_connection(conn))
+
+    @task(
         timeout_seconds=1800,
         heartbeat_timeout_seconds=120,
         auto_heartbeat_seconds=30,
@@ -500,7 +544,13 @@ class OpenAPIConnector(App):
                 raise ValueError(
                     "connection_qualified_name required when connection_usage='REUSE'"
                 )
-            connection = None
+            # Fetch the real Connection so we can emit it in the transform output.
+            # Without it the publish-app diff engine would see the Connection absent
+            # from the new state and archive it.
+            fetch_result = await self.fetch_connection(
+                FetchConnectionInput(connection_qualified_name=conn_qn)
+            )
+            connection = fetch_result.connection
         else:
             connection = self.require(input.connection, "connection")
             conn_qn = connection.attributes.qualified_name
