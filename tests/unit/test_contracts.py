@@ -75,37 +75,13 @@ class TestOpenAPIConnectorInput:
         assert decoded.load_to_atlan is False
         assert decoded.publish_dry_run is True
 
-    def test_round_trip_new_fields_defaults(self) -> None:
-        """New fields introduced for Pkl contract must have correct defaults."""
+    def test_round_trip_cloud_input_defaults(self) -> None:
+        """Cloud import fields have correct defaults."""
         original = OpenAPIConnectorInput()
         decoded = _round_trip(original, OpenAPIConnectorInput)
-        assert decoded.connection_usage == "REUSE"
-        assert decoded.connection_qualified_name == ""
         assert decoded.spec_prefix == ""
         assert decoded.spec_key == ""
         assert decoded.cloud_source == ""
-
-    def test_round_trip_connection_usage_reuse(self) -> None:
-        """REUSE connection_usage path survives round-trip."""
-        original = OpenAPIConnectorInput(
-            connection_usage="REUSE",
-            connection_qualified_name="default/api/my-connection",
-        )
-        decoded = _round_trip(original, OpenAPIConnectorInput)
-        assert decoded.connection_usage == "REUSE"
-        assert decoded.connection_qualified_name == "default/api/my-connection"
-
-    def test_round_trip_connection_usage_create(self) -> None:
-        """CREATE connection_usage path with ConnectionRef survives round-trip."""
-        original = OpenAPIConnectorInput(
-            connection_usage="CREATE",
-            connection=_make_connection_ref("default/api/new-conn", "new-conn"),
-        )
-        decoded = _round_trip(original, OpenAPIConnectorInput)
-        assert decoded.connection_usage == "CREATE"
-        assert decoded.connection is not None
-        assert decoded.connection.attributes.qualified_name == "default/api/new-conn"
-        assert decoded.connection_qualified_name == ""
 
     def test_round_trip_cloud_import_fields(self) -> None:
         """Cloud import fields survive round-trip."""
@@ -269,7 +245,7 @@ class TestTransformContracts:
         assert decoded.workflow_run_at_ms == 0
 
     def test_input_round_trip_create_path(self) -> None:
-        """CREATE path: connection object is set; connection_qualified_name is derived from it."""
+        """connection object is set; connection_qualified_name is derived from it."""
         spec_ref = _sample_file_ref("/tmp/diff/changed_api_spec.jsonl")
         path_ref = _sample_file_ref("/tmp/diff/changed_api_path.jsonl")
         original = TransformInput(
@@ -294,14 +270,16 @@ class TestTransformContracts:
         assert decoded.workflow_type == "openapi"
         assert decoded.workflow_run_at_ms == 1700000000000
 
-    def test_input_round_trip_reuse_path(self) -> None:
-        """REUSE path: connection is None; connection_qualified_name carries the QN."""
+    def test_input_round_trip_with_connection(self) -> None:
+        """connection is always required; connection_qualified_name is derived from it."""
         spec_ref = _sample_file_ref("/tmp/diff/changed_api_spec.jsonl")
         path_ref = _sample_file_ref("/tmp/diff/changed_api_path.jsonl")
         original = TransformInput(
             api_spec_file=spec_ref,
             api_path_file=path_ref,
-            connection=None,
+            connection=_make_connection_ref(
+                "default/api/existing-conn", "existing-conn"
+            ),
             connection_qualified_name="default/api/existing-conn",
             output_dir="/tmp/out",
             workflow_id="wf-abc123",
@@ -309,7 +287,10 @@ class TestTransformContracts:
             workflow_run_at_ms=1700000000000,
         )
         decoded = _round_trip(original, TransformInput)
-        assert decoded.connection is None
+        assert decoded.connection is not None
+        assert (
+            decoded.connection.attributes.qualified_name == "default/api/existing-conn"
+        )
         assert decoded.connection_qualified_name == "default/api/existing-conn"
         assert decoded.api_spec_file is not None
         assert decoded.api_path_file is not None
