@@ -14,6 +14,25 @@ from application_sdk.credentials.ref import CredentialRef
 from app.generated._input import AppInputContract
 
 # =============================================================================
+# Task-level contracts: fetch_connection
+# =============================================================================
+
+
+class FetchConnectionInput(Input):
+    """Input for the fetch_connection task."""
+
+    connection_qualified_name: str = ""
+    """Qualified name of the connection to fetch from Atlan."""
+
+
+class FetchConnectionOutput(Output):
+    """Output from the fetch_connection task."""
+
+    connection: ConnectionRef = ConnectionRef()
+    """The fetched Connection as a typed reference."""
+
+
+# =============================================================================
 # App-level contracts
 # =============================================================================
 
@@ -149,9 +168,9 @@ class TransformInput(Input):
     """FileReference to api_path records from extract_spec."""
 
     connection: ConnectionRef | None = None
-    """Atlan connection reference (CREATE path). When set, the Connection entity is emitted
-    in the output. When None (REUSE path), connection_qualified_name is used for QN
-    derivation and no Connection entity is written."""
+    """Atlan connection reference. Always set — CREATE path receives it from the
+    workflow input; REUSE path fetches it from Atlan first. The Connection entity
+    is emitted from this reference so the diff engine does not archive it."""
 
     connection_qualified_name: str = ""
     """Connection QN (REUSE path). Used for APISpec/APIPath QN derivation when
