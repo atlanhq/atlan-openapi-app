@@ -24,12 +24,8 @@ class AppInputContract(Input):
     """Object key (filename) in the object store. Required when import_type='CLOUD'."""
     cloud_source: str = ""
     """Cloud storage credential (csa-connectors-objectstore). Required when import_type='CLOUD'."""
-    connection_usage: str = "REUSE"
-    """'CREATE' to make a new connection, 'REUSE' to pick an existing one."""
     connection: ConnectionRef | None = None
-    """Atlan connection to create. Required when connection_usage='CREATE'."""
-    connection_qualified_name: str = ""
-    """Existing connection qualified name. Required when connection_usage='REUSE'."""
+    """Atlan connection to create or reuse."""
     output_dir: str = ""
     """Directory for output JSONL files."""
     checkpoint_dir: str = ""

@@ -53,24 +53,10 @@ uiConfig {
     ["Connection"] {
       description = "Connection details"
       inputs {
-        ["connection_usage"] = new Config.Radio {
-          title = "Connection usage"
-          helpText = "'CREATE' to make a new connection, 'REUSE' to pick an existing one."
-          possibleValues { ["CREATE"] = "Create"; ["REUSE"] = "Reuse" }
-          default = "REUSE"
-          required = true
-        }
         ["connection"] = new Config.ConnectionCreator {
           title = "Connection"
-          helpText = "Atlan connection to create. Required when connection_usage='CREATE'."
+          helpText = "Atlan connection to create or reuse."
           required = true
-        }
-        ["connection_qualified_name"] = new Config.ConnectionSelector {
-          title = "Connection"
-          helpText = "Existing connection qualified name. Required when connection_usage='REUSE'."
-          required = true
-          width = 4
-          connectorFilter = "api"
         }
       }
     }
@@ -83,14 +69,6 @@ uiConfig {
     new Config.UIRule {
       whenInputs { ["import_type"] = "CLOUD" }
       required { "cloud_source"; "spec_prefix"; "spec_key" }
-    }
-new Config.UIRule {
-      whenInputs { ["connection_usage"] = "REUSE" }
-      required { "connection_qualified_name" }
-    }
-    new Config.UIRule {
-      whenInputs { ["connection_usage"] = "CREATE" }
-      required { "connection" }
     }
   }
 }
