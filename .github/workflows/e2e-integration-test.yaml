@@ -1,0 +1,277 @@
+name: Tests
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      distinct_id:
+
+jobs:
+  unit:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-unit
+      cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+    timeout-minutes: 10
+    permissions:
+      pull-requests: write
+      contents: write
+
+    steps:
+      - name: echo distinct ID ${{ github.event.inputs.distinct_id }}
+        run: echo ${{ github.event.inputs.distinct_id }}
+
+      - uses: atlanhq/application-sdk/.github/actions/setup-deps@main
+
+      - name: Update application-sdk rev
+        if: ${{ github.event.inputs.distinct_id != '' }}
+        run: |
+          commit_hash=${{ github.event.inputs.distinct_id }}
+          if ! [[ "$commit_hash" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "distinct_id must be a 40-char hex SHA"; exit 1
+          fi
+          uv add git+https://github.com/atlanhq/application-sdk --rev $commit_hash
+
+      - name: Run Tests with Coverage
+        run: |
+          uv run coverage run -m pytest tests/unit
+          uv run coverage xml
+          uv run coverage html
+          uv run coverage report --fail-under=30
+
+      - name: Comment Coverage Report on PR
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        uses: orgoro/coverage@3f13a558c5af7376496aa4848bf0224aead366ac # v3.2
+        with:
+          coverageFile: coverage.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  integration-temporal:
+    name: Integration Tests (Temporal)
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-integration-temporal
+      cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+    timeout-minutes: 30
+    permissions:
+      pull-requests: write
+      contents: write
+
+    steps:
+      - name: echo distinct ID ${{ github.event.inputs.distinct_id }}
+        run: echo ${{ github.event.inputs.distinct_id }}
+
+      - name: Install Temporal CLI
+        uses: temporalio/setup-temporal@6d04211d9dfbd5cb2493a4a6637b2ad784a60ccc
+
+      - name: Start Temporal dev server
+        run: |
+          temporal server start-dev --db-filename /tmp/temporal.db --headless &
+          sleep 5
+
+      - uses: atlanhq/application-sdk/.github/actions/setup-deps@main
+
+      - name: Update application-sdk rev
+        if: ${{ github.event.inputs.distinct_id != '' }}
+        run: |
+          commit_hash=${{ github.event.inputs.distinct_id }}
+          if ! [[ "$commit_hash" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "distinct_id must be a 40-char hex SHA"; exit 1
+          fi
+          uv add git+https://github.com/atlanhq/application-sdk --rev $commit_hash
+
+      - name: Run integration tests with profiling
+        id: integration_tests
+        env:
+          ATLAN_LOCAL_DEVELOPMENT: true
+          ATLAN_APPLICATION_NAME: ${{ github.event.repository.name }}
+          TEMPORAL_HOST: localhost:7233
+        run: |
+          /usr/bin/time -v uv run coverage run -m pytest tests/integration/ \
+            --capture=no --log-cli-level=INFO -v --full-trace \
+            2>.github/time_output.txt
+          cat .github/time_output.txt
+
+      - name: Report profiling metrics
+        if: always()
+        run: |
+          if [ -f .github/time_output.txt ]; then
+            PEAK_MEM_KB=$(grep "Maximum resident" .github/time_output.txt | awk '{print $NF}')
+            PEAK_MEM_MB=$(awk "BEGIN {printf \"%.0f\", $PEAK_MEM_KB / 1024}")
+            CPU_PCT=$(grep "Percent of CPU" .github/time_output.txt | awk '{print $NF}')
+            WALL_TIME=$(grep "Elapsed (wall clock)" .github/time_output.txt | awk '{print $NF}')
+          else
+            PEAK_MEM_MB="N/A"
+            CPU_PCT="N/A"
+            WALL_TIME="N/A"
+          fi
+
+          TEST_RESULT="${{ steps.integration_tests.outcome }}"
+          if [ "$TEST_RESULT" = "success" ]; then
+            TEST_BADGE="✅ passed"
+          else
+            TEST_BADGE="❌ failed"
+          fi
+
+          echo "## Integration Test Results and Performance Metrics" >> metrics.md
+          echo "**Tests:** $TEST_BADGE | **Commit:** \`${{ github.sha }}\`" >> metrics.md
+          echo "### Runner Environment Details" >> metrics.md
+          echo "$(mpstat 1 1 | awk 'NR == 1')" >> metrics.md
+          echo "Total Memory: $(free -m | awk 'NR == 2 {print $2}') MB" >> metrics.md
+
+          echo "### Resource Usage" >> metrics.md
+          echo "| Metric | Value |" >> metrics.md
+          echo "|--------|-------|" >> metrics.md
+          echo "| Peak Memory (RSS) | ${PEAK_MEM_MB} MB |" >> metrics.md
+          echo "| CPU Usage | ${CPU_PCT} |" >> metrics.md
+          echo "| Wall Time | ${WALL_TIME} |" >> metrics.md
+
+          echo "---" >> metrics.md
+
+          cat metrics.md
+          exit 0
+
+      - name: Comment profiling metrics on PR
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        uses: mshick/add-pr-comment@64b8e914979889d746c99dea15a76e77ef64580a # v3.10.0
+        with:
+          message-id: "integration_test_profiling"
+          message-path: metrics.md
+        continue-on-error: true
+
+      - name: Stop Temporal
+        if: always()
+        run: pkill -f "temporal server" || true
+
+  integration-cloud:
+    name: Integration Tests (S3/MinIO)
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-integration-cloud
+      cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: echo distinct ID ${{ github.event.inputs.distinct_id }}
+        run: echo ${{ github.event.inputs.distinct_id }}
+
+      - name: Install Temporal CLI
+        uses: temporalio/setup-temporal@6d04211d9dfbd5cb2493a4a6637b2ad784a60ccc
+
+      - name: Start Temporal dev server
+        run: |
+          temporal server start-dev --db-filename /tmp/temporal.db --headless &
+          sleep 5
+
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data
+          echo "Waiting for MinIO to be ready..."
+          until curl -sf http://localhost:9000/minio/health/live; do sleep 1; done
+          echo "MinIO is ready."
+          AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin \
+            aws --endpoint-url http://localhost:9000 \
+            s3api create-bucket --bucket test-openapi-specs --region us-east-1
+
+      - uses: atlanhq/application-sdk/.github/actions/setup-deps@main
+
+      - name: Update application-sdk rev
+        if: ${{ github.event.inputs.distinct_id != '' }}
+        run: |
+          commit_hash=${{ github.event.inputs.distinct_id }}
+          if ! [[ "$commit_hash" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "distinct_id must be a 40-char hex SHA"; exit 1
+          fi
+          uv add git+https://github.com/atlanhq/application-sdk --rev $commit_hash
+
+      - name: Run cloud integration tests
+        env:
+          ATLAN_LOCAL_DEVELOPMENT: "true"
+          ATLAN_APPLICATION_NAME: ${{ github.event.repository.name }}
+          TEMPORAL_HOST: localhost:7233
+          AWS_ENDPOINT_URL: http://localhost:9000
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+        run: |
+          uv run pytest tests/integration/test_s3_download.py \
+            -v -m cloud_integration --capture=no --log-cli-level=INFO
+
+      - name: Stop services
+        if: always()
+        run: |
+          docker stop minio || true
+          pkill -f "temporal server" || true
+
+  integration-azure:
+    name: Integration Tests (Azure/Azurite)
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-integration-azure
+      cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: echo distinct ID ${{ github.event.inputs.distinct_id }}
+        run: echo ${{ github.event.inputs.distinct_id }}
+
+      - name: Install Temporal CLI
+        uses: temporalio/setup-temporal@6d04211d9dfbd5cb2493a4a6637b2ad784a60ccc
+
+      - name: Start Temporal dev server
+        run: |
+          temporal server start-dev --db-filename /tmp/temporal.db --headless &
+          sleep 5
+
+      - name: Start Azurite
+        run: |
+          docker run -d --name azurite \
+            -p 10000:10000 \
+            "mcr.microsoft.com/azure-storage/azurite:3.35.0@sha256:dae2a5f96553962901304b94e72ef87e299d0825e4b679673bcc527a25076fe4" \
+            azurite-blob --blobHost 0.0.0.0 --skipApiVersionCheck
+          echo "Waiting for Azurite to be ready..."
+          until curl -s --max-time 2 http://127.0.0.1:10000/devstoreaccount1 > /dev/null 2>&1; do sleep 1; done
+          echo "Azurite is ready."
+          az storage container create \
+            --name test-openapi-specs \
+            --connection-string "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
+
+      - uses: atlanhq/application-sdk/.github/actions/setup-deps@main
+
+      - name: Update application-sdk rev
+        if: ${{ github.event.inputs.distinct_id != '' }}
+        run: |
+          commit_hash=${{ github.event.inputs.distinct_id }}
+          if ! [[ "$commit_hash" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "distinct_id must be a 40-char hex SHA"; exit 1
+          fi
+          uv add git+https://github.com/atlanhq/application-sdk --rev $commit_hash
+
+      - name: Run Azure integration tests
+        env:
+          ATLAN_LOCAL_DEVELOPMENT: "true"
+          ATLAN_APPLICATION_NAME: ${{ github.event.repository.name }}
+          TEMPORAL_HOST: localhost:7233
+          AZURE_STORAGE_ENDPOINT: http://127.0.0.1:10000
+        run: |
+          uv run pytest tests/integration/test_azure_download.py \
+            -v -m azure_integration --capture=no --log-cli-level=INFO
+
+      - name: Stop services
+        if: always()
+        run: |
+          docker stop azurite || true
+          pkill -f "temporal server" || true
