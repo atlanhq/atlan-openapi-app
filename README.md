@@ -24,7 +24,7 @@ On the `CREATE` connection path, a `Connection` entity is also emitted ahead of 
 
 ## Input
 
-Input is defined in [`contract/app.pkl`](contract/app.pkl) and code-generated into [`app/generated/input.py`](app/generated/input.py). To regenerate after editing the pkl:
+Input is defined in [`contract/app.pkl`](contract/app.pkl) and code-generated into [`app/generated/_input.py`](app/generated/_input.py). To regenerate after editing the pkl:
 
 ```
 make generate
@@ -138,6 +138,6 @@ uv run python -m pytest tests/unit -q
 ### Regenerate contract artifacts
 
 ```bash
-make generate        # regenerates app/generated/input.py, manifest.json, openapi.json
+make generate        # regenerates app/generated/_input.py, manifest.json, openapi.json
 make check-generate  # fails if generated files are stale (used in CI)
 ```
