@@ -7,12 +7,14 @@ on:
       - '**'
       - '!**.md'
       - '!images/**'
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       publish:
         description: "Publish to marketplace after build"
         type: boolean
-        default: true
+        default: false
       ref:
         description: "Branch, tag, or SHA to build (default: current branch)"
         required: false
@@ -31,7 +33,8 @@ jobs:
     uses: atlanhq/application-sdk/.github/workflows/build-and-publish-app.yaml@main
     with:
       ref: ${{ inputs.ref || github.ref }}
-      publish: ${{ github.event_name == 'push' || github.event.inputs.publish != 'false' }}
+      publish: ${{ github.event_name == 'release' || inputs.publish == true }}
       channel: ${{ inputs.channel || 'all' }}
       tenants: ${{ inputs.tenants || '' }}
+      release_tag: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
     secrets: inherit
