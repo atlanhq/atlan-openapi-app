@@ -40,6 +40,7 @@ from unittest.mock import AsyncMock, patch
 
 import orjson
 import pytest
+import pytest_asyncio
 
 from application_sdk.contracts.types import ConnectionRef
 from application_sdk.storage.cloud import CloudStore
@@ -476,3 +477,149 @@ class TestAzureCloudDownloadWorkflow:
         assert "Connection" in type_names
         assert "APISpec" in type_names
         assert "APIPath" in type_names
+
+
+# ---------------------------------------------------------------------------
+# TestAzureLargeSpecWorkflow
+# ---------------------------------------------------------------------------
+
+
+class TestAzureLargeSpecWorkflow:
+    """Full Temporal-orchestrated workflow with a ≥100 MiB OpenAPI spec.
+
+    Uploads the synthetic large spec into Azurite and runs the same
+    ``import_type='CLOUD'`` workflow as ``TestAzureCloudDownloadWorkflow``,
+    but at a payload size that exercises the connector's parser, extractor,
+    and JSONL emit paths under load.
+    """
+
+    _LARGE_CONNECTION_NAME = "test-openapi-cloud-azure-large"
+    _LARGE_CONNECTION_QN = f"default/api/{_LARGE_CONNECTION_NAME}"
+    _LARGE_SPEC_KEY = "large/openapi.json"
+
+    @pytest.fixture(scope="class")
+    def tmp_dir_class(self, tmp_path_factory: pytest.TempPathFactory) -> Path:
+        return tmp_path_factory.mktemp("cloud_azure_large_spec_workflow")
+
+    @pytest_asyncio.fixture(scope="class")
+    async def seeded_large_spec(
+        self,
+        seeded_container: str,  # ensures container exists
+        large_spec_file: tuple[Path, str, int, int],
+    ) -> tuple[str, int]:
+        """Upload the large spec to a dedicated key. Returns ``(key, num_paths)``."""
+        from obstore.store import AzureStore
+
+        spec_path, _, _, num_paths = large_spec_file
+        store = AzureStore(
+            container_name=seeded_container,
+            config={
+                "account_name": _AZURITE_ACCOUNT,
+                "account_key": _AZURITE_KEY,
+                "endpoint": f"{_AZURITE_ENDPOINT}/{_AZURITE_ACCOUNT}",
+            },
+            client_options={"allow_http": True},
+        )
+        cloud_store = CloudStore(store, provider="adls")
+        await cloud_store.upload(local_path=spec_path, key=self._LARGE_SPEC_KEY)
+        return self._LARGE_SPEC_KEY, num_paths
+
+    @pytest_asyncio.fixture(scope="class")
+    async def large_extraction_result(
+        self,
+        openapi_executor: "AppExecutor",
+        tmp_dir_class: Path,
+        seeded_large_spec: tuple[str, int],
+    ) -> tuple[OpenAPIConnectorOutput, int]:
+        """Run the full CLOUD-import workflow against the large spec."""
+        import application_sdk.storage.cloud as cloud_mod
+        from application_sdk.credentials.resolver import CredentialResolver
+        from obstore.store import AzureStore
+
+        spec_key, num_paths = seeded_large_spec
+        prefix, _, key = spec_key.rpartition("/")
+
+        output_dir = tmp_dir_class / "output"
+        output_dir.mkdir()
+
+        def _patched_create_azure_store(creds: dict, extra: dict):
+            container = extra.get("adls_container", "objectstore")
+            from application_sdk.storage.errors import StorageConfigError
+
+            if not extra.get("storage_account_name"):
+                raise StorageConfigError(
+                    "Azure storage account is required (extra.storage_account_name)"
+                )
+            return AzureStore(
+                container_name=container,
+                config={
+                    "account_name": _AZURITE_ACCOUNT,
+                    "account_key": _AZURITE_KEY,
+                    "endpoint": f"{_AZURITE_ENDPOINT}/{_AZURITE_ACCOUNT}",
+                },
+                client_options={"allow_http": True},
+            )
+
+        with (
+            patch.object(cloud_mod, "_create_azure_store", _patched_create_azure_store),
+            patch.object(
+                CredentialResolver,
+                "_resolve_by_guid",
+                AsyncMock(return_value=_AZURE_CREDENTIAL),
+            ),
+        ):
+            result = cast(
+                "OpenAPIConnectorOutput",
+                await openapi_executor.execute_app(
+                    OpenAPIConnector,
+                    OpenAPIConnectorInput(
+                        connection_usage="CREATE",
+                        connection=ConnectionRef.model_validate(
+                            {
+                                "typeName": "Connection",
+                                "attributes": {
+                                    "qualifiedName": self._LARGE_CONNECTION_QN,
+                                    "name": self._LARGE_CONNECTION_NAME,
+                                    "category": "API",
+                                    "adminGroups": ["admins"],
+                                },
+                            }
+                        ),
+                        import_type="CLOUD",
+                        spec_prefix=prefix,
+                        spec_key=key,
+                        cloud_source=_FAKE_GUID,
+                        output_dir=str(output_dir / "run1"),
+                        load_to_atlan=False,
+                    ),
+                    execution_id_prefix="test-cloud-azure-large",
+                ),
+            )
+
+        return result, num_paths
+
+    async def test_workflow_completes(
+        self,
+        large_extraction_result: tuple[OpenAPIConnectorOutput, int],
+    ) -> None:
+        result, _ = large_extraction_result
+        assert result is not None
+
+    async def test_path_count_matches_input_spec(
+        self,
+        large_extraction_result: tuple[OpenAPIConnectorOutput, int],
+    ) -> None:
+        result, num_paths = large_extraction_result
+        assert result.api_spec_count == 1
+        assert result.api_path_count == num_paths
+
+    async def test_output_file_exists_and_non_empty(
+        self,
+        large_extraction_result: tuple[OpenAPIConnectorOutput, int],
+        store_root: Path,
+    ) -> None:
+        result, _ = large_extraction_result
+        assert result.output_file is not None
+        output_path = store_root / result.output_file.storage_path
+        assert output_path.exists()
+        assert output_path.stat().st_size > 0
