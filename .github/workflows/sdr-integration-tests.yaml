@@ -91,21 +91,6 @@ jobs:
             --output ./ci-deploy \
             --overwrite
 
-      - name: Pin Temporal hostname to IPv4
-        run: |
-          # GitHub Actions runners have IPv6 interfaces but no global IPv6 routes.
-          # The Temporal Rust SDK (hickory-dns) tries AAAA records first and never
-          # falls back, causing NetworkUnreachable. docker-compose extra_hosts injects
-          # into /etc/hosts, which hickory-dns reads before DNS — suppressing AAAA.
-          #
-          # Read ATLAN_TEMPORAL_HOST from the configurator-generated .env rather than
-          # deriving it, so we follow the actual value not a guessed naming pattern.
-          TEMPORAL_HOSTPORT=$(grep '^ATLAN_TEMPORAL_HOST=' ci-deploy/.env | cut -d= -f2- | tr -d '"')
-          TEMPORAL_HOST="${TEMPORAL_HOSTPORT%%:*}"
-          TEMPORAL_IPV4=$(getent ahostsv4 "$TEMPORAL_HOST" 2>/dev/null | awk '{print $1; exit}')
-          echo "TEMPORAL_EXTRA_HOST=${TEMPORAL_HOST}:${TEMPORAL_IPV4}" >> "$GITHUB_ENV"
-          echo "Pinned ${TEMPORAL_HOST} → ${TEMPORAL_IPV4} (IPv4 only)"
-
       - name: Create CI secrets file
         run: |
           mkdir -p .github/e2e/secrets
