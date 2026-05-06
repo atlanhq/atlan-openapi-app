@@ -5,10 +5,13 @@ services:
       # Absolute path required — relative paths in override files resolve to the
       # first compose file's directory (ci-deploy/), not the repo root.
       - ${GITHUB_WORKSPACE}/.github/e2e/secrets:/app/secrets:ro
-      # Override gai.conf to prefer IPv4: GitHub Actions runners have IPv6
-      # interfaces but no global IPv6 routes, causing Temporal gRPC connection
-      # failures when DNS returns AAAA records first.
-      - ${GITHUB_WORKSPACE}/.github/e2e/gai.conf:/etc/gai.conf:ro
+    extra_hosts:
+      # Pin the Temporal gRPC host to IPv4. The Temporal Rust SDK uses hickory-dns
+      # (pure Rust, ignores /etc/gai.conf) and tries AAAA records first; GitHub
+      # Actions runners have no global IPv6 route so all attempts fail. hickory-dns
+      # reads /etc/hosts before DNS, so extra_hosts overrides suppress AAAA entirely.
+      # TEMPORAL_EXTRA_HOST is resolved to IPv4 in the "Prepare tenant domain" step.
+      - "${TEMPORAL_EXTRA_HOST}"
     environment:
       ATLAN_ENABLE_OBSERVABILITY_DAPR_SINK: "false"
       # Bridge env-var naming gaps between atlan-configurator output and app startup
