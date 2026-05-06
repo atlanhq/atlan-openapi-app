@@ -34,6 +34,7 @@ from unittest.mock import AsyncMock, patch
 
 import orjson
 import pytest
+import pytest_asyncio
 
 from application_sdk.contracts.types import ConnectionRef
 from application_sdk.storage.cloud import CloudStore
@@ -217,6 +218,117 @@ class TestCloudStoreDirectOperations:
         parsed = orjson.loads(paths[0].read_bytes())
         assert parsed["info"]["title"] == "Upload Test"
 
+    async def test_large_file_round_trip(
+        self,
+        cloud_store: CloudStore,
+        large_payload_file: tuple[Path, str, int],
+        tmp_path: Path,
+    ) -> None:
+        """Round-trip a ≥100 MiB payload through the production CloudStore path.
+
+        Mirrors what ``download_cloud_spec`` does in production for customer
+        OpenAPI specs — same ``CloudStore.upload`` / ``CloudStore.download``
+        calls, just with a 100 MiB+ payload instead of a few-hundred-byte
+        JSON. SHA-256 is checked end-to-end so a single corrupted byte fails
+        the test.
+        """
+        from tests.integration.conftest import sha256_of_path
+
+        src_path, src_sha256, src_size = large_payload_file
+        key = "large/payload.bin"
+
+        uploaded = await cloud_store.upload(local_path=src_path, key=key)
+        assert uploaded == src_size
+
+        paths = await cloud_store.download(key=key, output_dir=str(tmp_path / "large"))
+        assert len(paths) == 1
+        dl_path = paths[0]
+        assert dl_path.stat().st_size == src_size
+        assert sha256_of_path(dl_path) == src_sha256
+
+    async def test_large_file_round_trip_via_sdk_chunking_apis(
+        self,
+        cloud_store: CloudStore,
+        large_payload_file: tuple[Path, str, int],
+        tmp_path: Path,
+    ) -> None:
+        """Round-trip a ≥100 MiB payload through the SDK's chunking entry points.
+
+        ``CloudStore.upload`` / ``download`` use single PUT/GET. The SDK's
+        ``storage.ops.upload_file`` uses ``obstore.open_writer_async`` which
+        does multipart upload, and ``download_file`` streams the GET via
+        ``result.stream``. This test wires those into the same MinIO store
+        so the multipart-upload and streaming-download paths actually run
+        on a 100 MiB+ payload.
+        """
+        from application_sdk.storage.ops import download_file, upload_file
+
+        src_path, src_sha256, src_size = large_payload_file
+        key = "large-chunked/payload.bin"
+
+        digest = await upload_file(
+            key=key,
+            local_path=src_path,
+            store=cloud_store.store,
+            normalize=False,
+        )
+        assert digest == src_sha256
+
+        dl_path = tmp_path / "chunked" / "payload.bin"
+        downloaded_digest = await download_file(
+            key=key,
+            local_path=dl_path,
+            store=cloud_store.store,
+            compute_hash=True,
+            normalize=False,
+        )
+        assert dl_path.stat().st_size == src_size
+        assert downloaded_digest == src_sha256
+
+    async def test_upload_respects_short_request_timeout(
+        self,
+        seeded_bucket: str,
+        large_payload_file: tuple[Path, str, int],
+    ) -> None:
+        """A request timeout shorter than the transfer time fails with a timeout error.
+
+        Wires obstore's ``client_options['timeout']`` to 1 ms (orders of
+        magnitude below the time to ship 100 MiB even on loopback) and
+        disables retries, then attempts to upload the 100 MiB fixture. The
+        request must fail with a timeout-related ``StorageError``. This
+        proves the timeout configuration is propagated through obstore to
+        the underlying HTTP client and actually enforced.
+        """
+        from application_sdk.storage.errors import StorageError
+        from obstore.store import S3Store
+
+        src_path, _, _ = large_payload_file
+
+        timeout_store = S3Store(
+            bucket=seeded_bucket,
+            config={
+                "aws_access_key_id": _MINIO_USER,
+                "aws_secret_access_key": _MINIO_PASS,
+                "aws_region": "us-east-1",
+                "endpoint": _MINIO_ENDPOINT,
+            },
+            client_options={"allow_http": True, "timeout": "1ms"},
+            retry_config={"max_retries": 0},
+        )
+        timeout_cloud = CloudStore(timeout_store, provider="s3")
+
+        with pytest.raises(StorageError) as exc_info:
+            await timeout_cloud.upload(
+                local_path=src_path, key="timeout-test/upload.bin"
+            )
+
+        # StorageError.__str__ embeds the wrapped cause's class + message.
+        rendered = str(exc_info.value).lower()
+        assert any(
+            marker in rendered
+            for marker in ("timeout", "timed out", "deadline", "elapsed")
+        ), f"Expected a timeout-related error, got: {exc_info.value!r}"
+
 
 # ---------------------------------------------------------------------------
 # TestS3CloudDownloadWorkflow
@@ -356,3 +468,151 @@ class TestS3CloudDownloadWorkflow:
         assert "Connection" in type_names
         assert "APISpec" in type_names
         assert "APIPath" in type_names
+
+
+# ---------------------------------------------------------------------------
+# TestS3LargeSpecWorkflow
+# ---------------------------------------------------------------------------
+
+
+class TestS3LargeSpecWorkflow:
+    """Full Temporal-orchestrated workflow with a ≥100 MiB OpenAPI spec.
+
+    Uploads the synthetic large spec into MinIO and runs the same
+    ``import_type='CLOUD'`` workflow as ``TestS3CloudDownloadWorkflow``,
+    but at a payload size that exercises the connector's parser, extractor,
+    and JSONL emit paths under load. Catches regressions where small specs
+    pass but a real customer-sized spec breaks (memory, timeout, parse).
+    """
+
+    _LARGE_CONNECTION_NAME = "test-openapi-cloud-s3-large"
+    _LARGE_CONNECTION_QN = f"default/api/{_LARGE_CONNECTION_NAME}"
+    _LARGE_SPEC_KEY = "large/openapi.json"
+
+    @pytest.fixture(scope="class")
+    def tmp_dir_class(self, tmp_path_factory: pytest.TempPathFactory) -> Path:
+        return tmp_path_factory.mktemp("cloud_s3_large_spec_workflow")
+
+    @pytest_asyncio.fixture(scope="class")
+    async def seeded_large_spec(
+        self,
+        seeded_bucket: str,  # ensures bucket exists
+        large_spec_file: tuple[Path, str, int, int],
+    ) -> tuple[str, int]:
+        """Upload the large spec to a dedicated key. Returns ``(key, num_paths)``."""
+        from obstore.store import S3Store
+
+        spec_path, _, _, num_paths = large_spec_file
+        store = S3Store(
+            bucket=seeded_bucket,
+            config={
+                "aws_access_key_id": _MINIO_USER,
+                "aws_secret_access_key": _MINIO_PASS,
+                "aws_region": "us-east-1",
+                "endpoint": _MINIO_ENDPOINT,
+            },
+            client_options={"allow_http": True},
+        )
+        cloud_store = CloudStore(store, provider="s3")
+        await cloud_store.upload(local_path=spec_path, key=self._LARGE_SPEC_KEY)
+        return self._LARGE_SPEC_KEY, num_paths
+
+    @pytest_asyncio.fixture(scope="class")
+    async def large_extraction_result(
+        self,
+        openapi_executor: "AppExecutor",
+        tmp_dir_class: Path,
+        seeded_large_spec: tuple[str, int],
+    ) -> tuple[OpenAPIConnectorOutput, int]:
+        """Run the full CLOUD-import workflow against the large spec."""
+        import application_sdk.storage.cloud as cloud_mod
+        from application_sdk.credentials.resolver import CredentialResolver
+        from obstore.store import S3Store
+
+        spec_key, num_paths = seeded_large_spec
+        prefix, _, key = spec_key.rpartition("/")
+
+        output_dir = tmp_dir_class / "output"
+        output_dir.mkdir()
+
+        def _patched_create_s3_store(creds: dict, extra: dict):
+            bucket = extra.get("s3_bucket", "")
+            from application_sdk.storage.errors import StorageConfigError
+
+            if not bucket:
+                raise StorageConfigError("S3 bucket is required (extra.s3_bucket)")
+            config = {
+                "aws_access_key_id": creds.get("username", ""),
+                "aws_secret_access_key": creds.get("password", ""),
+                "aws_region": extra.get("region", "us-east-1"),
+                "endpoint": _MINIO_ENDPOINT,
+            }
+            return S3Store(
+                bucket=bucket, config=config, client_options={"allow_http": True}
+            )
+
+        with (
+            patch.object(cloud_mod, "_create_s3_store", _patched_create_s3_store),
+            patch.object(
+                CredentialResolver,
+                "_resolve_by_guid",
+                AsyncMock(return_value=_S3_CREDENTIAL),
+            ),
+        ):
+            result = cast(
+                "OpenAPIConnectorOutput",
+                await openapi_executor.execute_app(
+                    OpenAPIConnector,
+                    OpenAPIConnectorInput(
+                        connection_usage="CREATE",
+                        connection=ConnectionRef.model_validate(
+                            {
+                                "typeName": "Connection",
+                                "attributes": {
+                                    "qualifiedName": self._LARGE_CONNECTION_QN,
+                                    "name": self._LARGE_CONNECTION_NAME,
+                                    "category": "API",
+                                    "adminGroups": ["admins"],
+                                },
+                            }
+                        ),
+                        import_type="CLOUD",
+                        spec_prefix=prefix,
+                        spec_key=key,
+                        cloud_source=_FAKE_GUID,
+                        output_dir=str(output_dir / "run1"),
+                        load_to_atlan=False,
+                    ),
+                    execution_id_prefix="test-cloud-s3-large",
+                ),
+            )
+
+        return result, num_paths
+
+    async def test_workflow_completes(
+        self,
+        large_extraction_result: tuple[OpenAPIConnectorOutput, int],
+    ) -> None:
+        result, _ = large_extraction_result
+        assert result is not None
+
+    async def test_path_count_matches_input_spec(
+        self,
+        large_extraction_result: tuple[OpenAPIConnectorOutput, int],
+    ) -> None:
+        result, num_paths = large_extraction_result
+        assert result.api_spec_count == 1
+        # Connector emits exactly one OpenAPIPathRecord per path-url entry,
+        # so the count must equal what we wrote into the synthetic spec.
+        assert result.api_path_count == num_paths
+
+    async def test_output_file_exists_and_non_empty(
+        self,
+        large_extraction_result: tuple[OpenAPIConnectorOutput, int],
+        store_root: Path,
+    ) -> None:
+        result, _ = large_extraction_result
+        assert result.output_file is not None
+        output_path = store_root / result.output_file.storage_path
+        assert output_path.exists()
+        assert output_path.stat().st_size > 0
