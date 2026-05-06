@@ -14,6 +14,7 @@ import zipfile
 import pytest
 import respx
 import httpx
+from application_sdk.errors import InvalidInputError
 
 from app.api_client import OpenAPIApiClient
 
@@ -238,7 +239,7 @@ class TestFetchSpecZip:
             )
         )
         client = OpenAPIApiClient()
-        with pytest.raises(ValueError, match="No valid OpenAPI specs found"):
+        with pytest.raises(InvalidInputError, match="No valid OpenAPI specs found"):
             await client.fetch_spec("https://example.com/bundle.zip")
         await client.close()
 
