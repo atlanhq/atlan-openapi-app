@@ -1,0 +1,12 @@
+services:
+  atlan-app:
+    working_dir: /app
+    volumes:
+      - .github/e2e/secrets:/app/secrets:ro
+    environment:
+      ATLAN_ENABLE_OBSERVABILITY_DAPR_SINK: "false"
+      # Bridge env-var naming gaps between atlan-configurator output and app startup
+      ATLAN_TEMPORAL_TLS_ENABLED: "${ATLAN_TEMPORAL_TLS_ENABLED:-true}"
+      ATLAN_AUTH_TOKEN_URL: "${ATLAN_AUTH_BASE_URL:-}/auth/realms/default/protocol/openid-connect/token"
+      ATLAN_AUTH_BASE_URL: "${ATLAN_AUTH_BASE_URL:-}"
+      ATLAN_APP_MODULE: "app.connector:OpenAPIConnector"
