@@ -10,6 +10,7 @@ the extract_spec @task method.
 from __future__ import annotations
 
 import httpx
+from application_sdk.errors import InvalidInputError
 from application_sdk.observability.logger_adaptor import get_logger
 
 logger = get_logger(__name__)
@@ -156,5 +157,9 @@ class OpenAPIApiClient:
                 except Exception:
                     logger.warning("skipping file in ZIP file=%s", name, exc_info=True)
         if not specs:
-            raise ValueError(f"No valid OpenAPI specs found in ZIP from {source_url}")
+            raise InvalidInputError(
+                message=f"No valid OpenAPI specs found in ZIP from {source_url}",
+                field="spec_url",
+                constraint="ZIP must contain at least one valid OpenAPI JSON/YAML spec",
+            )
         return specs
