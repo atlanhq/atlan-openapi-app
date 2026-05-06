@@ -1,0 +1,292 @@
+name: SDR Integration Tests
+
+# Triggered by the `sdr-e2e-test` PR label or manual workflow_dispatch.
+# Builds the PR image, runs atlan-configurator to create a docker compose
+# + Dapr + Temporal worker stack against the CI test tenant, then runs
+# the tests/sdr/ pytest suite.
+#
+# Commit-status context: `sdr-e2e-tests`
+
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+
+jobs:
+  sdr-tests:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.label.name == 'sdr-e2e-test'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    concurrency:
+      group: sdr-integration-tests-${{ github.ref }}
+      cancel-in-progress: true
+    permissions:
+      pull-requests: write
+      contents: read
+      statuses: write
+      packages: write
+    env:
+      CI_TENANT_DOMAIN: ${{ secrets.SDR_TEST_TENANT }}
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Log in to GHCR
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push PR image
+        id: build
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-8)
+          IMAGE="ghcr.io/atlanhq/atlan-openapi-app:sdr-test-${SHORT_SHA}"
+          docker build -t "${IMAGE}" .
+          docker push "${IMAGE}"
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Python and dependencies
+        uses: atlanhq/application-sdk/.github/actions/setup-deps@main
+
+      - name: Download atlan-configurator
+        run: |
+          curl -fsSL -O https://atlan-public.s3.amazonaws.com/apps/docker-compose-configurator-amd64.tgz
+          tar -xvf docker-compose-configurator-amd64.tgz
+          mv docker-compose-generator/generate atlan-configurator
+          chmod +x atlan-configurator
+
+      - name: Resolve app.yaml
+        env:
+          APP_IMAGE: ${{ steps.build.outputs.image }}
+        run: envsubst < app.yaml > app-resolved.yaml
+
+      - name: Resolve test-config.yaml
+        env:
+          CI_TENANT_DOMAIN: ${{ secrets.SDR_TEST_TENANT }}
+          CI_CLIENT_ID: ${{ secrets.SDR_CLIENT_ID }}
+          CI_CLIENT_SECRET: ${{ secrets.SDR_CLIENT_SECRET }}
+          CI_RUN_SUFFIX: ${{ github.run_id }}
+        run: envsubst < .github/e2e/test-config.yaml.tmpl > test-config.yaml
+
+      - name: Generate SDR deployment files
+        run: |
+          ./atlan-configurator \
+            --app app-resolved.yaml \
+            --config test-config.yaml \
+            --output ./ci-deploy \
+            --overwrite
+
+      - name: Create CI secrets file
+        run: |
+          mkdir -p .github/e2e/secrets
+          python3 - <<'PYEOF'
+          import json
+          # OpenAPI connector uses an optional auth_header for private specs.
+          # The public Petstore spec used in CI needs no auth — empty string.
+          # Future scenarios with private specs can populate this from GHA Secrets.
+          out = {
+              "openapi-credentials": json.dumps({"auth_header": ""}),
+          }
+          with open(".github/e2e/secrets/openapi.json", "w") as f:
+              json.dump(out, f)
+          print("Secrets file written: .github/e2e/secrets/openapi.json")
+          PYEOF
+
+      - name: Override CI Dapr components
+        run: cp .github/e2e/components/*.yaml ci-deploy/components/
+
+      - name: Start SDR container
+        run: |
+          docker compose \
+            -f ci-deploy/docker-compose.yaml \
+            -f .github/e2e/docker-compose.ci.yml \
+            up -d
+
+      - name: Wait for app to be ready
+        run: |
+          echo "Waiting for SDR container on :8000/server/health..."
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8000/server/health > /dev/null 2>&1; then
+              echo "SDR container ready after ${i}s"
+              break
+            fi
+            if [ "$i" -eq 60 ]; then
+              echo "::error::SDR container failed to start within 60s"
+              docker compose -f ci-deploy/docker-compose.yaml -f .github/e2e/docker-compose.ci.yml logs
+              exit 1
+            fi
+            sleep 1
+          done
+
+      - name: Run SDR scenarios
+        id: tests
+        env:
+          ATLAN_APPLICATION_NAME: openapi
+        run: |
+          mkdir -p results
+          set +e
+          uv run pytest tests/sdr/test_openapi_sdr.py -v -x \
+            --tb=short \
+            --junit-xml=results/sdr-results.xml \
+            2>&1 | tee results/sdr-output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          if [ -f integration-test-summary.json ]; then
+            cp integration-test-summary.json results/summary.json
+          fi
+          echo "exit_code=${EXIT_CODE}" >> "$GITHUB_OUTPUT"
+          exit $EXIT_CODE
+
+      - name: Extract Temporal workflow links
+        id: wf_links
+        if: always()
+        env:
+          CI_TENANT_DOMAIN: ${{ secrets.SDR_TEST_TENANT }}
+        run: |
+          uv run python3 - <<'PYEOF'
+          import json, os
+          from pathlib import Path
+
+          tenant = os.environ.get("CI_TENANT_DOMAIN", "")
+          links = []
+          p = Path("results/summary.json")
+          if p.exists() and tenant:
+              data = json.loads(p.read_text())
+              for s in data.get("scenarios", []):
+                  if s.get("api") != "workflow":
+                      continue
+                  assertions = s.get("assertions") or {}
+                  wf  = assertions.get("data.workflow_id", {}).get("actual", "")
+                  run = assertions.get("data.run_id",      {}).get("actual", "")
+                  if wf and run:
+                      status = s.get("status", "?")
+                      icon = "✅" if status == "passed" else "❌"
+                      url = (
+                          f"https://{tenant}/api/temporal/namespaces/default"
+                          f"/workflows/{wf}/{run}/history"
+                      )
+                      links.append(f"[{icon} {s['name']}]({url})")
+          out = " · ".join(links)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"links={out}\n")
+          print(f"Temporal links: {out or '(none)'}")
+          PYEOF
+
+      - name: Build PR comment
+        if: always()
+        id: comment
+        env:
+          TESTS_OUTCOME: ${{ steps.tests.outcome }}
+          WF_LINKS: ${{ steps.wf_links.outputs.links }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          uv run python3 - <<'PYEOF'
+          import os, textwrap, xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          def parse_junit(path):
+              if not Path(path).exists():
+                  return None
+              try:
+                  tree = ET.parse(path)
+                  totals = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
+                  for suite in tree.getroot().iter("testsuite"):
+                      for k in totals:
+                          totals[k] += int(suite.get(k, 0))
+                  return totals
+              except Exception:
+                  return None
+
+          totals = parse_junit("results/sdr-results.xml")
+          outcome = os.environ.get("TESTS_OUTCOME", "")
+          wf_links = os.environ.get("WF_LINKS", "")
+          run_url  = os.environ.get("RUN_URL", "")
+
+          status_icon = "✅" if outcome == "success" else "❌"
+
+          if totals is None:
+              result_line = f"**Result:** Unknown — JUnit XML missing (outcome: {outcome})"
+          else:
+              passed = totals["tests"] - totals["failures"] - totals["errors"] - totals["skipped"]
+              result_line = (
+                  f"**Result:** {passed} passed, "
+                  f"{totals['failures']} failed, "
+                  f"{totals['errors']} errored, "
+                  f"{totals['skipped']} skipped"
+              )
+
+          temporal_block = f"\n**Temporal workflows:** {wf_links}\n" if wf_links else ""
+
+          body = f"""
+          <!-- sdr-integration-tests:openapi -->
+          ## SDR Integration Tests — OpenAPI Spec Loader
+
+          **Status:** {status_icon}
+          **Run:** [{run_url.rsplit('/', 1)[-1]}]({run_url})
+          {temporal_block}
+          {result_line}
+
+          ### What this validates
+          - [x] Full SDR container pipeline: atlan-configurator → docker compose → Dapr → Temporal worker
+          - [x] URL-based spec extraction → transform on tenant Temporal (Petstore v3)
+          - [x] Workflow reaches COMPLETED (extract_spec + transform, load_to_atlan=False)
+
+          > Stack: atlan-configurator generated compose, Dapr sidecar embedded, Temporal worker on CI tenant.
+
+          <details>
+          <summary>Re-run</summary>
+
+          Remove and re-add the `sdr-e2e-test` label, or re-run from the Actions tab.
+          </details>
+          """
+          body = textwrap.dedent(body).strip("\n")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write("body<<EOF_MARKER\n")
+              f.write(body)
+              f.write("\nEOF_MARKER\n")
+          PYEOF
+
+      - name: Post PR comment
+        if: always() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BODY: ${{ steps.comment.outputs.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          printf '%s' "$BODY" > /tmp/sdr-pr-comment.md
+          gh pr comment "$PR_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body-file /tmp/sdr-pr-comment.md
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdr-test-results
+          path: |
+            results/
+            !.github/e2e/secrets
+            !test-config.yaml
+            !.env
+          retention-days: 14
+
+      - name: Cleanup compose stack
+        if: always()
+        run: |
+          docker compose \
+            -f ci-deploy/docker-compose.yaml \
+            -f .github/e2e/docker-compose.ci.yml \
+            down -v || true
+
+      - name: Cleanup secrets
+        if: always()
+        run: |
+          rm -rf .github/e2e/secrets/
+          rm -f test-config.yaml app-resolved.yaml integration-test-summary.json
