@@ -69,11 +69,17 @@ jobs:
 
       - name: Resolve test-config.yaml
         env:
-          CI_TENANT_DOMAIN: ${{ secrets.SDR_TEST_TENANT }}
+          CI_TENANT_DOMAIN_RAW: ${{ secrets.SDR_TEST_TENANT }}
           CI_CLIENT_ID: ${{ secrets.SDR_CLIENT_ID }}
           CI_CLIENT_SECRET: ${{ secrets.SDR_CLIENT_SECRET }}
           CI_RUN_SUFFIX: ${{ github.run_id }}
-        run: envsubst < .github/e2e/test-config.yaml.tmpl > test-config.yaml
+        run: |
+          # atlan-configurator expects a bare hostname — strip any https:// prefix or trailing slash
+          CI_TENANT_DOMAIN="${CI_TENANT_DOMAIN_RAW#https://}"
+          CI_TENANT_DOMAIN="${CI_TENANT_DOMAIN#http://}"
+          CI_TENANT_DOMAIN="${CI_TENANT_DOMAIN%/}"
+          export CI_TENANT_DOMAIN
+          envsubst < .github/e2e/test-config.yaml.tmpl > test-config.yaml
 
       - name: Generate SDR deployment files
         run: |
