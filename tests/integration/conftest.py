@@ -179,3 +179,54 @@ def openapi_executor(
         task_queue=_TASK_QUEUE,
     )
     return AppExecutor(backend=backend)
+
+
+# ---------------------------------------------------------------------------
+# Large-payload fixture — heavy-file round-trip tests
+# ---------------------------------------------------------------------------
+# Default 100 MiB; override with OPENAPI_LARGE_TEST_SIZE_MIB for stress runs.
+
+_LARGE_PAYLOAD_DEFAULT_MIB = 100
+_LARGE_PAYLOAD_SIZE_BYTES = (
+    int(os.environ.get("OPENAPI_LARGE_TEST_SIZE_MIB", _LARGE_PAYLOAD_DEFAULT_MIB))
+    * 1024
+    * 1024
+)
+
+
+def sha256_of_path(path: Path) -> str:
+    """Stream-compute the SHA-256 of a file."""
+    import hashlib
+
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        while chunk := f.read(8 * 1024 * 1024):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+@pytest.fixture(scope="module")
+def large_payload_file(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> tuple[Path, str, int]:
+    """Generate a ≥100 MiB random-bytes file once per test module.
+
+    Returns ``(path, sha256, size_bytes)``.
+    """
+    import hashlib
+    import secrets
+
+    target_dir = tmp_path_factory.mktemp("openapi-large-payload")
+    path = target_dir / "payload.bin"
+
+    block = secrets.token_bytes(8 * 1024 * 1024)
+    h = hashlib.sha256()
+    written = 0
+    with path.open("wb") as f:
+        while written < _LARGE_PAYLOAD_SIZE_BYTES:
+            remaining = _LARGE_PAYLOAD_SIZE_BYTES - written
+            buf = block if remaining >= len(block) else block[:remaining]
+            f.write(buf)
+            h.update(buf)
+            written += len(buf)
+    return path, h.hexdigest(), written

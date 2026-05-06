@@ -217,6 +217,73 @@ class TestCloudStoreDirectOperations:
         parsed = orjson.loads(paths[0].read_bytes())
         assert parsed["info"]["title"] == "Upload Test"
 
+    async def test_large_file_round_trip(
+        self,
+        cloud_store: CloudStore,
+        large_payload_file: tuple[Path, str, int],
+        tmp_path: Path,
+    ) -> None:
+        """Round-trip a ≥100 MiB payload through the production CloudStore path.
+
+        Mirrors what ``download_cloud_spec`` does in production for customer
+        OpenAPI specs — same ``CloudStore.upload`` / ``CloudStore.download``
+        calls, just with a 100 MiB+ payload instead of a few-hundred-byte
+        JSON. SHA-256 is checked end-to-end so a single corrupted byte fails
+        the test.
+        """
+        from tests.integration.conftest import sha256_of_path
+
+        src_path, src_sha256, src_size = large_payload_file
+        key = "large/payload.bin"
+
+        uploaded = await cloud_store.upload(local_path=src_path, key=key)
+        assert uploaded == src_size
+
+        paths = await cloud_store.download(key=key, output_dir=str(tmp_path / "large"))
+        assert len(paths) == 1
+        dl_path = paths[0]
+        assert dl_path.stat().st_size == src_size
+        assert sha256_of_path(dl_path) == src_sha256
+
+    async def test_large_file_round_trip_via_sdk_chunking_apis(
+        self,
+        cloud_store: CloudStore,
+        large_payload_file: tuple[Path, str, int],
+        tmp_path: Path,
+    ) -> None:
+        """Round-trip a ≥100 MiB payload through the SDK's chunking entry points.
+
+        ``CloudStore.upload`` / ``download`` use single PUT/GET. The SDK's
+        ``storage.ops.upload_file`` uses ``obstore.open_writer_async`` which
+        does multipart upload, and ``download_file`` streams the GET via
+        ``result.stream``. This test wires those into the same MinIO store
+        so the multipart-upload and streaming-download paths actually run
+        on a 100 MiB+ payload.
+        """
+        from application_sdk.storage.ops import download_file, upload_file
+
+        src_path, src_sha256, src_size = large_payload_file
+        key = "large-chunked/payload.bin"
+
+        digest = await upload_file(
+            key=key,
+            local_path=src_path,
+            store=cloud_store.store,
+            normalize=False,
+        )
+        assert digest == src_sha256
+
+        dl_path = tmp_path / "chunked" / "payload.bin"
+        downloaded_digest = await download_file(
+            key=key,
+            local_path=dl_path,
+            store=cloud_store.store,
+            compute_hash=True,
+            normalize=False,
+        )
+        assert dl_path.stat().st_size == src_size
+        assert downloaded_digest == src_sha256
+
 
 # ---------------------------------------------------------------------------
 # TestS3CloudDownloadWorkflow
