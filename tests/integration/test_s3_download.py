@@ -284,6 +284,48 @@ class TestCloudStoreDirectOperations:
         assert dl_path.stat().st_size == src_size
         assert downloaded_digest == src_sha256
 
+    async def test_upload_respects_short_request_timeout(
+        self,
+        seeded_bucket: str,
+        large_payload_file: tuple[Path, str, int],
+    ) -> None:
+        """A request timeout shorter than the transfer time fails with a timeout error.
+
+        Wires obstore's ``client_options['timeout']`` to 100 ms, then attempts
+        to upload the 100 MiB fixture — the transfer is guaranteed to exceed
+        100 ms even on loopback, so this proves the timeout configuration is
+        propagated through obstore to the underlying HTTP client and actually
+        enforced. A flaky network can't pass this test by accident: failing
+        means the SDK is not honoring the configured deadline.
+        """
+        from application_sdk.storage.errors import StorageError
+        from obstore.store import S3Store
+
+        src_path, _, _ = large_payload_file
+
+        timeout_store = S3Store(
+            bucket=seeded_bucket,
+            config={
+                "aws_access_key_id": _MINIO_USER,
+                "aws_secret_access_key": _MINIO_PASS,
+                "aws_region": "us-east-1",
+                "endpoint": _MINIO_ENDPOINT,
+            },
+            client_options={"allow_http": True, "timeout": "100ms"},
+        )
+        timeout_cloud = CloudStore(timeout_store, provider="s3")
+
+        with pytest.raises(StorageError) as exc_info:
+            await timeout_cloud.upload(
+                local_path=src_path, key="timeout-test/upload.bin"
+            )
+
+        # StorageError.__str__ embeds the wrapped cause's class + message.
+        rendered = str(exc_info.value).lower()
+        assert any(
+            marker in rendered for marker in ("timeout", "timed out", "deadline")
+        ), f"Expected a timeout-related error, got: {exc_info.value!r}"
+
 
 # ---------------------------------------------------------------------------
 # TestS3CloudDownloadWorkflow
