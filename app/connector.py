@@ -24,6 +24,11 @@ import msgspec
 from application_sdk.app import App, task
 from application_sdk.contracts.storage import UploadInput
 from application_sdk.contracts.types import FileReference, StorageTier
+from application_sdk.errors import (
+    DependencyUnavailableError,
+    InternalError,
+    InvalidInputError,
+)
 from application_sdk.observability.logger_adaptor import AtlanLoggerAdapter as Logger
 from application_sdk.outputs import Metric, get_outputs
 
@@ -262,7 +267,11 @@ def _transform_blocking(
 
     connection = input.connection
     if connection is None:
-        raise ValueError("connection is required for transform")
+        raise InvalidInputError(
+            message="connection is required for transform",
+            field="connection",
+            constraint="required",
+        )
     conn_qn: str = connection.attributes.qualified_name
     workflow_id = input.workflow_id
     workflow_type = input.workflow_type
@@ -369,9 +378,17 @@ class OpenAPIConnector(App):
             else:
                 self.logger.info("no cloud_source credential, using tenant store")
             if self.context.storage is None:
-                raise RuntimeError(
-                    "No tenant object store available. Ensure Dapr objectstore binding "
-                    "is configured on this deployment."
+                raise DependencyUnavailableError(
+                    message=(
+                        "No tenant object store available. Ensure Dapr objectstore "
+                        "binding is configured on this deployment."
+                    ),
+                    service="dapr_objectstore",
+                    retryable=False,
+                    suggested_action=(
+                        "Configure the Dapr objectstore binding on this deployment, "
+                        "or supply an external cloud_source credential."
+                    ),
                 )
             store = CloudStore(self.context.storage, provider="tenant")
 
@@ -400,7 +417,11 @@ class OpenAPIConnector(App):
         self.logger.info("extract_spec task starting spec_url=%s", input.spec_url)
 
         if not input.spec_url:
-            raise ValueError("spec_url is required for extract_spec")
+            raise InvalidInputError(
+                message="spec_url is required for extract_spec",
+                field="spec_url",
+                constraint="required",
+            )
 
         # Claim the auth_header that validate() stored in app state, avoiding a
         # second DAPR credential lookup. Falls back to resolve_credential() if
@@ -491,8 +512,10 @@ class OpenAPIConnector(App):
 
         if input.import_type == "CLOUD":
             if not input.spec_prefix and not input.spec_key:
-                raise ValueError(
-                    "spec_prefix or spec_key required when import_type='CLOUD'"
+                raise InvalidInputError(
+                    message="spec_prefix or spec_key required when import_type='CLOUD'",
+                    field="spec_prefix|spec_key",
+                    constraint="at least one is required when import_type='CLOUD'",
                 )
             # Download spec from cloud storage via task (credential resolution
             # and cloud I/O must run in an activity, not workflow code).
@@ -507,10 +530,19 @@ class OpenAPIConnector(App):
             spec_urls = cloud_result.spec_paths
         elif input.import_type == "URL":
             if not input.spec_url:
-                raise ValueError("spec_url is required when import_type='URL'")
+                raise InvalidInputError(
+                    message="spec_url is required when import_type='URL'",
+                    field="spec_url",
+                    constraint="required when import_type='URL'",
+                )
             spec_urls = [input.spec_url]
         else:
-            raise ValueError(f"Unknown import_type: {input.import_type}")
+            raise InvalidInputError(
+                message=f"Unknown import_type: {input.import_type}",
+                field="import_type",
+                constraint="must be 'URL' or 'CLOUD'",
+                value_summary=str(input.import_type),
+            )
 
         self.logger.info(
             "openapi connector starting connection_qualified_name=%s spec_urls=%s load_to_atlan=%s",
@@ -585,8 +617,13 @@ class OpenAPIConnector(App):
                 )
             )
             if not upload_result.ref.storage_path:
-                raise ValueError(
-                    "upload_result.ref.storage_path is None; cannot derive transformed_data_prefix"
+                raise InternalError(
+                    message=(
+                        "upload_result.ref.storage_path is None; "
+                        "cannot derive transformed_data_prefix"
+                    ),
+                    component="connector.upload",
+                    invariant="upload activity must populate ref.storage_path",
                 )
             transformed_data_prefix = str(Path(upload_result.ref.storage_path).parent)
             publish_completed = True
