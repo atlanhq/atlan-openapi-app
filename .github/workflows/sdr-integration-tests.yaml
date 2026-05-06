@@ -27,14 +27,23 @@ jobs:
       contents: read
       statuses: write
       packages: write
-    env:
-      CI_TENANT_DOMAIN: ${{ secrets.SDR_TEST_TENANT }}
-
     steps:
       - name: Checkout PR branch
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+
+      - name: Prepare tenant domain
+        env:
+          RAW: ${{ secrets.SDR_TEST_TENANT }}
+        run: |
+          # atlan-configurator and auth URL construction both need a bare hostname.
+          # Strip any https:// prefix and trailing slash once here; write to
+          # GITHUB_ENV so all subsequent steps (including docker compose) inherit it.
+          DOMAIN="${RAW#https://}"
+          DOMAIN="${DOMAIN#http://}"
+          DOMAIN="${DOMAIN%/}"
+          echo "CI_TENANT_DOMAIN=${DOMAIN}" >> "$GITHUB_ENV"
 
       - name: Log in to GHCR
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
@@ -69,17 +78,10 @@ jobs:
 
       - name: Resolve test-config.yaml
         env:
-          CI_TENANT_DOMAIN_RAW: ${{ secrets.SDR_TEST_TENANT }}
           CI_CLIENT_ID: ${{ secrets.SDR_CLIENT_ID }}
           CI_CLIENT_SECRET: ${{ secrets.SDR_CLIENT_SECRET }}
           CI_RUN_SUFFIX: ${{ github.run_id }}
-        run: |
-          # atlan-configurator expects a bare hostname — strip any https:// prefix or trailing slash
-          CI_TENANT_DOMAIN="${CI_TENANT_DOMAIN_RAW#https://}"
-          CI_TENANT_DOMAIN="${CI_TENANT_DOMAIN#http://}"
-          CI_TENANT_DOMAIN="${CI_TENANT_DOMAIN%/}"
-          export CI_TENANT_DOMAIN
-          envsubst < .github/e2e/test-config.yaml.tmpl > test-config.yaml
+        run: envsubst < .github/e2e/test-config.yaml.tmpl > test-config.yaml
 
       - name: Generate SDR deployment files
         run: |
@@ -153,8 +155,6 @@ jobs:
       - name: Extract Temporal workflow links
         id: wf_links
         if: always()
-        env:
-          CI_TENANT_DOMAIN: ${{ secrets.SDR_TEST_TENANT }}
         run: |
           uv run python3 - <<'PYEOF'
           import json, os
