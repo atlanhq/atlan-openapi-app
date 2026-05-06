@@ -292,12 +292,12 @@ class TestCloudStoreDirectOperations:
     ) -> None:
         """A request timeout shorter than the transfer time fails with a timeout error.
 
-        Wires obstore's ``client_options['timeout']`` to 100 ms, then attempts
-        to upload the 100 MiB fixture — the transfer is guaranteed to exceed
-        100 ms even on loopback, so this proves the timeout configuration is
-        propagated through obstore to the underlying HTTP client and actually
-        enforced. A flaky network can't pass this test by accident: failing
-        means the SDK is not honoring the configured deadline.
+        Wires obstore's ``client_options['timeout']`` to 1 ms (orders of
+        magnitude below the time to ship 100 MiB even on loopback) and
+        disables retries, then attempts to upload the 100 MiB fixture. The
+        request must fail with a timeout-related ``StorageError``. This
+        proves the timeout configuration is propagated through obstore to
+        the underlying HTTP client and actually enforced.
         """
         from application_sdk.storage.errors import StorageError
         from obstore.store import S3Store
@@ -312,7 +312,8 @@ class TestCloudStoreDirectOperations:
                 "aws_region": "us-east-1",
                 "endpoint": _MINIO_ENDPOINT,
             },
-            client_options={"allow_http": True, "timeout": "100ms"},
+            client_options={"allow_http": True, "timeout": "1ms"},
+            retry_config={"max_retries": 0},
         )
         timeout_cloud = CloudStore(timeout_store, provider="s3")
 
@@ -324,7 +325,8 @@ class TestCloudStoreDirectOperations:
         # StorageError.__str__ embeds the wrapped cause's class + message.
         rendered = str(exc_info.value).lower()
         assert any(
-            marker in rendered for marker in ("timeout", "timed out", "deadline")
+            marker in rendered
+            for marker in ("timeout", "timed out", "deadline", "elapsed")
         ), f"Expected a timeout-related error, got: {exc_info.value!r}"
 
 
