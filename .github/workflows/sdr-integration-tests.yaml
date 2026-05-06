@@ -45,18 +45,6 @@ jobs:
           DOMAIN="${DOMAIN%/}"
           echo "CI_TENANT_DOMAIN=${DOMAIN}" >> "$GITHUB_ENV"
 
-          # Pre-resolve the Temporal gRPC hostname to IPv4 and export it for
-          # docker-compose extra_hosts. GitHub Actions runners have IPv6 interfaces
-          # but no global IPv6 routes; the Temporal Rust SDK uses hickory-dns (pure
-          # Rust, ignores /etc/gai.conf) and tries AAAA records first, failing with
-          # NetworkUnreachable. Pinning the hostname to IPv4 in /etc/hosts inside
-          # the container via extra_hosts is the only reliable fix.
-          # SDK convention: {first-label}-temporal.atlan.com
-          TEMPORAL_HOST="${DOMAIN%.atlan.com}-temporal.atlan.com"
-          TEMPORAL_IPV4=$(getent ahostsv4 "$TEMPORAL_HOST" 2>/dev/null | awk '{print $1; exit}')
-          echo "TEMPORAL_EXTRA_HOST=${TEMPORAL_HOST}:${TEMPORAL_IPV4}" >> "$GITHUB_ENV"
-          echo "Pinned ${TEMPORAL_HOST} → ${TEMPORAL_IPV4} (IPv4)"
-
       - name: Log in to GHCR
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
@@ -102,6 +90,21 @@ jobs:
             --config test-config.yaml \
             --output ./ci-deploy \
             --overwrite
+
+      - name: Pin Temporal hostname to IPv4
+        run: |
+          # GitHub Actions runners have IPv6 interfaces but no global IPv6 routes.
+          # The Temporal Rust SDK (hickory-dns) tries AAAA records first and never
+          # falls back, causing NetworkUnreachable. docker-compose extra_hosts injects
+          # into /etc/hosts, which hickory-dns reads before DNS — suppressing AAAA.
+          #
+          # Read ATLAN_TEMPORAL_HOST from the configurator-generated .env rather than
+          # deriving it, so we follow the actual value not a guessed naming pattern.
+          TEMPORAL_HOSTPORT=$(grep '^ATLAN_TEMPORAL_HOST=' ci-deploy/.env | cut -d= -f2- | tr -d '"')
+          TEMPORAL_HOST="${TEMPORAL_HOSTPORT%%:*}"
+          TEMPORAL_IPV4=$(getent ahostsv4 "$TEMPORAL_HOST" 2>/dev/null | awk '{print $1; exit}')
+          echo "TEMPORAL_EXTRA_HOST=${TEMPORAL_HOST}:${TEMPORAL_IPV4}" >> "$GITHUB_ENV"
+          echo "Pinned ${TEMPORAL_HOST} → ${TEMPORAL_IPV4} (IPv4 only)"
 
       - name: Create CI secrets file
         run: |
