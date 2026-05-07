@@ -4,12 +4,14 @@
 # Only connector-specific settings live here; working_dir, extra_hosts,
 # secrets volume, ATLAN_ENABLE_OBSERVABILITY_DAPR_SINK, ATLAN_TEMPORAL_TLS_ENABLED,
 # ATLAN_AUTH_TOKEN_URL, and ATLAN_AUTH_BASE_URL are all handled by the SDK layer.
+#
+# ATLAN_TEMPORAL_HOST is intentionally not overridden here: the configurator
+# generates the correct <tenant>-temporal.atlan.com hostname, and the SDK
+# composite action's "Resolve Temporal + auth hostnames to IPv4" step pins
+# that subdomain to IPv4 in /etc/hosts so temporalio's Rust resolver finds
+# an A record without trying AAAA.
 
 services:
   atlan-app:
     environment:
-      # The configurator derives a fabricated temporal subdomain that does not
-      # serve Temporal gRPC for this tenant. Override to the actual endpoint
-      # (the main tenant domain on port 443, where gRPC-over-TLS is served).
-      ATLAN_TEMPORAL_HOST: "${CI_TENANT_DOMAIN}:443"
       ATLAN_APP_MODULE: "app.connector:OpenAPIConnector"
