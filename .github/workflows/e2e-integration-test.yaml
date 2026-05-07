@@ -47,7 +47,7 @@ jobs:
 
       - name: Comment Coverage Report on PR
         if: ${{ always() && github.event_name == 'pull_request' }}
-        uses: orgoro/coverage@3f13a558c5af7376496aa4848bf0224aead366ac # v3.2
+        uses: orgoro/coverage@71cf993a407154ad9d8dd027c88a374b0ed002a9 # v3.3
         with:
           coverageFile: coverage.xml
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -139,7 +139,7 @@ jobs:
 
       - name: Comment profiling metrics on PR
         if: ${{ always() && github.event_name == 'pull_request' }}
-        uses: mshick/add-pr-comment@64b8e914979889d746c99dea15a76e77ef64580a # v3.10.0
+        uses: mshick/add-pr-comment@8e4927817251f1ff60c001f04568532b38e0b4a0 # v3.11.0
         with:
           message-id: "integration_test_profiling"
           message-path: metrics.md
