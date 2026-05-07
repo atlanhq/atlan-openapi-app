@@ -1,12 +1,12 @@
-"""Dev server for the OpenAPI Spec Loader Connector.
+"""Local development entry point for the OpenAPI Spec Loader Connector.
 
-This script runs a combined handler + worker for local development and testing.
+Runs a combined HTTP handler + Temporal worker in a single process.
 
 Usage:
     # 1. Start Temporal dev server (in a separate terminal):
     temporal server start-dev --dynamic-config-value frontend.WorkerHeartbeatsEnabled=true
 
-    # 2. Set environment variables (see SPEC.md §10):
+    # 2. Set environment variables:
     export OPENAPI_SPEC_URL="https://petstore3.swagger.io/api/v3/openapi.json"
     # For private specs with auth:
     # export OPENAPI_AUTH_HEADER="Bearer your-token"
@@ -15,7 +15,7 @@ Usage:
     # export ATLAN_BASE_URL="https://your-tenant.atlan.com"
 
     # 3. Start the dev server:
-    python -m openapi.run_dev
+    python run_dev.py
 
     # 4. Extract metadata (public spec, no loading):
     curl -X POST http://localhost:8000/workflows/v1/start \\
@@ -41,15 +41,14 @@ Usage:
 """
 
 import asyncio
-import orjson
 import os
 
-from application_sdk.testing.mocks import MockSecretStore
-from application_sdk.main import run_dev_combined
-
-# Import credential types to register them with the credential registry
 import app.credentials  # noqa: F401 - registers 'openapi' credential type
+import orjson
 from app.connector import OpenAPIConnector
+
+from application_sdk.main import run_dev_combined
+from application_sdk.testing.mocks import MockSecretStore
 
 
 async def main() -> None:

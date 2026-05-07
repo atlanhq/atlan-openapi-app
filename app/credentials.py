@@ -15,7 +15,7 @@ Usage:
     # Create credential references using factory function:
     ref = openapi_credential_ref("openapi")
 
-Environment variable mapping (via run_dev.py):
+Environment variable mapping (via run_dev.py at project root):
     OPENAPI_AUTH_HEADER -> auth_header (optional)
 """
 
