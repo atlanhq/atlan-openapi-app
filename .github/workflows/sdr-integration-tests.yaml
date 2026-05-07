@@ -1,0 +1,43 @@
+name: SDR Integration Tests
+
+# Triggered by the `sdr-e2e-test` PR label or manual workflow_dispatch.
+# Delegates entirely to the SDK composite action, which handles: GHCR login,
+# image build, configurator, Dapr stack, IPv4 hostname pin, pytest run,
+# GitHub Step Summary, PR comment, commit status, and teardown.
+#
+# Commit-status context: `sdr-e2e-tests`
+
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+
+jobs:
+  sdr-tests:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.label.name == 'sdr-e2e-test'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    concurrency:
+      group: sdr-integration-tests-${{ github.ref }}
+      cancel-in-progress: true
+    permissions:
+      pull-requests: write
+      contents: read
+      statuses: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: atlanhq/application-sdk/.github/actions/sdr-e2e@main
+        with:
+          app-name: openapi
+          app-image-name: atlan-openapi-app
+          secrets-script: .github/e2e/make-secrets.py
+        env:
+          CI_TENANT_DOMAIN: ${{ secrets.SDR_TEST_TENANT }}
+          CI_CLIENT_ID: ${{ secrets.SDR_CLIENT_ID }}
+          CI_CLIENT_SECRET: ${{ secrets.SDR_CLIENT_SECRET }}
