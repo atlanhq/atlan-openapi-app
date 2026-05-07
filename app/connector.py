@@ -485,6 +485,21 @@ class OpenAPIConnector(App):
         """Transform OpenAPI records to Atlan Atlas entity format."""
         self.logger.info("transform task starting")
 
+        # NOTE: Intentional failure injection for Phase 2 emit verification.
+        # Forces the transform activity to raise a typed AppError so the AE
+        # consumer surfaces a leaf failure with a structured FailureDetails
+        # payload (category=INTERNAL, code=INTERNAL, audience=APP_OWNER).
+        # Lets us verify ``workflow_run.failure.*`` attributes flow end-to-end
+        # into ``otel_logs.service_logs``. Remove before merging to main.
+        raise InternalError(
+            message="Test failure injected for Phase 2 emit verification",
+            component="openapi.transform",
+            invariant=(
+                "intentional test failure — exercises typed-error attribution "
+                "(category, code, audience) on workflow_run.terminated event"
+            ),
+        )
+
         result = await self.run_in_thread(_transform_blocking, input, self.logger)
 
         self.logger.info(
