@@ -141,3 +141,4 @@ uv run python -m pytest tests/unit -q
 make generate        # regenerates app/generated/_input.py, manifest.json, openapi.json
 make check-generate  # fails if generated files are stale (used in CI)
 ```
+
