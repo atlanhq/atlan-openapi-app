@@ -5,18 +5,28 @@ name: SDR Integration Tests
 # image build, configurator, Dapr stack, IPv4 hostname pin, pytest run,
 # GitHub Step Summary, PR comment, commit status, and teardown.
 #
-# Commit-status context: `sdr-e2e-tests`
+# The workflow runs on every PR so the job can post a "skipped" status on
+# PRs without the label — branch protection can then list this job as a
+# required check without blocking non-labeled PRs (skipped == success).
+# The release-gate.yaml workflow blocks release PRs until this label is added.
+#
+# Branch-protection target: "SDR Integration Tests / SDR E2E Tests"
+# (the SDK composite action also posts a separate commit-status context
+# `sdr-e2e-tests`, but that is informational — not the required-check target)
 
 on:
   pull_request:
-    types: [labeled]
+    types: [opened, synchronize, labeled, reopened]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
   sdr-tests:
+    name: SDR E2E Tests
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.event.label.name == 'sdr-e2e-test'
+      (github.event.action == 'labeled' && github.event.label.name == 'sdr-e2e-test') ||
+      contains(github.event.pull_request.labels.*.name, 'sdr-e2e-test')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     concurrency:
