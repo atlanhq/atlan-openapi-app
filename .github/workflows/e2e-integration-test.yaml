@@ -73,7 +73,7 @@ jobs:
       - name: Start Temporal dev server
         run: |
           temporal server start-dev --db-filename /tmp/temporal.db --headless &
-          sleep 5
+          until temporal operator namespace describe default >/dev/null 2>&1; do sleep 1; done
 
       - uses: atlanhq/application-sdk/.github/actions/setup-deps@main
 
@@ -169,7 +169,7 @@ jobs:
       - name: Start Temporal dev server
         run: |
           temporal server start-dev --db-filename /tmp/temporal.db --headless &
-          sleep 5
+          until temporal operator namespace describe default >/dev/null 2>&1; do sleep 1; done
 
       - name: Start MinIO
         run: |
@@ -234,7 +234,7 @@ jobs:
       - name: Start Temporal dev server
         run: |
           temporal server start-dev --db-filename /tmp/temporal.db --headless &
-          sleep 5
+          until temporal operator namespace describe default >/dev/null 2>&1; do sleep 1; done
 
       - name: Start Azurite
         run: |
