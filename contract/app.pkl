@@ -98,3 +98,24 @@ new Config.UIRule {
 manifestTopLevelArgs {
   ["connection"] = "connection"
 }
+
+
+// ---------------------------------------------------------------------------
+// publish-app cache + current-state flags (WARE-1384 / Argo→publish-app
+// migration). Mirrors atlan-fivetran-app/contract/app.pkl. Routes the
+// connection-cache SQLite + current-state diff base through publish-app
+// activities instead of the legacy Argo path so cross-connection consumers
+// (lineage-app's LineageFilter, popularity-app, downstream miners) read a
+// fresh cache + state on every run.
+// ---------------------------------------------------------------------------
+
+extraNodes {
+  ["publish"] = new PublishNode {
+    args {
+      ["connection_cache_enabled"] = true
+      ["connection_cache_via_app_enabled"] = true
+      ["current_state_enabled"] = true
+      ["current_state_via_app_enabled"] = true
+    }
+  }
+}
