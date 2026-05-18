@@ -7,7 +7,7 @@ visibility: public
 argo_package_names:
   - "@csa/openapi-spec-loader"
 build_tag: v1
-release_model: versioned
+release_model: semver
 self_deployed_runtime: false
 deploy:
   execution_mode: native
