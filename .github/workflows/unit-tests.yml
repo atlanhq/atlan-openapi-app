@@ -1,4 +1,5 @@
 name: Unit Tests
+
 on:
   push:
     branches: [main]
@@ -6,30 +7,29 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
   workflow_dispatch:
+
 jobs:
   unit-tests:
+    name: Unit Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: read
       pull-requests: write
+      contents: read
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          cache: true
-      - name: Install dependencies
-        run: uv sync --all-extras || pip install -e ".[test]" || true
-      - name: Run unit tests
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: atlanhq/application-sdk/.github/actions/setup-deps@main
+
+      - name: Run unit tests with coverage
         run: |
-          if find tests -name "test_*.py" -o -name "*_test.py" 2>/dev/null | head -1 | grep -q .; then
-            uv run pytest tests/ || python -m pytest tests/
-          else
-            echo "::warning::No tests found yet — gate will fail until tests are added"
-            exit 1
-          fi
+          uv run coverage run -m pytest tests/unit
+          uv run coverage xml
+          uv run coverage report --fail-under=30
+
+      - name: Comment coverage on PR
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        uses: orgoro/coverage@71cf993a407154ad9d8dd027c88a374b0ed002a9 # v3.3
+        with:
+          coverageFile: coverage.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
