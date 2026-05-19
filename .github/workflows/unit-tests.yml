@@ -1,0 +1,35 @@
+name: Unit Tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          cache: true
+      - name: Install dependencies
+        run: uv sync --all-extras || pip install -e ".[test]" || true
+      - name: Run unit tests
+        run: |
+          if find tests -name "test_*.py" -o -name "*_test.py" 2>/dev/null | head -1 | grep -q .; then
+            uv run pytest tests/ || python -m pytest tests/
+          else
+            echo "::warning::No tests found yet — gate will fail until tests are added"
+            exit 1
+          fi
