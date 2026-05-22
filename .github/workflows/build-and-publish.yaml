@@ -37,4 +37,5 @@ jobs:
       channel: ${{ inputs.channel || 'all' }}
       tenants: ${{ inputs.tenants || '' }}
       release_tag: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
+      unit_tests_workflow_file: "unit-tests.yml"
     secrets: inherit
