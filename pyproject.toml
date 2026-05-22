@@ -4,7 +4,7 @@ version = "0.3.0"
 description = "OpenAPI Spec Loader connector"
 requires-python = ">=3.11"
 dependencies = [
-    "atlan-application-sdk>=3.6.0,<4.0.0",
+    "atlan-application-sdk>=3.13.0,<4.0.0",
     "PyYAML>=6.0,<7",
 ]
 
