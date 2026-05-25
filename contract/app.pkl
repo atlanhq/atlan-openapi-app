@@ -76,3 +76,25 @@ uiConfig {
 manifestTopLevelArgs {
   ["connection"] = "connection"
 }
+
+// ---------------------------------------------------------------------------
+// publish-app cache + current-state flags (WARE-1384 / Argo→publish-app
+// migration). Mirrors the same block already on exec_mode_demo (PR #85).
+// Routes the connection-cache SQLite + current-state diff base through
+// publish-app activities so cross-connection consumers (lineage-app's
+// LineageFilter, popularity-app, downstream miners) read a fresh cache +
+// state on every run. Without these, publish-app falls back to env-var
+// defaults (constants.py:78-82) which skip cache build and write
+// current-state to a -dry-run suffixed key.
+// ---------------------------------------------------------------------------
+
+extraNodes {
+  ["publish"] = new PublishNode {
+    args {
+      ["connection_cache_enabled"] = true
+      ["connection_cache_via_app_enabled"] = true
+      ["current_state_enabled"] = true
+      ["current_state_via_app_enabled"] = true
+    }
+  }
+}
