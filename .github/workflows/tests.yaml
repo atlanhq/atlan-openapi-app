@@ -17,6 +17,10 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      distinct_id:
+        description: "40-char application-sdk commit SHA to test against (leave empty for lockfile version)"
+        required: false
 
 jobs:
   unit-integration:
@@ -32,6 +36,24 @@ jobs:
     outputs:
       summary: ${{ steps.tests.outputs.summary }}
     steps:
+      - name: echo distinct ID ${{ github.event.inputs.distinct_id }}
+        run: echo ${{ github.event.inputs.distinct_id }}
+
+      # Explicit checkout so the SDK override (below) can modify uv.lock on
+      # disk before connector-integration-tests runs its uv sync.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: atlanhq/application-sdk/.github/actions/setup-deps@main
+
+      - name: Update application-sdk rev
+        if: ${{ github.event.inputs.distinct_id != '' }}
+        run: |
+          commit_hash=${{ github.event.inputs.distinct_id }}
+          if ! [[ "$commit_hash" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "distinct_id must be a 40-char hex SHA"; exit 1
+          fi
+          uv add git+https://github.com/atlanhq/application-sdk --rev $commit_hash
+
       - name: Run all tests in one pytest invocation
         id: tests
         uses: atlanhq/application-sdk/.github/actions/connector-integration-tests@main
@@ -52,6 +74,9 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: echo distinct ID ${{ github.event.inputs.distinct_id }}
+        run: echo ${{ github.event.inputs.distinct_id }}
+
       - name: Install Temporal CLI
         uses: temporalio/setup-temporal@6d04211d9dfbd5cb2493a4a6637b2ad784a60ccc
 
@@ -75,6 +100,15 @@ jobs:
             s3api create-bucket --bucket test-openapi-specs --region us-east-1
 
       - uses: atlanhq/application-sdk/.github/actions/setup-deps@main
+
+      - name: Update application-sdk rev
+        if: ${{ github.event.inputs.distinct_id != '' }}
+        run: |
+          commit_hash=${{ github.event.inputs.distinct_id }}
+          if ! [[ "$commit_hash" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "distinct_id must be a 40-char hex SHA"; exit 1
+          fi
+          uv add git+https://github.com/atlanhq/application-sdk --rev $commit_hash
 
       - name: Run cloud integration tests
         env:
@@ -104,6 +138,9 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: echo distinct ID ${{ github.event.inputs.distinct_id }}
+        run: echo ${{ github.event.inputs.distinct_id }}
+
       - name: Install Temporal CLI
         uses: temporalio/setup-temporal@6d04211d9dfbd5cb2493a4a6637b2ad784a60ccc
 
@@ -126,6 +163,15 @@ jobs:
             --connection-string "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
 
       - uses: atlanhq/application-sdk/.github/actions/setup-deps@main
+
+      - name: Update application-sdk rev
+        if: ${{ github.event.inputs.distinct_id != '' }}
+        run: |
+          commit_hash=${{ github.event.inputs.distinct_id }}
+          if ! [[ "$commit_hash" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "distinct_id must be a 40-char hex SHA"; exit 1
+          fi
+          uv add git+https://github.com/atlanhq/application-sdk --rev $commit_hash
 
       - name: Run Azure integration tests
         env:
