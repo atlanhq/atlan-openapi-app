@@ -12,7 +12,6 @@ in local or CI unit-test invocations. In CI, enabled by the ``e2e`` PR label.
 from __future__ import annotations
 
 import os
-import time
 
 import pytest
 
@@ -26,24 +25,21 @@ if not os.environ.get("ATLAN_BASE_URL") or not os.environ.get("ATLAN_API_KEY"):
 # installed SDK is older the test is cleanly skipped rather than erroring.
 try:
     from application_sdk.testing.e2e import RunMode  # noqa: E402
-    from application_sdk.testing.e2e.payload import AgentSpec, ConnectionSpec  # noqa: E402
+    from application_sdk.testing.e2e.payload import AgentSpec  # noqa: E402
     from app.generated._e2e_base import OpenAPIGeneratedE2EBase  # noqa: E402
     from app.generated._e2e_substitutions import OpenAPIMustacheSubstitutions  # noqa: E402
-    from pyatlan.model.enums import AtlanConnectorType  # noqa: E402
 except ImportError as _exc:
     pytest.skip(
         f"SDK does not yet export agnostic e2e harness: {_exc}", allow_module_level=True
     )
 
-# AtlanConnectorType.API.value == "api" — the segment Atlan uses in
-# connection qualifiedNames for API Spec sources (not "openapi").
-_CONNECTOR_TYPE = AtlanConnectorType.API.value
-
 
 @pytest.mark.e2e
 class TestOpenAPIE2E(OpenAPIGeneratedE2EBase):
-    # Name-derived attrs (connector_short_name, argo_package_name,
-    # argo_template_name, app_service_url) come from OpenAPIGeneratedE2EBase.
+    # Name-derived attrs (connector_short_name, connection_type,
+    # argo_package_name, argo_template_name, app_service_url) come from
+    # OpenAPIGeneratedE2EBase. The base harness builds the connection QN
+    # as default/{connection_type}/{epoch} automatically.
 
     mode = RunMode.AGENT
 
@@ -56,27 +52,6 @@ class TestOpenAPIE2E(OpenAPIGeneratedE2EBase):
     ae_poll_timeout_seconds = 1800
     atlas_poll_interval_seconds = 30
     atlas_poll_timeout_seconds = 900
-
-    def __init__(self) -> None:
-        super().__init__()
-        # OpenAPI connections in Atlan live under default/api/{epoch}, not
-        # default/openapi/... The epoch (pure digits, unix seconds) is the
-        # connection name — Atlas rejects names with hyphens/letters for
-        # this connector type.
-        _epoch = int(time.time())
-        self.connection_qualified_name = f"default/{_CONNECTOR_TYPE}/{_epoch}"
-        self.connection_display_name = f"{_CONNECTOR_TYPE}-{_epoch}"
-
-    def connection_spec(self) -> ConnectionSpec:
-        return ConnectionSpec(
-            name=self.connection_display_name,
-            qualified_name=self.connection_qualified_name,
-            connector_name=_CONNECTOR_TYPE,
-            source_logo="https://assets.atlan.com/assets/openapi.png",
-            admin_users=self.connection_admin_users,
-            admin_groups=self.connection_admin_groups,
-            admin_roles=self.connection_admin_roles,
-        )
 
     def agent_spec(self) -> AgentSpec:
         return AgentSpec(agent_name=f"openapi-e2e-ci-{self.run_id}")
