@@ -39,10 +39,7 @@ reportMissingImports = false
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 filterwarnings = [
-    # pyatlan reads its version via the deprecated importlib.resources API
-    "ignore:read_text is deprecated:DeprecationWarning",
-    "ignore:open_text is deprecated:DeprecationWarning",
-    # httpx deprecated the stream= kwarg in favour of content=
+    # httpx internal deprecation — not triggered by our code, not fixable here
     "ignore:Use 'content=<\\.\\.\\.>' to upload raw bytes:DeprecationWarning",
 ]
 markers = [
