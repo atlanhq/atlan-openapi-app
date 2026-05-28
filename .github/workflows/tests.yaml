@@ -26,7 +26,6 @@ on:
 jobs:
   tests:
     name: tests
-    if: github.event.action != 'labeled'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     concurrency:
@@ -109,7 +108,6 @@ jobs:
 
   sdr:
     name: sdr
-    if: github.event.action != 'labeled'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     concurrency:
@@ -144,16 +142,15 @@ jobs:
     concurrency:
       group: tests-e2e-${{ github.ref }}
       cancel-in-progress: false
-    # Run on workflow_dispatch (manual trigger) or when the `e2e` label is
-    # present on a PR from a non-fork, non-dependabot source.
+    # Run on workflow_dispatch or when the e2e label is explicitly added to
+    # the PR. Restricting to the labeled action (not contains) means regular
+    # pushes do not re-run e2e; only adding the label triggers it.
     if: |
       github.event_name == 'workflow_dispatch' ||
       (
         github.event_name == 'pull_request' &&
-        (
-          (github.event.action == 'labeled' && github.event.label.name == 'e2e') ||
-          contains(github.event.pull_request.labels.*.name, 'e2e')
-        ) &&
+        github.event.action == 'labeled' &&
+        github.event.label.name == 'e2e' &&
         github.event.pull_request.head.repo.fork != true &&
         github.event.pull_request.user.login != 'dependabot[bot]'
       )
@@ -196,11 +193,11 @@ jobs:
 
       - name: Verify all test jobs succeeded
         run: |
-          if [ "${{ needs.tests.result }}" != "success" ] && [ "${{ needs.tests.result }}" != "skipped" ]; then
+          if [ "${{ needs.tests.result }}" != "success" ]; then
             echo "::error::tests job did not succeed (result=${{ needs.tests.result }})"
             exit 1
           fi
-          if [ "${{ needs.sdr.result }}" != "success" ] && [ "${{ needs.sdr.result }}" != "skipped" ]; then
+          if [ "${{ needs.sdr.result }}" != "success" ]; then
             echo "::error::sdr did not succeed (result=${{ needs.sdr.result }})"
             exit 1
           fi
