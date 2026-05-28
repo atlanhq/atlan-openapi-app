@@ -14,7 +14,6 @@ on:
       - opened
       - synchronize
       - reopened
-      - labeled
     branches:
       - main
   workflow_dispatch:
