@@ -139,6 +139,9 @@ jobs:
 
   e2e:
     name: e2e
+    concurrency:
+      group: tests-e2e-${{ github.ref }}
+      cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
     # Run on workflow_dispatch (manual trigger) or when the `e2e` label is
     # present on a PR from a non-fork, non-dependabot source.
     if: |
