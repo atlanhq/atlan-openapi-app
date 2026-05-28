@@ -51,25 +51,23 @@ jobs:
       # disk before connector-integration-tests runs its uv sync.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Start MinIO
+      - name: Start MinIO and Azurite
         run: |
           docker run -d --name minio \
             -p 9000:9000 \
             -e MINIO_ROOT_USER=minioadmin \
             -e MINIO_ROOT_PASSWORD=minioadmin \
             minio/minio server /data
-          until curl -sf http://localhost:9000/minio/health/live; do sleep 1; done
-          AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin \
-            aws --endpoint-url http://localhost:9000 \
-            s3api create-bucket --bucket test-openapi-specs --region us-east-1
-
-      - name: Start Azurite
-        run: |
           docker run -d --name azurite \
             -p 10000:10000 \
             "mcr.microsoft.com/azure-storage/azurite:3.35.0@sha256:dae2a5f96553962901304b94e72ef87e299d0825e4b679673bcc527a25076fe4" \
             azurite-blob --blobHost 0.0.0.0 --skipApiVersionCheck
-          until curl -s --max-time 2 http://127.0.0.1:10000/devstoreaccount1 > /dev/null 2>&1; do sleep 1; done
+          until curl -sf http://localhost:9000/minio/health/live; do sleep 1; done &
+          until curl -s --max-time 2 http://127.0.0.1:10000/devstoreaccount1 > /dev/null 2>&1; do sleep 1; done &
+          wait
+          AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin \
+            aws --endpoint-url http://localhost:9000 \
+            s3api create-bucket --bucket test-openapi-specs --region us-east-1
           az storage container create \
             --name test-openapi-specs \
             --connection-string "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
@@ -159,7 +157,7 @@ jobs:
             | Job | Status | Result |
             |---|---|---|
             | tests | ${{ needs.tests.result == 'success' && '✅ Passed' || (needs.tests.result == 'skipped' && '⊘ Skipped' || '❌ Failed') }} | `${{ needs.tests.outputs.summary || 'no summary' }}` |
-            | sdr | ${{ needs.sdr.result == 'success' && '✅ Passed' || (needs.sdr.result == 'skipped' && '⊘ Skipped' || '❌ Failed') }} | `${{ needs.sdr.outputs.summary || 'no summary' }}` |
+            | sdr | ${{ needs.sdr.result == 'success' && '✅ Passed' || (needs.sdr.result == 'skipped' && '⊘ Skipped' || '❌ Failed') }} | |
 
             **Overall:** ${{ (needs.tests.result == 'success' && (needs.sdr.result == 'success' || needs.sdr.result == 'skipped')) && '✅ All passed' || '❌ Some failed' }} — [view run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
         continue-on-error: true
