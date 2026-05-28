@@ -39,6 +39,10 @@ reportMissingImports = false
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 filterwarnings = [
+    # pyatlan and pyatlan_v9 both read their version via the deprecated
+    # importlib.resources read_text/open_text API — not fixable from our side
+    "ignore:read_text is deprecated:DeprecationWarning",
+    "ignore:open_text is deprecated:DeprecationWarning",
     # httpx internal deprecation — not triggered by our code, not fixable here
     "ignore:Use 'content=<\\.\\.\\.>' to upload raw bytes:DeprecationWarning",
 ]
