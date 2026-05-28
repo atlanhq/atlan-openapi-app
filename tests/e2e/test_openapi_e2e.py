@@ -4,9 +4,9 @@ Submits a real AE workflow to a test tenant, runs extract → publish DAG
 against the public Petstore v3 API, and asserts the resulting APISpec /
 APIPath / APIObject assets land in Atlas.
 
-Requires ATLAN_BASE_URL + ATLAN_API_KEY. Guarded by the ``e2e`` pytest
-marker so it never runs in the default ``pytest`` invocation (which
-filters to ``not e2e``). In CI, enabled by applying the ``e2e`` PR label.
+Requires ATLAN_BASE_URL + ATLAN_API_KEY. The module-level guard skips
+the test when those env vars are absent, so it never runs accidentally
+in local or CI unit-test invocations. In CI, enabled by the ``e2e`` PR label.
 """
 
 from __future__ import annotations
