@@ -41,8 +41,9 @@ asyncio_default_fixture_loop_scope = "session"
 markers = [
     "cloud_integration: requires a running S3-compatible emulator (MinIO)",
     "azure_integration: requires a running Azure blob storage emulator (Azurite)",
+    "e2e: tenant-hitting end-to-end test (requires ATLAN_BASE_URL + ATLAN_API_KEY)",
 ]
-addopts = "-m 'not cloud_integration and not azure_integration'"
+addopts = "-m 'not cloud_integration and not azure_integration and not e2e'"
 
 [tool.poe.tasks]
 # Integration tests use MockStateStore + MockSecretStore — Dapr is not needed.

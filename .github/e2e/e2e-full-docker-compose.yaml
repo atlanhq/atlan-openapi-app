@@ -1,0 +1,12 @@
+# App-level docker compose overrides for the OpenAPI connector e2e full-DAG tests.
+# Merged on top of the SDK's base CI layer by the composite action.
+#
+# The full-DAG worker must register on the dynamic Temporal queue the harness
+# expects (atlan-<agent-name>). AGENT_NAME is injected by the reusable workflow's
+# "Resolve agent-name" step and forwarded here via the compose environment.
+
+services:
+  atlan-app:
+    environment:
+      ATLAN_APP_MODULE: "app.connector:OpenAPIConnector"
+      AGENT_NAME: "${AGENT_NAME:-}"

@@ -130,9 +130,32 @@ jobs:
           app-image-name: atlan-openapi-app
           secrets-script: .github/sdr-e2e/make-secrets.py
 
+  e2e:
+    name: e2e
+    # Run on workflow_dispatch (manual trigger) or when the `e2e` label is
+    # present on a PR from a non-fork, non-dependabot source.
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'pull_request' &&
+        (
+          (github.event.action == 'labeled' && github.event.label.name == 'e2e') ||
+          contains(github.event.pull_request.labels.*.name, 'e2e')
+        ) &&
+        github.event.pull_request.head.repo.fork != true &&
+        github.event.pull_request.user.login != 'dependabot[bot]'
+      )
+    uses: atlanhq/application-sdk/.github/workflows/e2e-full-reusable.yaml@main
+    with:
+      app-name: openapi
+      app-image-name: atlan-openapi-app
+      # Override default tests/full_dag/ path — openapi uses tests/e2e/
+      test-path: tests/e2e/
+    secrets: inherit
+
   tests-passed:
     name: tests-passed
-    needs: [tests, sdr]
+    needs: [tests, sdr, e2e]
     if: always()
     runs-on: ubuntu-latest
     permissions:
@@ -151,8 +174,9 @@ jobs:
             |---|---|---|
             | tests | ${{ needs.tests.result == 'success' && '✅ Passed' || (needs.tests.result == 'skipped' && '⊘ Skipped' || '❌ Failed') }} | `${{ needs.tests.outputs.summary || 'no summary' }}` |
             | sdr | ${{ needs.sdr.result == 'success' && '✅ Passed' || (needs.sdr.result == 'skipped' && '⊘ Skipped' || '❌ Failed') }} | |
+            | e2e | ${{ needs.e2e.result == 'success' && '✅ Passed' || (needs.e2e.result == 'skipped' && '⊘ Skipped (no `e2e` label)' || '❌ Failed') }} | (see separate sticky comment) |
 
-            **Overall:** ${{ (needs.tests.result == 'success' && needs.sdr.result == 'success') && '✅ All passed' || '❌ Some failed' }} — [view run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            **Overall:** ${{ (needs.tests.result == 'success' && needs.sdr.result == 'success' && (needs.e2e.result == 'success' || needs.e2e.result == 'skipped')) && '✅ All passed' || '❌ Some failed' }} — [view run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
         continue-on-error: true
 
       - name: Verify all test jobs succeeded
@@ -163,6 +187,10 @@ jobs:
           fi
           if [ "${{ needs.sdr.result }}" != "success" ]; then
             echo "::error::sdr did not succeed (result=${{ needs.sdr.result }})"
+            exit 1
+          fi
+          if [ "${{ needs.e2e.result }}" != "success" ] && [ "${{ needs.e2e.result }}" != "skipped" ]; then
+            echo "::error::e2e did not succeed (result=${{ needs.e2e.result }})"
             exit 1
           fi
           echo "All test jobs passed."
