@@ -73,6 +73,12 @@ jobs:
 
       - uses: atlanhq/application-sdk/.github/actions/setup-deps@main
 
+      # Temporary: pin SDK to the branch that carries BaseE2ETest.
+      # Remove this step (and the application-sdk-ref in the e2e job below)
+      # once SDK PR #1928 merges and a release is cut.
+      - name: Pin SDK to fix/e2e-test-classes
+        run: uv add git+https://github.com/atlanhq/application-sdk --rev fix/e2e-test-classes
+
       - name: Update application-sdk rev
         if: ${{ github.event.inputs.distinct_id != '' }}
         run: |
