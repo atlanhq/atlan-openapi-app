@@ -64,11 +64,11 @@ jobs:
             --cov=app --cov-report=xml --cov-report=html --cov-report=term
             --cov-fail-under=0
 
-  integration-cloud:
+  integration-s3:
     name: Integration Tests (S3/MinIO)
     runs-on: ubuntu-latest
     concurrency:
-      group: tests-integration-cloud-${{ github.ref }}
+      group: tests-integration-s3-${{ github.ref }}
       cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
     timeout-minutes: 30
     permissions:
@@ -228,7 +228,7 @@ jobs:
 
   tests-passed:
     name: tests-passed
-    needs: [unit-integration, integration-cloud, integration-azure, sdr]
+    needs: [unit-integration, integration-s3, integration-azure, sdr]
     if: always()
     runs-on: ubuntu-latest
     permissions:
@@ -246,11 +246,11 @@ jobs:
             | Job | Status | Result |
             |---|---|---|
             | unit + integration | ${{ needs.unit-integration.result == 'success' && '✅ Passed' || (needs.unit-integration.result == 'skipped' && '⊘ Skipped' || '❌ Failed') }} | `${{ needs.unit-integration.outputs.summary || 'no summary' }}` |
-            | integration-cloud | ${{ needs.integration-cloud.result == 'success' && '✅ Passed' || (needs.integration-cloud.result == 'skipped' && '⊘ Skipped' || '❌ Failed') }} | |
+            | integration-s3 | ${{ needs.integration-s3.result == 'success' && '✅ Passed' || (needs.integration-s3.result == 'skipped' && '⊘ Skipped' || '❌ Failed') }} | |
             | integration-azure | ${{ needs.integration-azure.result == 'success' && '✅ Passed' || (needs.integration-azure.result == 'skipped' && '⊘ Skipped' || '❌ Failed') }} | |
             | sdr | ${{ needs.sdr.result == 'success' && '✅ Passed' || (needs.sdr.result == 'skipped' && '⊘ Skipped' || '❌ Failed') }} | `${{ needs.sdr.outputs.summary || 'no summary' }}` |
 
-            **Overall:** ${{ (needs.unit-integration.result == 'success' && needs.integration-cloud.result == 'success' && needs.integration-azure.result == 'success' && (needs.sdr.result == 'success' || needs.sdr.result == 'skipped')) && '✅ All passed' || '❌ Some failed' }} — [view run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            **Overall:** ${{ (needs.unit-integration.result == 'success' && needs.integration-s3.result == 'success' && needs.integration-azure.result == 'success' && (needs.sdr.result == 'success' || needs.sdr.result == 'skipped')) && '✅ All passed' || '❌ Some failed' }} — [view run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
         continue-on-error: true
 
       - name: Verify all test jobs succeeded
@@ -259,8 +259,8 @@ jobs:
             echo "::error::unit + integration did not succeed (result=${{ needs.unit-integration.result }})"
             exit 1
           fi
-          if [ "${{ needs.integration-cloud.result }}" != "success" ]; then
-            echo "::error::integration-cloud did not succeed (result=${{ needs.integration-cloud.result }})"
+          if [ "${{ needs.integration-s3.result }}" != "success" ]; then
+            echo "::error::integration-s3 did not succeed (result=${{ needs.integration-s3.result }})"
             exit 1
           fi
           if [ "${{ needs.integration-azure.result }}" != "success" ]; then
