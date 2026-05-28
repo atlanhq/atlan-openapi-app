@@ -38,6 +38,13 @@ reportMissingImports = false
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
+filterwarnings = [
+    # pyatlan reads its version via the deprecated importlib.resources API
+    "ignore:read_text is deprecated:DeprecationWarning",
+    "ignore:open_text is deprecated:DeprecationWarning",
+    # httpx deprecated the stream= kwarg in favour of content=
+    "ignore:Use 'content=<\\.\\.\\.>' to upload raw bytes:DeprecationWarning",
+]
 markers = [
     "cloud_integration: requires a running S3-compatible emulator (MinIO)",
     "azure_integration: requires a running Azure blob storage emulator (Azurite)",
