@@ -11,6 +11,8 @@ class OpenAPIGeneratedE2EBase(BaseE2ETest):
     # not default/openapi/. Overrides BaseE2ETest.connection_type so the
     # harness builds the correct qualifiedName without per-test boilerplate.
     connection_type = AtlanConnectorType.API.value
+    # Atlas connection category for API-type connectors.
+    connection_category = "API"
     argo_package_name = "@atlan/openapi"
     argo_template_name = "atlan-openapi"
     app_service_url = "http://openapi.openapi-app.svc.cluster.local"
