@@ -43,7 +43,7 @@ markers = [
     "azure_integration: requires a running Azure blob storage emulator (Azurite)",
     "e2e: tenant-hitting end-to-end test (requires ATLAN_BASE_URL + ATLAN_API_KEY)",
 ]
-addopts = "-m 'not cloud_integration and not azure_integration and not e2e'"
+addopts = "-m 'not cloud_integration and not azure_integration'"
 
 [tool.poe.tasks]
 # Integration tests use MockStateStore + MockSecretStore — Dapr is not needed.
