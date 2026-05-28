@@ -1,8 +1,9 @@
 name: Tests
 
-# Unified workflow — unit + integration (Temporal) share a single pytest invocation
-# via connector-integration-tests. Cloud (S3/MinIO) and Azure storage tests run as
-# separate jobs since they need emulator services. SDR runs on label.
+# Unified workflow — unit, integration (Temporal), S3/MinIO, and Azure/Azurite
+# tests all run in a single pytest invocation. MinIO (9000) and Azurite (10000)
+# bind to separate ports so there is no collision risk. SDR runs on label only;
+# it builds a Docker image and hits a real tenant so it runs separately.
 
 on:
   push:
@@ -23,18 +24,25 @@ on:
         required: false
 
 jobs:
-  unit-integration:
-    name: unit + integration
+  tests:
+    name: tests
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     concurrency:
-      group: tests-unit-integration-${{ github.ref }}
+      group: tests-${{ github.ref }}
       cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
     permissions:
       pull-requests: write
       contents: read
     outputs:
       summary: ${{ steps.tests.outputs.summary }}
+    env:
+      # MinIO credentials — used by test_s3_download.py
+      AWS_ENDPOINT_URL: http://localhost:9000
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      # Azurite endpoint — used by test_azure_download.py
+      AZURE_STORAGE_ENDPOINT: http://127.0.0.1:10000
     steps:
       - name: echo distinct ID ${{ github.event.inputs.distinct_id }}
         run: echo ${{ github.event.inputs.distinct_id }}
@@ -43,48 +51,6 @@ jobs:
       # disk before connector-integration-tests runs its uv sync.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: atlanhq/application-sdk/.github/actions/setup-deps@main
-
-      - name: Update application-sdk rev
-        if: ${{ github.event.inputs.distinct_id != '' }}
-        run: |
-          commit_hash=${{ github.event.inputs.distinct_id }}
-          if ! [[ "$commit_hash" =~ ^[a-f0-9]{40}$ ]]; then
-            echo "distinct_id must be a 40-char hex SHA"; exit 1
-          fi
-          uv add git+https://github.com/atlanhq/application-sdk --rev $commit_hash
-
-      - name: Run all tests in one pytest invocation
-        id: tests
-        uses: atlanhq/application-sdk/.github/actions/connector-integration-tests@main
-        with:
-          app-name: openapi
-          pytest-args: >-
-            -n auto --dist=loadfile --tb=short
-            --cov=app --cov-report=xml --cov-report=html --cov-report=term
-            --cov-fail-under=0
-
-  integration-s3:
-    name: Integration Tests (S3/MinIO)
-    runs-on: ubuntu-latest
-    concurrency:
-      group: tests-integration-s3-${{ github.ref }}
-      cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
-    timeout-minutes: 30
-    permissions:
-      contents: read
-    steps:
-      - name: echo distinct ID ${{ github.event.inputs.distinct_id }}
-        run: echo ${{ github.event.inputs.distinct_id }}
-
-      - name: Install Temporal CLI
-        uses: temporalio/setup-temporal@6d04211d9dfbd5cb2493a4a6637b2ad784a60ccc
-
-      - name: Start Temporal dev server
-        run: |
-          temporal server start-dev --db-filename /tmp/temporal.db --headless &
-          until temporal operator namespace describe default >/dev/null 2>&1; do sleep 1; done
-
       - name: Start MinIO
         run: |
           docker run -d --name minio \
@@ -92,62 +58,10 @@ jobs:
             -e MINIO_ROOT_USER=minioadmin \
             -e MINIO_ROOT_PASSWORD=minioadmin \
             minio/minio server /data
-          echo "Waiting for MinIO to be ready..."
           until curl -sf http://localhost:9000/minio/health/live; do sleep 1; done
-          echo "MinIO is ready."
           AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin \
             aws --endpoint-url http://localhost:9000 \
             s3api create-bucket --bucket test-openapi-specs --region us-east-1
-
-      - uses: atlanhq/application-sdk/.github/actions/setup-deps@main
-
-      - name: Update application-sdk rev
-        if: ${{ github.event.inputs.distinct_id != '' }}
-        run: |
-          commit_hash=${{ github.event.inputs.distinct_id }}
-          if ! [[ "$commit_hash" =~ ^[a-f0-9]{40}$ ]]; then
-            echo "distinct_id must be a 40-char hex SHA"; exit 1
-          fi
-          uv add git+https://github.com/atlanhq/application-sdk --rev $commit_hash
-
-      - name: Run cloud integration tests
-        env:
-          ATLAN_LOCAL_DEVELOPMENT: "true"
-          ATLAN_APPLICATION_NAME: ${{ github.event.repository.name }}
-          TEMPORAL_HOST: localhost:7233
-          AWS_ENDPOINT_URL: http://localhost:9000
-          MINIO_ROOT_USER: minioadmin
-          MINIO_ROOT_PASSWORD: minioadmin
-        run: |
-          uv run pytest tests/integration/test_s3_download.py \
-            -v -m cloud_integration --capture=no --log-cli-level=INFO
-
-      - name: Stop services
-        if: always()
-        run: |
-          docker stop minio || true
-          pkill -f "temporal server" || true
-
-  integration-azure:
-    name: Integration Tests (Azure/Azurite)
-    runs-on: ubuntu-latest
-    concurrency:
-      group: tests-integration-azure-${{ github.ref }}
-      cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
-    timeout-minutes: 30
-    permissions:
-      contents: read
-    steps:
-      - name: echo distinct ID ${{ github.event.inputs.distinct_id }}
-        run: echo ${{ github.event.inputs.distinct_id }}
-
-      - name: Install Temporal CLI
-        uses: temporalio/setup-temporal@6d04211d9dfbd5cb2493a4a6637b2ad784a60ccc
-
-      - name: Start Temporal dev server
-        run: |
-          temporal server start-dev --db-filename /tmp/temporal.db --headless &
-          until temporal operator namespace describe default >/dev/null 2>&1; do sleep 1; done
 
       - name: Start Azurite
         run: |
@@ -155,9 +69,7 @@ jobs:
             -p 10000:10000 \
             "mcr.microsoft.com/azure-storage/azurite:3.35.0@sha256:dae2a5f96553962901304b94e72ef87e299d0825e4b679673bcc527a25076fe4" \
             azurite-blob --blobHost 0.0.0.0 --skipApiVersionCheck
-          echo "Waiting for Azurite to be ready..."
           until curl -s --max-time 2 http://127.0.0.1:10000/devstoreaccount1 > /dev/null 2>&1; do sleep 1; done
-          echo "Azurite is ready."
           az storage container create \
             --name test-openapi-specs \
             --connection-string "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
@@ -173,21 +85,22 @@ jobs:
           fi
           uv add git+https://github.com/atlanhq/application-sdk --rev $commit_hash
 
-      - name: Run Azure integration tests
-        env:
-          ATLAN_LOCAL_DEVELOPMENT: "true"
-          ATLAN_APPLICATION_NAME: ${{ github.event.repository.name }}
-          TEMPORAL_HOST: localhost:7233
-          AZURE_STORAGE_ENDPOINT: http://127.0.0.1:10000
-        run: |
-          uv run pytest tests/integration/test_azure_download.py \
-            -v -m azure_integration --capture=no --log-cli-level=INFO
+      - name: Run all tests
+        id: tests
+        uses: atlanhq/application-sdk/.github/actions/connector-integration-tests@main
+        with:
+          app-name: openapi
+          # --override-ini=addopts= clears the pyproject.toml marker filter so
+          # cloud_integration and azure_integration tests are included here.
+          pytest-args: >-
+            -n auto --dist=loadfile --tb=short
+            --cov=app --cov-report=xml --cov-report=html --cov-report=term
+            --cov-fail-under=0
+            --override-ini=addopts=
 
       - name: Stop services
         if: always()
-        run: |
-          docker stop azurite || true
-          pkill -f "temporal server" || true
+        run: docker stop minio azurite 2>/dev/null || true
 
   sdr:
     name: sdr
@@ -228,7 +141,7 @@ jobs:
 
   tests-passed:
     name: tests-passed
-    needs: [unit-integration, integration-s3, integration-azure, sdr]
+    needs: [tests, sdr]
     if: always()
     runs-on: ubuntu-latest
     permissions:
@@ -245,26 +158,16 @@ jobs:
 
             | Job | Status | Result |
             |---|---|---|
-            | unit + integration | ${{ needs.unit-integration.result == 'success' && '✅ Passed' || (needs.unit-integration.result == 'skipped' && '⊘ Skipped' || '❌ Failed') }} | `${{ needs.unit-integration.outputs.summary || 'no summary' }}` |
-            | integration-s3 | ${{ needs.integration-s3.result == 'success' && '✅ Passed' || (needs.integration-s3.result == 'skipped' && '⊘ Skipped' || '❌ Failed') }} | |
-            | integration-azure | ${{ needs.integration-azure.result == 'success' && '✅ Passed' || (needs.integration-azure.result == 'skipped' && '⊘ Skipped' || '❌ Failed') }} | |
+            | tests | ${{ needs.tests.result == 'success' && '✅ Passed' || (needs.tests.result == 'skipped' && '⊘ Skipped' || '❌ Failed') }} | `${{ needs.tests.outputs.summary || 'no summary' }}` |
             | sdr | ${{ needs.sdr.result == 'success' && '✅ Passed' || (needs.sdr.result == 'skipped' && '⊘ Skipped' || '❌ Failed') }} | `${{ needs.sdr.outputs.summary || 'no summary' }}` |
 
-            **Overall:** ${{ (needs.unit-integration.result == 'success' && needs.integration-s3.result == 'success' && needs.integration-azure.result == 'success' && (needs.sdr.result == 'success' || needs.sdr.result == 'skipped')) && '✅ All passed' || '❌ Some failed' }} — [view run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            **Overall:** ${{ (needs.tests.result == 'success' && (needs.sdr.result == 'success' || needs.sdr.result == 'skipped')) && '✅ All passed' || '❌ Some failed' }} — [view run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
         continue-on-error: true
 
       - name: Verify all test jobs succeeded
         run: |
-          if [ "${{ needs.unit-integration.result }}" != "success" ]; then
-            echo "::error::unit + integration did not succeed (result=${{ needs.unit-integration.result }})"
-            exit 1
-          fi
-          if [ "${{ needs.integration-s3.result }}" != "success" ]; then
-            echo "::error::integration-s3 did not succeed (result=${{ needs.integration-s3.result }})"
-            exit 1
-          fi
-          if [ "${{ needs.integration-azure.result }}" != "success" ]; then
-            echo "::error::integration-azure did not succeed (result=${{ needs.integration-azure.result }})"
+          if [ "${{ needs.tests.result }}" != "success" ]; then
+            echo "::error::tests job did not succeed (result=${{ needs.tests.result }})"
             exit 1
           fi
           if [ "${{ needs.sdr.result }}" != "success" ] && [ "${{ needs.sdr.result }}" != "skipped" ]; then
