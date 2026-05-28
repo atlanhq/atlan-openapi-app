@@ -1,6 +1,6 @@
-amends "@app-contract-toolkit/NativeApp.pkl"
+amends "@app-contract-toolkit/App.pkl"
 
-import "@app-contract-toolkit/Config.pkl"
+import "@app-contract-toolkit/Widgets.pkl"
 import "@app-contract-toolkit/Connectors.pkl"
 
 name = "openapi"
@@ -9,39 +9,38 @@ connector = Connectors.API
 icon = "http://assets.atlan.com/assets/apispec.png"
 workflowType = name
 hasCredentialConfig = false
-flatManifestArgs = true
 
 uiConfig {
   tasks {
     ["Configuration"] {
       description = "OpenAPI spec configuration"
       inputs {
-        ["import_type"] = new Config.Radio {
+        ["import_type"] = new Widgets.Radio {
           title = "Import type"
           helpText = "How to provide the spec: 'URL' (HTTP fetch) or 'CLOUD' (object storage)."
           possibleValues { ["URL"] = "URL"; ["CLOUD"] = "Cloud" }
           default = "URL"
           required = true
         }
-        ["spec_url"] = new Config.TextInput {
+        ["spec_url"] = new Widgets.TextInput {
           title = "Spec URL"
           helpText = "URL to the OpenAPI spec JSON/YAML document. Required when import_type='URL'."
           required = true
           placeholderText = "https://petstore3.swagger.io/api/v3/openapi.json"
         }
-["spec_prefix"] = new Config.TextInput {
+["spec_prefix"] = new Widgets.TextInput {
           title = "Object store path"
           helpText = "Object store directory path. Required when import_type='CLOUD'."
           width = 4
           placeholderText = "path/to/file"
         }
-        ["spec_key"] = new Config.TextInput {
+        ["spec_key"] = new Widgets.TextInput {
           title = "Object key"
           helpText = "Object key (filename) in the object store. Required when import_type='CLOUD'."
           width = 4
           placeholderText = "openapi.json"
         }
-        ["cloud_source"] = new Config.CredentialInput {
+        ["cloud_source"] = new Widgets.CredentialInput {
           title = "Cloud source"
           helpText = "Cloud storage credential (csa-connectors-objectstore). Required when import_type='CLOUD'."
           required = true
@@ -53,7 +52,7 @@ uiConfig {
     ["Connection"] {
       description = "Connection details"
       inputs {
-        ["connection"] = new Config.ConnectionCreator {
+        ["connection"] = new Widgets.ConnectionCreator {
           title = "Connection"
           helpText = "Atlan connection to create or reuse."
           required = true
@@ -62,11 +61,11 @@ uiConfig {
     }
   }
   rules {
-    new Config.UIRule {
+    new Widgets.UIRule {
       whenInputs { ["import_type"] = "URL" }
       required { "spec_url" }
     }
-    new Config.UIRule {
+    new Widgets.UIRule {
       whenInputs { ["import_type"] = "CLOUD" }
       required { "cloud_source"; "spec_prefix"; "spec_key" }
     }
