@@ -18,7 +18,6 @@ if TYPE_CHECKING:
 
 from application_sdk.contracts.types import ConnectionRef
 
-from msgspec import UNSET
 from pyatlan_v9.model.assets import APIPath, APISpec, Connection, RelatedAPISpec
 
 
@@ -88,14 +87,6 @@ def map_connection(connection: ConnectionRef) -> Connection:
     native.connection_qualified_name = conn_qn
     native.name = conn_name
     native.category = connection.attributes.category or "API"
-    # Admin lists are set during connection creation (via AE connection_creation_enabled).
-    # Re-emitting them as explicit empty arrays here would trigger Atlas
-    # ATLAS-400-00-114 (ADMIN_LIST_SHOULD_NOT_BE_EMPTY) in processUpdateConnection.
-    # Sending UNSET (absent) instead causes processUpdateConnection to exit early
-    # and preserve the existing admin configuration.
-    native.admin_users = UNSET
-    native.admin_groups = UNSET
-    native.admin_roles = UNSET
     return native
 
 
