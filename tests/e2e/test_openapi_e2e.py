@@ -54,7 +54,7 @@ class TestOpenAPIE2E(OpenAPIGeneratedE2EBase):
     atlas_poll_timeout_seconds = 900
 
     def agent_spec(self) -> AgentSpec:
-        return AgentSpec(agent_name=f"openapi-e2e-ci-{self.run_id}")
+        return AgentSpec(agent_name=f"openapi-e2e-full-ci-{self.run_id}")
 
     def _mustache_substitutions(self) -> OpenAPIMustacheSubstitutions:
         base = super()._mustache_substitutions()
