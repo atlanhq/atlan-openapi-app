@@ -151,6 +151,9 @@ jobs:
       app-image-name: atlan-openapi-app
       # Override default tests/full_dag/ path — openapi uses tests/e2e/
       test-path: tests/e2e/
+      # Pin to the same SDK branch as uv.lock until fix/e2e-test-classes merges.
+      # Remove this (and revert uv.lock) once the SDK PR lands and a release is cut.
+      application-sdk-ref: fix/e2e-test-classes
     secrets: inherit
 
   tests-passed:

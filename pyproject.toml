@@ -50,3 +50,6 @@ addopts = "-m 'not cloud_integration and not azure_integration and not e2e'"
 download-components = "echo 'No Dapr components needed for OpenAPI connector'"
 start-deps.shell = "temporal server start-dev --db-filename /tmp/temporal.db --headless & until temporal operator namespace describe default >/dev/null 2>&1; do sleep 1; done && echo 'Temporal is ready'"
 stop-deps.shell = "lsof -ti:7233 | xargs kill -9 2>/dev/null || true"
+
+[tool.uv.sources]
+atlan-application-sdk = { git = "https://github.com/atlanhq/application-sdk", rev = "fix/e2e-test-classes" }
