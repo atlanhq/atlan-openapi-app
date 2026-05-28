@@ -175,7 +175,7 @@ wheels = [
 [[package]]
 name = "atlan-application-sdk"
 version = "3.13.4"
-source = { git = "https://github.com/atlanhq/application-sdk?rev=fix%2Fe2e-test-classes#9a0bc1c875565da299044e4649ff2cda5d612a09" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
     { name = "azure-identity" },
@@ -195,6 +195,10 @@ dependencies = [
     { name = "pyyaml" },
     { name = "temporalio" },
     { name = "uvloop", marker = "sys_platform != 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/16/a6/c6f1594dd080fd555840ac7432847e6a680cc2b1970931d6b3c73b766532/atlan_application_sdk-3.13.4.tar.gz", hash = "sha256:8dd5b557e80ffbdaa6c600021a01448f8998cf76778fef1e5a79dafa67ce6d24", size = 2839217, upload-time = "2026-05-28T01:01:58.791Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ec/b7/fe09ca3fc5148480d7be5d5a256398db0e07a5aa745100f33a677806b108/atlan_application_sdk-3.13.4-py3-none-any.whl", hash = "sha256:0ca50a08f0d09a7454e0ed07c8df297bca9b8920a1993f75a8de883173794fb7", size = 774173, upload-time = "2026-05-28T01:01:56.945Z" },
 ]
 
 [package.optional-dependencies]
@@ -1865,13 +1869,13 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "atlan-application-sdk", git = "https://github.com/atlanhq/application-sdk?rev=fix%2Fe2e-test-classes" },
+    { name = "atlan-application-sdk", specifier = ">=3.6.0,<4.0.0" },
     { name = "pyyaml", specifier = ">=6.0,<7" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "atlan-application-sdk", extras = ["tests", "pandas"], git = "https://github.com/atlanhq/application-sdk?rev=fix%2Fe2e-test-classes" },
+    { name = "atlan-application-sdk", extras = ["tests", "pandas"], specifier = ">=3.6.0,<4.0.0" },
     { name = "coverage", extras = ["toml"], specifier = ">=7.13.5,<8" },
     { name = "httpx", specifier = ">=0.28.1,<1" },
     { name = "poethepoet", specifier = ">=0.34.0" },
