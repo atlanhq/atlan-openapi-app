@@ -13,7 +13,6 @@ on:
     types:
       - opened
       - synchronize
-      - labeled
       - reopened
     branches:
       - main
@@ -102,12 +101,6 @@ jobs:
 
   sdr:
     name: sdr
-    # Runs only when labeled sdr-e2e-test or via workflow_dispatch.
-    # Skipped PRs count as success so this job can be a required check.
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.action == 'labeled' && github.event.label.name == 'sdr-e2e-test') ||
-      contains(github.event.pull_request.labels.*.name, 'sdr-e2e-test')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     concurrency:
@@ -159,7 +152,7 @@ jobs:
             | tests | ${{ needs.tests.result == 'success' && '✅ Passed' || (needs.tests.result == 'skipped' && '⊘ Skipped' || '❌ Failed') }} | `${{ needs.tests.outputs.summary || 'no summary' }}` |
             | sdr | ${{ needs.sdr.result == 'success' && '✅ Passed' || (needs.sdr.result == 'skipped' && '⊘ Skipped' || '❌ Failed') }} | |
 
-            **Overall:** ${{ (needs.tests.result == 'success' && (needs.sdr.result == 'success' || needs.sdr.result == 'skipped')) && '✅ All passed' || '❌ Some failed' }} — [view run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            **Overall:** ${{ (needs.tests.result == 'success' && needs.sdr.result == 'success') && '✅ All passed' || '❌ Some failed' }} — [view run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
         continue-on-error: true
 
       - name: Verify all test jobs succeeded
@@ -168,7 +161,7 @@ jobs:
             echo "::error::tests job did not succeed (result=${{ needs.tests.result }})"
             exit 1
           fi
-          if [ "${{ needs.sdr.result }}" != "success" ] && [ "${{ needs.sdr.result }}" != "skipped" ]; then
+          if [ "${{ needs.sdr.result }}" != "success" ]; then
             echo "::error::sdr did not succeed (result=${{ needs.sdr.result }})"
             exit 1
           fi
