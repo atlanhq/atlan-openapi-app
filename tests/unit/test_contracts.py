@@ -45,7 +45,7 @@ class TestOpenAPIConnectorInput:
         """All default values must survive round-trip."""
         original = OpenAPIConnectorInput()
         decoded = _round_trip(original, OpenAPIConnectorInput)
-        assert decoded.connection is None
+        assert decoded.connection.attributes.qualified_name == ""
         assert decoded.import_type == "URL"
         assert decoded.spec_url == ""
         assert decoded.output_dir == ""

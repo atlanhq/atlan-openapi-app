@@ -1,29 +1,31 @@
+# AUTO-GENERATED from contract/app.pkl — DO NOT EDIT MANUALLY.
+# To regenerate: pkl eval -m . contract/app.pkl
 name: openapi
-app_id: 019d1f6b-6fea-7db3-96d8-e61e159d0351
 display_name: OpenAPI Spec Loader
 type: connector
+execution_mode: native
 icon_url: http://assets.atlan.com/assets/apispec.png
 visibility: public
-argo_package_names:
-  - "@csa/openapi-spec-loader"
 build_tag: v1
-release_model: semver
 self_deployed_runtime: false
+entrypoints:
+- name: openapi
+  display_name: OpenAPI Spec Loader
+  icon_url: http://assets.atlan.com/assets/apispec.png
+  type: connector
 deploy:
   execution_mode: native
-  source: api
   splitDeploymentEnabled: true
-  keda:
-    enabled: true
-  env:
-    ATLAN_HEARTBEAT_TIMEOUT_SECONDS: '120'
-    ATLAN_START_TO_CLOSE_TIMEOUT_SECONDS: '7200'
-    ATLAN_TENANT_ID: default
   dapr:
-    objectstore: true
-    secretstore: true
+    objectstore: false
+    secretstore: false
     statestore: false
-    eventstore: true
+    eventstore: false
     subscription: false
     configurationstore: false
     lock: false
+  keda:
+    enabled: true
+    minReplicaCount: 0
+    temporal:
+      targetQueueSize: 5

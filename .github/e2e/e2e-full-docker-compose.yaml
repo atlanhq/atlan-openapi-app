@@ -1,0 +1,13 @@
+# App-level docker compose overrides for the OpenAPI connector e2e full-DAG tests.
+# Merged on top of the SDK's base CI layer by the composite action.
+#
+# ATLAN_DEPLOYMENT_NAME drives the Temporal queue suffix via SDK _derive_task_queue:
+#   worker queue = atlan-openapi-e2e-full-ci-{GITHUB_RUN_ID}
+# The test's agent_spec() must produce the same suffix in agent_name so AE
+# dispatches to the queue the worker is listening on.
+
+services:
+  atlan-app:
+    environment:
+      ATLAN_APP_MODULE: "app.connector:OpenAPIConnector"
+      ATLAN_DEPLOYMENT_NAME: "e2e-full-ci-${GITHUB_RUN_ID}"
