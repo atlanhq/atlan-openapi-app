@@ -2,7 +2,7 @@
 
 Submits a real AE workflow to a test tenant, runs extract → publish DAG
 against the public Petstore v3 API, and asserts the resulting APISpec /
-APIPath / APIObject assets land in Atlas.
+APIPath assets land in Atlas.
 
 Requires ATLAN_BASE_URL + ATLAN_API_KEY. The module-level guard skips
 the test when those env vars are absent, so it never runs accidentally
