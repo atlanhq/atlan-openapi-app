@@ -123,7 +123,7 @@ jobs:
         github.event.pull_request.head.repo.fork != true &&
         github.event.pull_request.user.login != 'dependabot[bot]'
       )
-    uses: atlanhq/application-sdk/.github/workflows/e2e-full-reusable.yaml@main
+    uses: atlanhq/application-sdk/.github/workflows/e2e-full-reusable.yaml@fix/e2e-test-classes
     with:
       app-name: openapi
       app-image-name: atlan-openapi-app
