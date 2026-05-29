@@ -1,10 +1,10 @@
 .PHONY: generate check-generate test-cloud-integration test-azure-integration
 
 generate:
-	pkl eval --project-dir contract -m app/generated contract/app.pkl contract/csa-connectors-objectstore.pkl
+	pkl eval --project-dir contract -m . contract/app.pkl contract/csa-connectors-objectstore.pkl
 
 check-generate: generate
-	@git diff --exit-code app/generated/ \
+	@git diff --exit-code app/generated/ atlan.yaml app.yaml \
 		|| (echo "ERROR: Generated files are stale. Run 'make generate' and commit." && exit 1)
 
 test-cloud-integration:
