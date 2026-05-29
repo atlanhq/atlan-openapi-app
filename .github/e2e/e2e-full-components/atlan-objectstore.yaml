@@ -3,8 +3,18 @@ kind: Component
 metadata:
   name: atlan-objectstore
 spec:
-  type: bindings.localstorage
+  type: bindings.aws.s3
   version: v1
   metadata:
-    - name: rootPath
-      value: /tmp/atlan-upload
+    - name: bucket
+      value: atlan-bucket
+    - name: region
+      value: us-east-1
+    - name: endpoint
+      value: ${ATLAN_BASE_URL}/api/blobstorage
+    - name: accessKey
+      value: ${SDR_OAUTH_CLIENT_ID}
+    - name: secretKey
+      value: ${SDR_OAUTH_CLIENT_SECRET}
+    - name: forcePathStyle
+      value: "true"
