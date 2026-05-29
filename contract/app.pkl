@@ -11,15 +11,11 @@ hasCredentialConfig = false
 
 pipeline {
   publish {
-    // This connector does not manage current-state or connection-cache —
-    // it outputs empty current_state_prefix / publish_state_prefix.
-    // With current_state_via_app_enabled=true and an empty prefix,
-    // publish-app's delta logic returns 0 transformed entities and exits
-    // early, skipping all entity loading. Opt out until the connector
-    // implements state management.
+    // Revert to publish-app env defaults: via_app_enabled=false for both,
+    // connection_cache_enabled=false. The template injects true for these
+    // but empirically that causes 0 entities to load; exact mechanism TBD.
     connectionCacheEnabled = false
     connectionCacheViaAppEnabled = false
-    currentStateEnabled = false
     currentStateViaAppEnabled = false
   }
 }
