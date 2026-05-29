@@ -1,12 +1,11 @@
-# AUTO-GENERATED from app.pkl — DO NOT EDIT MANUALLY.
-# To regenerate: make generate
+# AUTO-GENERATED from contract/app.pkl — DO NOT EDIT MANUALLY.
+# To regenerate: pkl eval -m . contract/app.pkl
 from __future__ import annotations
 from typing import ClassVar
-from application_sdk.contracts.base import Input
-from application_sdk.contracts.types import ConnectionRef
+from application_sdk.templates.contracts import ExtractionInput
 
 
-class AppInputContract(Input):
+class AppInputContract(ExtractionInput):
     _config_hash_exclude: ClassVar[set[str]] = {
         "output_dir",
         "checkpoint_dir",
@@ -24,8 +23,6 @@ class AppInputContract(Input):
     """Object key (filename) in the object store. Required when import_type='CLOUD'."""
     cloud_source: str = ""
     """Cloud storage credential (csa-connectors-objectstore). Required when import_type='CLOUD'."""
-    connection: ConnectionRef | None = None
-    """Atlan connection to create or reuse."""
     output_dir: str = ""
     """Directory for output JSONL files."""
     checkpoint_dir: str = ""

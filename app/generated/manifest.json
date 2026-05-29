@@ -37,11 +37,18 @@
           "current_state_prefix": "$.extract.outputs.current_state_prefix",
           "connection_creation_enabled": true,
           "executor_enabled": true,
-          "connection_entity": "{{connection}}"
+          "connection_entity": "{{connection}}",
+          "connection_cache_enabled": true,
+          "connection_cache_via_app_enabled": true,
+          "current_state_enabled": true,
+          "current_state_via_app_enabled": true
         }
       },
       "depends_on": {
         "node_id": "extract"
+      },
+      "error_handling": {
+        "start_to_close_timeout_seconds": 86400
       }
     }
   }
