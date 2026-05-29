@@ -74,12 +74,6 @@ jobs:
 
       - uses: atlanhq/application-sdk/.github/actions/setup-deps@main
 
-      # Temporary: pin SDK to the branch that carries BaseE2ETest.
-      # Remove this step (and the application-sdk-ref in the e2e job below)
-      # once SDK PR #1928 merges and a release is cut.
-      - name: Pin SDK to fix/e2e-test-classes
-        run: uv add git+https://github.com/atlanhq/application-sdk --rev fix/e2e-test-classes
-
       - name: Update application-sdk rev
         if: ${{ github.event.inputs.distinct_id != '' }}
         run: |
@@ -123,15 +117,12 @@ jobs:
         github.event.pull_request.head.repo.fork != true &&
         github.event.pull_request.user.login != 'dependabot[bot]'
       )
-    uses: atlanhq/application-sdk/.github/workflows/e2e-full-reusable.yaml@fix/e2e-test-classes
+    uses: atlanhq/application-sdk/.github/workflows/e2e-full-reusable.yaml@main
     with:
       app-name: openapi
       app-image-name: atlan-openapi-app
       # Override default tests/full_dag/ path — openapi uses tests/e2e/
       test-path: tests/e2e/
-      # Pin to the same SDK branch as uv.lock until fix/e2e-test-classes merges.
-      # Remove this (and revert uv.lock) once the SDK PR lands and a release is cut.
-      application-sdk-ref: fix/e2e-test-classes
     secrets: inherit
 
   tests-passed:
