@@ -503,8 +503,14 @@ class OpenAPIConnector(App):
         3. transform — map to Atlan Atlas entities (if records were extracted)
         4. publish — sync to Atlan via publish-app (if load_to_atlan=True)
         """
-        connection = self.require(input.connection, "connection")
+        connection = input.connection
         conn_qn = connection.attributes.qualified_name
+        if not conn_qn:
+            raise InvalidInputError(
+                message="connection.qualified_name is required",
+                field="connection",
+                constraint="required",
+            )
 
         output_dir = input.output_dir or str(
             Path(tempfile.gettempdir()) / "openapi" / self.run_id
