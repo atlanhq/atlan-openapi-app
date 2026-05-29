@@ -11,3 +11,7 @@ services:
     environment:
       ATLAN_APP_MODULE: "app.connector:OpenAPIConnector"
       ATLAN_DEPLOYMENT_NAME: "e2e-full-ci-${GITHUB_RUN_ID}"
+      # Route inter-service uploads (extract → publish) through the
+      # atlan-objectstore Dapr binding (S3) instead of the default
+      # objectstore (localstorage) so publish-app can read them.
+      UPSTREAM_OBJECT_STORE_NAME: "atlan-objectstore"
