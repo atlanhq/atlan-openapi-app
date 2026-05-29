@@ -9,17 +9,6 @@ icon = "http://assets.atlan.com/assets/apispec.png"
 workflowType = name
 hasCredentialConfig = false
 
-pipeline {
-  publish {
-    // Revert to publish-app env defaults: via_app_enabled=false for both,
-    // connection_cache_enabled=false. The template injects true for these
-    // but empirically that causes 0 entities to load; exact mechanism TBD.
-    connectionCacheEnabled = false
-    connectionCacheViaAppEnabled = false
-    currentStateViaAppEnabled = false
-  }
-}
-
 uiConfig = new UIConfig {
   tasks {
     ["Configuration"] {
