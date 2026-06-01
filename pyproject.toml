@@ -54,8 +54,9 @@ markers = [
 addopts = "-m 'not cloud_integration and not azure_integration'"
 
 [tool.poe.tasks]
-# Integration tests use MockStateStore + MockSecretStore — Dapr is not needed.
+# No external deps needed: Dapr is mocked; Temporal runs embedded in-process via
+# temporalio.testing.WorkflowEnvironment.start_local() (SDK embedded_runtime()).
 download-components = "echo 'No Dapr components needed for OpenAPI connector'"
-start-deps.shell = "temporal server start-dev --db-filename /tmp/temporal.db --headless & until temporal operator namespace describe default >/dev/null 2>&1; do sleep 1; done && echo 'Temporal is ready'"
-stop-deps.shell = "lsof -ti:7233 | xargs kill -9 2>/dev/null || true"
+start-deps = "echo 'No external deps needed — Temporal runs embedded in pytest'"
+stop-deps = "echo 'No external deps to stop'"
 
