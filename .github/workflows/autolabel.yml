@@ -3,12 +3,14 @@ name: Autolabel
 on:
   pull_request:
     types: [opened, reopened, synchronize, edited]
+  merge_group:
 
 permissions:
   pull-requests: write
 
 jobs:
   autolabel:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Apply label from conventional commit prefix

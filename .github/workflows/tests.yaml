@@ -17,6 +17,7 @@ on:
       - labeled
     branches:
       - main
+  merge_group:
   workflow_dispatch:
     inputs:
       distinct_id:
