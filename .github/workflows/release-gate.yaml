@@ -1,17 +1,16 @@
 name: Release Gate
 
 # Blocks release PRs (auto-labeled `release` by the SDK release-version-bump
-# workflow) from being merged until a reviewer adds the `sdr-e2e-test` label,
-# which triggers the full SDR integration tests as the final gate before a
-# release is cut.
+# workflow) from being merged until a reviewer adds the `e2e` label, which
+# triggers the full e2e tests as the final gate before a release is cut.
 #
 # All other PRs pass this check immediately — it exists solely to gate the
-# auto-created bump-version PRs without requiring `sdr-e2e-test` on every PR.
+# auto-created bump-version PRs without requiring `e2e` on every PR.
 #
-# Branch-protection target: "Release Gate / Release Gate"
-# Add this alongside "SDR Integration Tests / SDR E2E Tests" in branch
-# protection so that: (a) this check blocks release PRs missing the label,
-# and (b) the SDR check enforces that the tests actually pass once triggered.
+# Branch-protection targets: "Release Gate / Release Gate"
+# Add this alongside "Tests / tests-passed" in branch protection so that:
+# (a) this check blocks release PRs missing the label, and (b) the
+# tests-passed check enforces that unit, integration, and e2e tests all pass.
 
 on:
   pull_request:
@@ -34,17 +33,17 @@ jobs:
         run: |
           set -euo pipefail
           has_release=$(echo "$LABELS" | jq 'index("release") != null')
-          has_sdr=$(echo "$LABELS" | jq 'index("sdr-e2e-test") != null')
+          has_e2e=$(echo "$LABELS" | jq 'index("e2e") != null')
 
           if [[ "$has_release" != "true" ]]; then
             echo "Not a release PR — gate passes."
             exit 0
           fi
 
-          if [[ "$has_sdr" != "true" ]]; then
-            echo "::error::Release PR requires the 'sdr-e2e-test' label before merging. Add it to trigger SDR integration tests; this gate unblocks once the label is present and the SDR tests pass."
+          if [[ "$has_e2e" != "true" ]]; then
+            echo "::error::Release PR requires the 'e2e' label before merging. Add it to trigger e2e tests; this gate unblocks once the label is present and the tests pass."
             exit 1
           fi
 
-          echo "Release PR has both 'release' and 'sdr-e2e-test' labels — gate passes."
-          echo "SDR test pass/fail is enforced separately by 'SDR Integration Tests / SDR E2E Tests'."
+          echo "Release PR has both 'release' and 'e2e' labels — gate passes."
+          echo "Test pass/fail is enforced separately by 'Tests / tests-passed'."
