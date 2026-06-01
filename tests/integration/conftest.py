@@ -1,19 +1,17 @@
 """Fixtures for integration tests.
 
-Tests connect to an external Temporal dev server.
-Secret/state/storage infrastructure is mocked — no Dapr required.
+Tests run entirely in-process: Temporal starts as an embedded dev server via
+the SDK's ``embedded_runtime()``, and secret/state/storage infrastructure is
+mocked — no external services required.
 
 Environment variables:
-    TEMPORAL_HOST: Temporal server address (default: ``localhost:7233``).
     OPENAPI_AUTH_HEADER: Optional auth header for private spec endpoints.
 
 Run tests with: uv run pytest tests/integration/ -v
-Requires: temporal server start-dev
 """
 
 from __future__ import annotations
 
-import asyncio
 import orjson
 import os
 from pathlib import Path
@@ -21,6 +19,7 @@ from typing import Any
 
 import pytest
 import pytest_asyncio
+from application_sdk.dev import embedded_runtime
 from application_sdk.execution._temporal.backend import TemporalExecutorBackend
 from application_sdk.execution._temporal.converter import create_data_converter_for_app
 from application_sdk.execution._temporal.worker import create_worker
@@ -41,8 +40,6 @@ from app.connector import OpenAPIConnector  # noqa: F401
 AtlanObservability._deployment_store = create_memory_store()
 
 _TASK_QUEUE = "openapi-queue"
-_TEMPORAL_HOST = os.environ.get("TEMPORAL_HOST", "localhost:7233")
-_temporal_reachable: bool | None = None
 
 
 class AppExecutor:
@@ -111,38 +108,15 @@ def infrastructure(store_root: Path) -> InfrastructureContext:
 
 
 # ---------------------------------------------------------------------------
-# Temporal connectivity check + graceful skip
+# Embedded Temporal runtime
 # ---------------------------------------------------------------------------
 
 
-def _check_temporal_reachable(host: str) -> bool:
-    """Return True if the Temporal server at *host* responds within 3 seconds."""
-
-    async def _probe() -> bool:
-        try:
-            client = await Client.connect(host, lazy=True)
-            handle = client.get_workflow_handle("__connectivity_probe__")
-            await asyncio.wait_for(handle.describe(), timeout=3.0)
-            return True  # describe() succeeded unexpectedly
-        except asyncio.TimeoutError:
-            return False
-        except Exception:
-            return True  # Any non-timeout error means the server IS reachable
-
-    return asyncio.run(_probe())
-
-
-@pytest.fixture(autouse=True, scope="session")
-def require_temporal() -> None:
-    """Skip the entire test session if Temporal is not reachable."""
-    global _temporal_reachable
-    if _temporal_reachable is None:
-        _temporal_reachable = _check_temporal_reachable(_TEMPORAL_HOST)
-    if not _temporal_reachable:
-        pytest.skip(
-            f"Temporal server not running at {_TEMPORAL_HOST} — "
-            "start it with: temporal server start-dev"
-        )
+@pytest_asyncio.fixture(scope="session")
+async def embedded_temporal():
+    """Boot an in-process Temporal dev server for the test session."""
+    async with embedded_runtime(log_level="error") as rt:
+        yield rt
 
 
 # ---------------------------------------------------------------------------
@@ -151,16 +125,16 @@ def require_temporal() -> None:
 
 
 @pytest_asyncio.fixture(scope="session")
-async def temporal_client() -> Client:
-    """Connect to the external Temporal dev server."""
+async def temporal_client(embedded_temporal) -> Client:
+    """Connect to the embedded Temporal dev server."""
     data_converter = create_data_converter_for_app(OpenAPIConnector)
-    return await Client.connect(_TEMPORAL_HOST, data_converter=data_converter)
+    return await Client.connect(embedded_temporal.host, data_converter=data_converter)
 
 
 @pytest_asyncio.fixture(scope="session")
 async def openapi_worker(
     temporal_client: Client,
-    infrastructure: InfrastructureContext,  # noqa: ARG001 — ensures infra is set first
+    infrastructure: InfrastructureContext,  # noqa: ARG001 — ensures infra is wired first
 ) -> Any:
     """Start the OpenAPI connector worker in-process."""
     w = create_worker(temporal_client, task_queue=_TASK_QUEUE)
