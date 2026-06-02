@@ -23,6 +23,11 @@ on:
       distinct_id:
         description: "40-char application-sdk commit SHA to test against (leave empty for lockfile version)"
         required: false
+      run_e2e:
+        description: "Set to 'true' to trigger the e2e job (cross-repo dispatch from application-sdk). Defaults to off."
+        required: false
+        default: ""
+        type: string
 
 jobs:
   tests:
@@ -110,7 +115,7 @@ jobs:
     # the PR. Restricting to the labeled action means regular pushes do not
     # trigger e2e; only adding the label does.
     if: |
-      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_dispatch' && inputs.run_e2e == 'true') ||
       (
         github.event_name == 'pull_request' &&
         github.event.action == 'labeled' &&
