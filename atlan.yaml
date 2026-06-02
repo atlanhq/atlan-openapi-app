@@ -29,3 +29,4 @@ deploy:
     minReplicaCount: 0
     temporal:
       targetQueueSize: 5
+release_model: semver
