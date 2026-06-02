@@ -8,6 +8,7 @@ connector = Connectors.API
 icon = "http://assets.atlan.com/assets/apispec.png"
 workflowType = name
 hasCredentialConfig = false
+metadata { ["release_model"] = "semver" }
 
 uiConfig = new UIConfig {
   tasks {
