@@ -20,9 +20,18 @@ on:
   merge_group:
   workflow_dispatch:
     inputs:
-      distinct_id:
-        description: "40-char application-sdk commit SHA to test against (leave empty for lockfile version)"
+      application_sdk_ref:
+        description: |
+          Branch/SHA of atlanhq/application-sdk for cross-repo dispatch.
+          Pins SDK in tests + e2e jobs. Empty = lockfile version.
         required: false
+        default: ""
+        type: string
+      distinct_id:
+        description: "Identifier for codex-/return-dispatch matching. Echoed in step names so the calling workflow can locate this run via the GH API."
+        required: false
+        default: ""
+        type: string
       run_e2e:
         description: "Set to 'true' to trigger the e2e job (cross-repo dispatch from application-sdk). Defaults to off."
         required: false
@@ -50,8 +59,9 @@ jobs:
       # Azurite endpoint — used by test_azure_download.py
       AZURE_STORAGE_ENDPOINT: http://127.0.0.1:10000
     steps:
-      - name: echo distinct ID ${{ github.event.inputs.distinct_id }}
-        run: echo ${{ github.event.inputs.distinct_id }}
+      - name: echo distinct-id ${{ github.event.inputs.distinct_id }}
+        if: github.event.inputs.distinct_id != ''
+        run: echo "Dispatched; SDK ref=${{ github.event.inputs.application_sdk_ref }}"
 
       # Explicit checkout so the SDK override (below) can modify uv.lock on
       # disk before connector-integration-tests runs its uv sync.
@@ -80,14 +90,11 @@ jobs:
 
       - uses: atlanhq/application-sdk/.github/actions/setup-deps@main
 
-      - name: Update application-sdk rev
-        if: ${{ github.event.inputs.distinct_id != '' }}
+      - name: Pin application-sdk to dispatched ref
+        if: github.event.inputs.application_sdk_ref != ''
         run: |
-          commit_hash=${{ github.event.inputs.distinct_id }}
-          if ! [[ "$commit_hash" =~ ^[a-f0-9]{40}$ ]]; then
-            echo "distinct_id must be a 40-char hex SHA"; exit 1
-          fi
-          uv add git+https://github.com/atlanhq/application-sdk --rev $commit_hash
+          sdk_ref=${{ github.event.inputs.application_sdk_ref }}
+          uv add git+https://github.com/atlanhq/application-sdk --rev "$sdk_ref"
 
       - name: Run all tests
         id: tests
