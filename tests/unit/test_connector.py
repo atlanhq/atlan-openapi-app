@@ -11,7 +11,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import orjson
-import pytest
 
 from app.connector import _extract_spec_async
 from application_sdk.observability.logger_adaptor import get_logger
