@@ -80,7 +80,7 @@ class OpenAPIApiClient:
             if is_zip:
                 return self._parse_zip(content, spec_url)
             spec = self._parse_body(content, content_type, spec_url)
-            path_count = len(spec.get("paths", {}))
+            path_count = len(spec.get("paths") or {})
             title = spec.get("info", {}).get("title", "<unknown>")
             openapi_version = spec.get("openapi", spec.get("swagger", "?"))
             logger.info(
@@ -104,7 +104,7 @@ class OpenAPIApiClient:
             return self._parse_zip(response.content, spec_url)
 
         spec = self._parse_body(response.content, content_type, spec_url)
-        path_count = len(spec.get("paths", {}))
+        path_count = len(spec.get("paths") or {})
         title = spec.get("info", {}).get("title", "<unknown>")
         openapi_version = spec.get("openapi", spec.get("swagger", "?"))
         logger.info(
