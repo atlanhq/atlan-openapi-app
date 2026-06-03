@@ -180,15 +180,22 @@ async def _extract_spec_async(
             spec_count += 1
 
             # --- Write APIPath records ---
-            paths = spec.get("paths", {})
-            for path_url, path_item in paths.items():
+            # `spec.get("paths") or {}` handles both absent key and `"paths": null`.
+            # OAS 3.1 specs may use `webhooks` instead of (or alongside) `paths`;
+            # merge both so enterprise specs that moved to webhooks-only still produce
+            # APIPath assets.
+            paths: dict = spec.get("paths") or {}
+            webhooks: dict = spec.get("webhooks") or {}
+            all_path_items = {**paths, **webhooks}
+            for path_url, path_item in all_path_items.items():
                 if not isinstance(path_item, dict):
                     continue
 
                 # Collect available operations (uppercase methods) — matches Kotlin's addOperationDetails
-                operations: list[str] = [
+                # sorted() matches SPEC.md §4.3 hashable content for stable change detection.
+                operations: list[str] = sorted(
                     m.upper() for m in _TRACKED_METHODS if path_item.get(m) is not None
-                ]
+                )
 
                 # Build markdown description from path-item and operation details
                 description_parts: list[str] = []
@@ -338,7 +345,7 @@ class OpenAPIConnector(App):
 
     name = "openapi"
 
-    passthrough_modules = {"openapi.asset_mapper"}  # noqa: RUF012
+    passthrough_modules = {"app.asset_mapper"}  # noqa: RUF012
 
     @task(
         timeout_seconds=1800,
