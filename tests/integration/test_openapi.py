@@ -33,12 +33,11 @@ if TYPE_CHECKING:
     # TODO(v3-migration): AppExecutor is now a local compatibility shim in conftest.py
     from tests.integration.conftest import AppExecutor
 
-# Default to the public Swagger Petstore — no credentials required.
-# Override OPENAPI_SPEC_URL to test against a different spec.
-_SPEC_URL = os.environ.get(
-    "OPENAPI_SPEC_URL",
-    "https://petstore3.swagger.io/api/v3/openapi.json",
-)
+# Bundled Petstore v3 spec — avoids depending on petstore3.swagger.io which
+# is rate-limited from CI runners. Override OPENAPI_SPEC_URL to test against
+# a real external URL instead.
+_BUNDLED_SPEC = Path(__file__).parent / "petstore3.json"
+_SPEC_URL = os.environ.get("OPENAPI_SPEC_URL") or str(_BUNDLED_SPEC)
 
 CONNECTION_NAME = "test-openapi-integration"
 CONNECTION_QN = f"default/api/{CONNECTION_NAME}"
