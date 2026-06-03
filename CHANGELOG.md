@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.4.0 (June 03, 2026)
+
+Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.3.0...v0.4.0
+
+### Features
+
+- opt in to versioned release model (by @cmgrote in [4eda21c](https://github.com/atlanhq/atlan-openapi-app/commit/4eda21c))
+- wire unit-tests gate (DISTR-456) (#89) (by @anurag-atlan in [7b0b118](https://github.com/atlanhq/atlan-openapi-app/commit/7b0b118))
+- add full-DAG e2e test tier (#96) (by @cmgrote in [d3d9e3e](https://github.com/atlanhq/atlan-openapi-app/commit/d3d9e3e))
+
+### Bug Fixes
+
+- wait for Temporal default namespace instead of fixed sleep 5 (by @cmgrote in [d25cc6d](https://github.com/atlanhq/atlan-openapi-app/commit/d25cc6d))
+- restore release_model: semver via pkl metadata field (#102) (by @cmgrote in [44f8d43](https://github.com/atlanhq/atlan-openapi-app/commit/44f8d43))
+- bundle Petstore spec to avoid CI rate-limiting (#105) (by @cmgrote in [fa8c1d5](https://github.com/atlanhq/atlan-openapi-app/commit/fa8c1d5))
+- restore APIPath assets in OpenAPI spec loader (BLDX-1363) (#104) (by @mothership-ai[bot] in [2f58854](https://github.com/atlanhq/atlan-openapi-app/commit/2f58854))
+
+
 ## v0.3.0 (May 08, 2026)
 
 Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.2.1...v0.3.0
