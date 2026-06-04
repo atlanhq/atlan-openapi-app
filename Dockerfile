@@ -32,7 +32,5 @@ ENV ATLAN_APP_MODULE=${APP_MODULE}
 ENV ATLAN_CONTRACT_GENERATED_DIR=/app/app/generated
 # Task queue is derived by the SDK from ATLAN_APPLICATION_NAME + ATLAN_DEPLOYMENT_NAME
 # (set by Helm at runtime) → atlan-{app}-{deployment}, e.g. atlan-openapi-production.
-# This matches the atlan-interim-apps template which produces the same pattern.
-# Disable event interceptor — crossover 2.0 interim flow has no Dapr sidecar,
-# so the eventstore binding is unavailable.
+# Disable event interceptor — the Dapr eventstore binding is unavailable at runtime.
 ENV APPLICATION_SDK_ENABLE_EVENT_INTERCEPTOR=false

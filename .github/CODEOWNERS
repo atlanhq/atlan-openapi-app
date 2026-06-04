@@ -3,6 +3,5 @@
 #
 # References:
 #   - About code owners: https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
-#   - Rollout context: atlanhq/integration-studio-aisdlc APP-1866 (connector repo health audit)
 
 * @cmgrote @vaibhavatlan @OnkarVO7
