@@ -59,7 +59,7 @@ class TestOpenAPIE2E(OpenAPIGeneratedE2EBase):
         return OpenAPIMustacheSubstitutions(
             connection=base.connection,
             credential=base.credential,
-            spec_url="https://petstore3.swagger.io/api/v3/openapi.json",
+            spec_url="https://raw.githubusercontent.com/atlanhq/atlan-openapi-app/main/tests/integration/petstore3.json",
             # import_type defaults to "URL"; spec_prefix / spec_key /
             # cloud_source unused for direct-URL imports.
         )
