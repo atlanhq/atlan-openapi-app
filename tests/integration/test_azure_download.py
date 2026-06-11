@@ -395,7 +395,7 @@ class TestAzureCloudDownloadWorkflow:
                     "endpoint": f"{_AZURITE_ENDPOINT}/{_AZURITE_ACCOUNT}",
                 },
                 client_options={"allow_http": True},
-            )
+            ), None
 
         with (
             patch.object(cloud_mod, "_create_azure_store", _patched_create_azure_store),
@@ -560,7 +560,7 @@ class TestAzureLargeSpecWorkflow:
                     "endpoint": f"{_AZURITE_ENDPOINT}/{_AZURITE_ACCOUNT}",
                 },
                 client_options={"allow_http": True},
-            )
+            ), None
 
         with (
             patch.object(cloud_mod, "_create_azure_store", _patched_create_azure_store),
