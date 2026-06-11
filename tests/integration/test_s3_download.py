@@ -384,7 +384,7 @@ class TestS3CloudDownloadWorkflow:
             }
             return S3Store(
                 bucket=bucket, config=config, client_options={"allow_http": True}
-            )
+            ), None
 
         with (
             patch.object(cloud_mod, "_create_s3_store", _patched_create_s3_store),
@@ -549,7 +549,7 @@ class TestS3LargeSpecWorkflow:
             }
             return S3Store(
                 bucket=bucket, config=config, client_options={"allow_http": True}
-            )
+            ), None
 
         with (
             patch.object(cloud_mod, "_create_s3_store", _patched_create_s3_store),
