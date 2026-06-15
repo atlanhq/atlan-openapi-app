@@ -4,8 +4,6 @@
     "github>atlanhq/application-sdk//renovate-config/default.json"
   ],
   "ignorePaths": [
-    ".github/workflows/code-review-agent.yml",
-    ".github/workflows/dep-cooldown.yml",
-    ".github/workflows/security-review-agent.yml"
+    ".github/workflows/dep-cooldown.yml"
   ]
 }
