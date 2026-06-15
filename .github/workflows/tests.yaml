@@ -37,6 +37,15 @@ on:
         required: false
         default: ""
         type: string
+      base_image_ref:
+        description: |
+          Runtime base image for the connector Docker build (BASE_IMAGE
+          build-arg), set by the application-sdk PR dispatch so SDK
+          base-image / Dockerfile / daprd changes are exercised. Empty =
+          the connector Dockerfile default base.
+        required: false
+        default: ""
+        type: string
 
 jobs:
   tests:
@@ -125,6 +134,7 @@ jobs:
       # Override default tests/full_dag/ path — openapi uses tests/e2e/
       test-path: tests/e2e/
       application-sdk-ref: ${{ inputs.application_sdk_ref }}
+      base-image-ref: ${{ inputs.base_image_ref }}
     secrets: inherit
 
   tests-passed:
