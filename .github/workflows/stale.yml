@@ -2,7 +2,8 @@ name: Mark stale issues and PRs
 
 on:
   schedule:
-  - cron: 0 0 * * 0
+    # weekly: At 00:00 on Sunday
+    - cron: 0 0 * * 0
 
 jobs:
   call-stale-workflow:
