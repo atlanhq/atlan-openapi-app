@@ -24,10 +24,13 @@ import msgspec
 from application_sdk.app import App, task
 from application_sdk.contracts.storage import UploadInput
 from application_sdk.contracts.types import FileReference, StorageTier
-from application_sdk.errors import (
-    DependencyUnavailableError,
-    InternalError,
-    InvalidInputError,
+from application_sdk.errors import InternalError
+from app.errors import (
+    CloudSpecLocationRequiredError,
+    ConnectionRequiredError,
+    SpecUrlRequiredError,
+    TenantObjectStoreUnavailableError,
+    UnknownImportTypeError,
 )
 from application_sdk.observability.logger_adaptor import AtlanLoggerAdapter as Logger
 from application_sdk.outputs import Metric, get_outputs
@@ -274,7 +277,7 @@ def _transform_blocking(
 
     connection = input.connection
     if connection is None:
-        raise InvalidInputError(
+        raise ConnectionRequiredError(
             message="connection is required for transform",
             field="connection",
             constraint="required",
@@ -385,7 +388,7 @@ class OpenAPIConnector(App):
             else:
                 self.logger.info("no cloud_source credential, using tenant store")
             if self.context.storage is None:
-                raise DependencyUnavailableError(
+                raise TenantObjectStoreUnavailableError(
                     message=(
                         "No tenant object store available. Ensure Dapr objectstore "
                         "binding is configured on this deployment."
@@ -424,7 +427,7 @@ class OpenAPIConnector(App):
         self.logger.info("extract_spec task starting spec_url=%s", input.spec_url)
 
         if not input.spec_url:
-            raise InvalidInputError(
+            raise SpecUrlRequiredError(
                 message="spec_url is required for extract_spec",
                 field="spec_url",
                 constraint="required",
@@ -513,7 +516,7 @@ class OpenAPIConnector(App):
         connection = input.connection
         conn_qn = connection.attributes.qualified_name
         if not conn_qn:
-            raise InvalidInputError(
+            raise ConnectionRequiredError(
                 message="connection.qualified_name is required",
                 field="connection",
                 constraint="required",
@@ -525,7 +528,7 @@ class OpenAPIConnector(App):
 
         if input.import_type == "CLOUD":
             if not input.spec_prefix and not input.spec_key:
-                raise InvalidInputError(
+                raise CloudSpecLocationRequiredError(
                     message="spec_prefix or spec_key required when import_type='CLOUD'",
                     field="spec_prefix|spec_key",
                     constraint="at least one is required when import_type='CLOUD'",
@@ -543,14 +546,14 @@ class OpenAPIConnector(App):
             spec_urls = cloud_result.spec_paths
         elif input.import_type == "URL":
             if not input.spec_url:
-                raise InvalidInputError(
+                raise SpecUrlRequiredError(
                     message="spec_url is required when import_type='URL'",
                     field="spec_url",
                     constraint="required when import_type='URL'",
                 )
             spec_urls = [input.spec_url]
         else:
-            raise InvalidInputError(
+            raise UnknownImportTypeError(
                 message=f"Unknown import_type: {input.import_type}",
                 field="import_type",
                 constraint="must be 'URL' or 'CLOUD'",
@@ -634,6 +637,7 @@ class OpenAPIConnector(App):
                     ),
                     component="connector.upload",
                     invariant="upload activity must populate ref.storage_path",
+                    classification_pending=True,
                 )
             transformed_data_prefix = str(Path(upload_result.ref.storage_path).parent)
             publish_completed = True
