@@ -1,9 +1,18 @@
-name: Tests
+name: tests
 
-# Unified workflow — unit, integration (Temporal), S3/MinIO, and Azure/Azurite
-# tests all run in a single pytest invocation. MinIO (9000) and Azurite (10000)
-# bind to separate ports so there is no collision risk.
-# e2e (full-DAG against a real tenant) runs on demand via the `e2e` PR label.
+# This file is scaffolded by `atlan-application-sdk-conformance bootstrap`
+# and drift-tracked at WARN by conformance check C002.
+#
+# Edit it freely — drift NEVER blocks CI (C002 is WARN-only, not BLOCK).
+# To force-regenerate this file from canonical, delete it and re-run bootstrap:
+#   atlan-application-sdk-conformance bootstrap --app-name openapi
+
+# INTENTIONAL DIVERGENCE: services-script
+# Most connectors start source containers inside session-scoped pytest fixtures
+# (see mysql/metabase conftest.py). openapi passes services-script here to
+# exercise the CI-level service-hook end-to-end — a deliberate reference
+# demonstration kept to prove the pattern before other connectors need it
+# (review c_075b69). The hook brings up MinIO and Azurite before tests run.
 
 on:
   push:
@@ -28,7 +37,16 @@ on:
         default: ""
         type: string
       distinct_id:
-        description: "Identifier for codex-/return-dispatch matching. Echoed in step names so the calling workflow can locate this run via the GH API."
+        description: |
+          Identifier for codex-/return-dispatch matching. Echoed in step
+          names so the calling workflow can locate this run via the GH API.
+        required: false
+        default: ""
+        type: string
+      agent_name_override:
+        description: |
+          Override agent-name for the e2e job (default ci-<run_id>).
+          Useful when re-running against a worker that is already up.
         required: false
         default: ""
         type: string
@@ -49,127 +67,26 @@ on:
 
 jobs:
   tests:
-    name: tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    concurrency:
-      group: tests-${{ github.ref }}
-      cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
-    permissions:
-      pull-requests: write
-      contents: read
-    outputs:
-      summary: ${{ steps.tests.outputs.summary }}
-    env:
-      # MinIO credentials — used by test_s3_download.py
-      AWS_ENDPOINT_URL: http://localhost:9000
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-      # Azurite endpoint — used by test_azure_download.py
-      AZURE_STORAGE_ENDPOINT: http://127.0.0.1:10000
-    steps:
-      - name: echo distinct-id ${{ github.event.inputs.distinct_id }}
-        if: github.event.inputs.distinct_id != ''
-        run: echo "Dispatched; SDK ref=${{ github.event.inputs.application_sdk_ref }}"
-
-      - name: Start MinIO and Azurite
-        run: |
-          docker run -d --name minio \
-            -p 9000:9000 \
-            -e MINIO_ROOT_USER=minioadmin \
-            -e MINIO_ROOT_PASSWORD=minioadmin \
-            minio/minio server /data
-          docker run -d --name azurite \
-            -p 10000:10000 \
-            "mcr.microsoft.com/azure-storage/azurite:3.35.0@sha256:dae2a5f96553962901304b94e72ef87e299d0825e4b679673bcc527a25076fe4" \
-            azurite-blob --blobHost 0.0.0.0 --skipApiVersionCheck
-          until curl -sf http://localhost:9000/minio/health/live; do sleep 1; done &
-          until curl -s --max-time 2 http://127.0.0.1:10000/devstoreaccount1 > /dev/null 2>&1; do sleep 1; done &
-          wait
-          AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin \
-            aws --endpoint-url http://localhost:9000 \
-            s3api create-bucket --bucket test-openapi-specs --region us-east-1
-          az storage container create \
-            --name test-openapi-specs \
-            --connection-string "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
-
-      - name: Run all tests
-        id: tests
-        uses: atlanhq/application-sdk/.github/actions/connector-integration-tests@main
-        with:
-          app-name: openapi
-          application-sdk-ref: ${{ github.event.inputs.application_sdk_ref }}
-          # --override-ini=addopts= clears the pyproject.toml marker filter so
-          # cloud_integration and azure_integration tests are included here.
-          pytest-args: >-
-            -n auto --dist=loadfile --tb=short
-            --cov=app --cov-report=xml --cov-report=html --cov-report=term
-            --cov-fail-under=0
-            --override-ini=addopts=
-
-      - name: Stop services
-        if: always()
-        run: docker stop minio azurite 2>/dev/null || true
-
-  e2e:
-    name: e2e
-    concurrency:
-      group: tests-e2e-${{ github.ref }}
-      cancel-in-progress: false
-    # Run on workflow_dispatch or when the e2e label is explicitly added to
-    # the PR. Restricting to the labeled action means regular pushes do not
-    # trigger e2e; only adding the label does.
-    if: |
-      (github.event_name == 'workflow_dispatch' && inputs.run_e2e == 'true') ||
-      (
-        github.event_name == 'pull_request' &&
-        contains(github.event.pull_request.labels.*.name, 'e2e') &&
-        github.event.pull_request.head.repo.fork != true &&
-        github.event.pull_request.user.login != 'dependabot[bot]'
-      )
-    uses: atlanhq/application-sdk/.github/workflows/e2e-full-reusable.yaml@main
+    uses: atlanhq/application-sdk/.github/workflows/tests-reusable.yaml@main
     with:
-      app-name: openapi
-      app-image-name: atlan-openapi-app
-      # Override default tests/full_dag/ path — openapi uses tests/e2e/
-      test-path: tests/e2e/
+      app-name: "openapi"
+      app-image-name: "atlan-openapi-app"
+      enable-e2e: true
+      # openapi uses CI-level MinIO/Azurite setup via the services-script hook
+      # (see .github/test/setup-services.sh). Most connectors should prefer
+      # session-scoped pytest fixtures instead.
+      services-script: .github/test/setup-services.sh
+      # --override-ini=addopts= clears the pyproject.toml marker filter so
+      # cloud_integration and azure_integration tests are included here.
+      pytest-args: >-
+        -n auto --dist=loadfile --tb=short
+        --cov=app --cov-report=xml --cov-report=html --cov-report=term
+        --cov-fail-under=0
+        --override-ini=addopts=
+      e2e-test-path: tests/e2e/
       application-sdk-ref: ${{ inputs.application_sdk_ref }}
+      distinct-id: ${{ inputs.distinct_id }}
+      run-e2e: ${{ inputs.run_e2e }}
       base-image-ref: ${{ inputs.base_image_ref }}
+      agent-name-override: ${{ inputs.agent_name_override }}
     secrets: inherit
-
-  tests-passed:
-    name: tests-passed
-    needs: [tests, e2e]
-    if: always()
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-      contents: read
-    steps:
-      - name: Post unified test-summary comment on PR
-        if: always() && github.event_name == 'pull_request'
-        uses: mshick/add-pr-comment@8e4927817251f1ff60c001f04568532b38e0b4a0 # v3.11.0
-        with:
-          message-id: tests-summary
-          message: |
-            ## Tests Summary
-
-            | Job | Status | Result |
-            |---|---|---|
-            | tests | ${{ needs.tests.result == 'success' && '✅ Passed' || (needs.tests.result == 'skipped' && '⊘ Skipped' || '❌ Failed') }} | `${{ needs.tests.outputs.summary || 'no summary' }}` |
-            | e2e | ${{ needs.e2e.result == 'success' && '✅ Passed' || (needs.e2e.result == 'skipped' && '⊘ Skipped (add `e2e` label to trigger)' || '❌ Failed') }} | (see separate sticky comment) |
-
-            **Overall:** ${{ (needs.tests.result == 'success' && (needs.e2e.result == 'success' || needs.e2e.result == 'skipped')) && '✅ All passed' || '❌ Some failed' }} — [view run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-        continue-on-error: true
-
-      - name: Verify all test jobs succeeded
-        run: |
-          if [ "${{ needs.tests.result }}" != "success" ]; then
-            echo "::error::tests job did not succeed (result=${{ needs.tests.result }})"
-            exit 1
-          fi
-          if [ "${{ needs.e2e.result }}" != "success" ] && [ "${{ needs.e2e.result }}" != "skipped" ]; then
-            echo "::error::e2e did not succeed (result=${{ needs.e2e.result }})"
-            exit 1
-          fi
-          echo "All test jobs passed."
