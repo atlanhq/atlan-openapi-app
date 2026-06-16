@@ -65,6 +65,7 @@ storage/
 e2e-logs/
 scalene-profile.json
 scalene-profile.html
+remediation/
 
 # ─── Python ─────────────────────────────────────────────────────────────────
 __pycache__/
