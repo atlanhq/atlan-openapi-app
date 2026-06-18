@@ -51,4 +51,6 @@ class UnknownImportTypeError(InvalidInputError):
 class TenantObjectStoreUnavailableError(DependencyUnavailableError):
     """The Dapr objectstore binding is not configured on this deployment."""
 
-    code: ClassVar[str] = "DEPENDENCY_UNAVAILABLE_OPENAPI_TENANT_OBJECTSTORE_UNAVAILABLE"
+    code: ClassVar[str] = (
+        "DEPENDENCY_UNAVAILABLE_OPENAPI_TENANT_OBJECTSTORE_UNAVAILABLE"
+    )
