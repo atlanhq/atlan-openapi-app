@@ -16,39 +16,41 @@ from application_sdk.errors import DependencyUnavailableError, InvalidInputError
 class ZipNoSpecFoundError(InvalidInputError):
     """No valid OpenAPI spec found in the downloaded ZIP archive."""
 
-    code: ClassVar[str] = "OPENAPI_ZIP_NO_SPEC"
+    code: ClassVar[str] = "INVALID_INPUT_OPENAPI_ZIP_NO_SPEC"
 
 
 @dataclass(kw_only=True)
 class ConnectionRequiredError(InvalidInputError):
     """The connection field is required but was not supplied."""
 
-    code: ClassVar[str] = "OPENAPI_CONNECTION_REQUIRED"
+    code: ClassVar[str] = "INVALID_INPUT_OPENAPI_CONNECTION_REQUIRED"
 
 
 @dataclass(kw_only=True)
 class SpecUrlRequiredError(InvalidInputError):
     """spec_url is required but was not supplied."""
 
-    code: ClassVar[str] = "OPENAPI_SPEC_URL_REQUIRED"
+    code: ClassVar[str] = "INVALID_INPUT_OPENAPI_SPEC_URL_REQUIRED"
 
 
 @dataclass(kw_only=True)
 class CloudSpecLocationRequiredError(InvalidInputError):
     """spec_prefix or spec_key must be provided for CLOUD import_type."""
 
-    code: ClassVar[str] = "OPENAPI_CLOUD_SPEC_LOCATION_REQUIRED"
+    code: ClassVar[str] = "INVALID_INPUT_OPENAPI_CLOUD_SPEC_LOCATION_REQUIRED"
 
 
 @dataclass(kw_only=True)
 class UnknownImportTypeError(InvalidInputError):
     """import_type is not a recognised value."""
 
-    code: ClassVar[str] = "OPENAPI_UNKNOWN_IMPORT_TYPE"
+    code: ClassVar[str] = "INVALID_INPUT_OPENAPI_UNKNOWN_IMPORT_TYPE"
 
 
 @dataclass(kw_only=True)
 class TenantObjectStoreUnavailableError(DependencyUnavailableError):
     """The Dapr objectstore binding is not configured on this deployment."""
 
-    code: ClassVar[str] = "OPENAPI_TENANT_OBJECTSTORE_UNAVAILABLE"
+    code: ClassVar[str] = (
+        "DEPENDENCY_UNAVAILABLE_OPENAPI_TENANT_OBJECTSTORE_UNAVAILABLE"
+    )
