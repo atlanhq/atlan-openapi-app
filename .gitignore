@@ -78,15 +78,6 @@ env/
 *.egg-info/
 dist/
 build/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage*
-htmlcov/
-
-# ─── Atlan tooling ──────────────────────────────────────────────────────────
-.atlan/
-.claude/worktrees/
 
 # ─── Node.js ────────────────────────────────────────────────────────────────
 node_modules/

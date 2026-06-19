@@ -59,9 +59,3 @@ download-components = "echo 'No Dapr components needed for OpenAPI connector'"
 start-deps = "echo 'No external deps needed — Temporal runs embedded in pytest'"
 stop-deps = "echo 'No external deps to stop'"
 
-[tool.ruff.lint]
-extend-select = ["G001", "G003", "G004", "T201", "LOG009"]
-
-[tool.ruff.lint.per-file-ignores]
-".github/**" = ["T201"]
-
