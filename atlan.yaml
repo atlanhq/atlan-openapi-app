@@ -7,7 +7,7 @@ execution_mode: native
 icon_url: http://assets.atlan.com/assets/apispec.png
 visibility: public
 build_tag: v1
-self_deployed_runtime: false
+self_deployed_runtime: true
 entrypoints:
 - name: openapi
   display_name: OpenAPI Spec Loader
