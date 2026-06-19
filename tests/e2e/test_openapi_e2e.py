@@ -26,8 +26,8 @@ if not os.environ.get("ATLAN_BASE_URL") or not os.environ.get("ATLAN_API_KEY"):
 try:
     from application_sdk.testing.e2e import RunMode  # noqa: E402
     from application_sdk.testing.e2e.payload import AgentSpec  # noqa: E402
-    from app.generated._e2e_base import OpenAPIGeneratedE2EBase  # noqa: E402
-    from app.generated._e2e_substitutions import OpenAPIMustacheSubstitutions  # noqa: E402
+    from app.generated._e2e_base import OpenapiGeneratedE2EBase  # noqa: E402
+    from app.generated._e2e_substitutions import OpenapiMustacheSubstitutions  # noqa: E402
 except ImportError as _exc:
     pytest.skip(
         f"SDK does not yet export agnostic e2e harness: {_exc}", allow_module_level=True
@@ -35,10 +35,10 @@ except ImportError as _exc:
 
 
 @pytest.mark.e2e
-class TestOpenAPIE2E(OpenAPIGeneratedE2EBase):
+class TestOpenAPIE2E(OpenapiGeneratedE2EBase):
     # Name-derived attrs (connector_short_name, connection_type,
     # argo_package_name, argo_template_name, app_service_url) come from
-    # OpenAPIGeneratedE2EBase. The base harness builds the connection QN
+    # OpenapiGeneratedE2EBase. The base harness builds the connection QN
     # as default/{connection_type}/{epoch} automatically.
 
     mode = RunMode.AGENT
@@ -54,9 +54,9 @@ class TestOpenAPIE2E(OpenAPIGeneratedE2EBase):
     def agent_spec(self) -> AgentSpec:
         return AgentSpec(agent_name=f"openapi-e2e-full-ci-{self.run_id}")
 
-    def _mustache_substitutions(self) -> OpenAPIMustacheSubstitutions:
+    def _mustache_substitutions(self) -> OpenapiMustacheSubstitutions:
         base = super()._mustache_substitutions()
-        return OpenAPIMustacheSubstitutions(
+        return OpenapiMustacheSubstitutions(
             connection=base.connection,
             credential=base.credential,
             spec_url="https://raw.githubusercontent.com/atlanhq/atlan-openapi-app/main/tests/integration/petstore3.json",
