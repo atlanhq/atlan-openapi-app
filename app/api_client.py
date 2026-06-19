@@ -152,7 +152,7 @@ class OpenAPIApiClient:
                     if isinstance(spec, dict) and (
                         "openapi" in spec or "swagger" in spec
                     ):
-                        logger.info("extracted spec from ZIP file=%s", name)
+                        logger.debug("extracted spec from ZIP file=%s", name)
                         specs.append(spec)
                 except Exception:
                     logger.warning("skipping file in ZIP file=%s", name, exc_info=True)
@@ -162,4 +162,7 @@ class OpenAPIApiClient:
                 field="spec_url",
                 constraint="ZIP must contain at least one valid OpenAPI JSON/YAML spec",
             )
+        logger.info(
+            "extracted specs from ZIP count=%d source=%s", len(specs), source_url
+        )
         return specs

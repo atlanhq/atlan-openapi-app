@@ -1,18 +1,21 @@
-name: tests
-
 # This file is scaffolded by `atlan-application-sdk-conformance bootstrap`
 # and drift-tracked at WARN by conformance check C002.
 #
 # Edit it freely — drift NEVER blocks CI (C002 is WARN-only, not BLOCK).
 # To force-regenerate this file from canonical, delete it and re-run bootstrap:
-#   atlan-application-sdk-conformance bootstrap --app-name openapi
+#   atlan-application-sdk-conformance bootstrap --app-name <your-app-name>
+name: Tests
 
-# INTENTIONAL DIVERGENCE: services-script
-# Most connectors start source containers inside session-scoped pytest fixtures
-# (see mysql/metabase conftest.py). openapi passes services-script here to
-# exercise the CI-level service-hook end-to-end — a deliberate reference
-# demonstration kept to prove the pattern before other connectors need it
-# (review c_075b69). The hook brings up MinIO and Azurite before tests run.
+# Unified workflow — unit + integration (testcontainers), and full-DAG e2e.
+#
+#   tests       — unit + integration tests via connector-integration-tests
+#                 composite. Source systems should start from session-scoped
+#                 pytest fixtures (see mysql/metabase conftest.py); uncomment
+#                 services-script below only if that pattern doesn't fit.
+#   e2e         — full-DAG tests against a real tenant via e2e-full-reusable.
+#                 Triggered by the 'e2e' PR label or workflow_dispatch.
+#   Tests Gate  — aggregator gate; the single required check for branch
+#                 protection.  tests must pass; e2e can be skipped.
 
 on:
   push:
@@ -71,19 +74,11 @@ jobs:
     with:
       app-name: "openapi"
       app-image-name: "atlan-openapi-app"
-      enable-e2e: true
-      # openapi uses CI-level MinIO/Azurite setup via the services-script hook
-      # (see .github/test/setup-services.sh). Most connectors should prefer
-      # session-scoped pytest fixtures instead.
-      services-script: .github/test/setup-services.sh
-      # --override-ini=addopts= clears the pyproject.toml marker filter so
-      # cloud_integration and azure_integration tests are included here.
-      pytest-args: >-
-        -n auto --dist=loadfile --tb=short
-        --cov=app --cov-report=xml --cov-report=html --cov-report=term
-        --cov-fail-under=0
-        --override-ini=addopts=
-      e2e-test-path: tests/e2e/
+
+
+      services-script: ".github/test/setup-services.sh"
+
+      # Review test-paths and pytest-args before committing; defaults auto-discover.
       application-sdk-ref: ${{ inputs.application_sdk_ref }}
       distinct-id: ${{ inputs.distinct_id }}
       run-e2e: ${{ inputs.run_e2e }}
