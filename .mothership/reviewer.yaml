@@ -1,0 +1,4 @@
+# atlanhq/atlan-openapi-app — PR reviewer. security auto-reviews once on open; standard tag-only.
+trigger: pr-open
+review_mode: both
+branches: [main]
