@@ -13,7 +13,6 @@ import zipfile
 from pathlib import Path
 
 import orjson
-import pytest
 
 _PETSTORE_SPEC = {
     "openapi": "3.0.4",
