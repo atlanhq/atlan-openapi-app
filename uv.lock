@@ -1799,7 +1799,6 @@ version = "0.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "atlan-application-sdk" },
-    { name = "pyyaml" },
 ]
 
 [package.dev-dependencies]
@@ -1815,10 +1814,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "atlan-application-sdk", specifier = ">=3.6.0,<4.0.0" },
-    { name = "pyyaml", specifier = ">=6.0,<7" },
-]
+requires-dist = [{ name = "atlan-application-sdk", specifier = ">=3.6.0,<4.0.0" }]
 
 [package.metadata.requires-dev]
 dev = [
