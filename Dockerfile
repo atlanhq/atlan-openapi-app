@@ -3,20 +3,10 @@
 #
 # Extends the app-framework base image with the OpenAPI connector code and dependencies.
 #
-# Build args:
-#   APP_MODULE - Python module path (app.connector:OpenAPIConnector); baked into ATLAN_APP_MODULE env var
-#
 # Usage:
-#   docker build \
-#     --build-arg APP_MODULE=app.connector:OpenAPIConnector \
-#     -t openapi:latest .
+#   docker build -t openapi:latest .
 
-# Base image is overridable so application-sdk PRs can rebuild the connector
-# on a PR-scoped runtime base (see the e2e base_image_ref dispatch input).
-ARG BASE_IMAGE=registry.atlan.com/public/app-runtime-base:3
-FROM ${BASE_IMAGE}
-
-ARG APP_MODULE=app.connector:OpenAPIConnector
+FROM registry.atlan.com/public/app-runtime-base:3
 
 WORKDIR /app
 
@@ -31,7 +21,7 @@ RUN --mount=type=cache,target=/home/appuser/.cache/uv,uid=1000,gid=1000 \
 # Copy application code
 COPY --chown=appuser:appuser app/ app/
 
-ENV ATLAN_APP_MODULE=${APP_MODULE}
+ENV ATLAN_APP_MODULE=app.connector:OpenAPIConnector
 ENV ATLAN_CONTRACT_GENERATED_DIR=/app/app/generated
 # Task queue is derived by the SDK from ATLAN_APPLICATION_NAME + ATLAN_DEPLOYMENT_NAME
 # (set by Helm at runtime) → atlan-{app}-{deployment}, e.g. atlan-openapi-production.
