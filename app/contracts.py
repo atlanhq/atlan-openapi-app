@@ -32,7 +32,7 @@ class PublishInput(Input):
     current_state_prefix: str = ""
     connection_creation_enabled: bool = True
     executor_enabled: bool = True
-    connection_entity: dict = {}
+    connection_entity: dict = {}  # conformance: ignore[P015] passed verbatim to publish-app; schema is owned by that service and cannot be typed here without cross-service coupling
 
 
 OpenAPIConnectorInput = AppInputContract
@@ -63,7 +63,7 @@ class OpenAPIConnectorOutput(Output):
     atlan_updated_count: int = 0
     atlan_validated_count: int = 0
     atlan_error_count: int = 0
-    atlan_errors: list = []
+    atlan_errors: list = []  # conformance: ignore[P015] carries diagnostic strings from SDK loader API responses; element format evolves with SDK versions
 
     publish_completed: bool = False
     """True if publish-app was called and completed successfully."""
@@ -82,9 +82,6 @@ class ExtractSpecInput(Input):
 
     connection_qualified_name: str = ""
     """Atlan connection QN — used to pre-compute APISpec and APIPath QNs."""
-
-    output_dir: str = ""
-    """Directory for raw output JSONL files."""
 
     openapi_credential: CredentialRef | None = None
     """Optional credential for private specs (provides auth_header)."""
@@ -117,21 +114,18 @@ class DownloadCloudSpecInput(Input):
     cloud_source: str = ""
     """Cloud storage credential GUID."""
 
-    spec_prefix: str = ""
+    spec_prefix: str = ""  # conformance: ignore[P012] object-store key prefix, not a local filesystem path; stable across all workers accessing the same cloud storage
     """Object store directory path."""
 
     spec_key: str = ""
     """Object key (filename) in the object store."""
 
-    output_dir: str = ""
-    """Directory to download spec files to."""
-
 
 class DownloadCloudSpecOutput(Output):
     """Output from the download_cloud_spec task."""
 
-    spec_paths: Annotated[list[str], MaxItems(1000)] = []
-    """Local file paths of downloaded spec files."""
+    spec_files: Annotated[list[FileReference], MaxItems(1000)] = []
+    """FileReferences for the downloaded spec files."""
 
 
 # =============================================================================
@@ -155,9 +149,6 @@ class TransformInput(Input):
     connection_qualified_name: str = ""
     """Connection qualified name — derived from connection.attributes.qualified_name.
     Kept for backwards-compatible Temporal serialization."""
-
-    output_dir: str = ""
-    """Directory for output file."""
 
     workflow_id: str = ""
     """Temporal workflow ID."""
