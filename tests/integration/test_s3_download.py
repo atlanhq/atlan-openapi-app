@@ -242,7 +242,7 @@ class TestS3CloudDownloadWorkflow:
     async def test_no_atlan_loading(
         self, cloud_extraction_result: OpenAPIConnectorOutput
     ) -> None:
-        assert cloud_extraction_result.atlan_loaded_count == 0
+        assert cloud_extraction_result.publish_completed is False
 
     async def test_output_file_exists(
         self,

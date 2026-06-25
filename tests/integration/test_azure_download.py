@@ -256,7 +256,7 @@ class TestAzureCloudDownloadWorkflow:
     async def test_no_atlan_loading(
         self, azure_extraction_result: OpenAPIConnectorOutput
     ) -> None:
-        assert azure_extraction_result.atlan_loaded_count == 0
+        assert azure_extraction_result.publish_completed is False
 
     async def test_output_file_exists(
         self,
