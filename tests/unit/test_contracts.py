@@ -114,12 +114,6 @@ class TestOpenAPIConnectorOutput:
         assert decoded.api_path_count == 0
         assert decoded.output_file is None
         assert decoded.total_scanned == 0
-        assert decoded.atlan_loaded_count == 0
-        assert decoded.atlan_created_count == 0
-        assert decoded.atlan_updated_count == 0
-        assert decoded.atlan_validated_count == 0
-        assert decoded.atlan_error_count == 0
-        assert decoded.atlan_errors == []
         assert decoded.publish_completed is False
 
     def test_round_trip_with_values(self) -> None:
@@ -129,19 +123,11 @@ class TestOpenAPIConnectorOutput:
             api_path_count=42,
             output_file=_sample_file_ref("/tmp/out/openapi_metadata.jsonl"),
             total_scanned=43,
-            atlan_loaded_count=43,
-            atlan_created_count=40,
-            atlan_updated_count=3,
-            atlan_validated_count=0,
-            atlan_error_count=0,
         )
         decoded = _round_trip(original, OpenAPIConnectorOutput)
         assert decoded.api_spec_count == 1
         assert decoded.api_path_count == 42
         assert decoded.total_scanned == 43
-        assert decoded.atlan_loaded_count == 43
-        assert decoded.atlan_created_count == 40
-        assert decoded.atlan_updated_count == 3
         assert decoded.output_file is not None
         assert decoded.output_file.local_path == "/tmp/out/openapi_metadata.jsonl"
         assert decoded.output_file.local_path is not None
@@ -418,7 +404,7 @@ class TestPublishInput:
         assert decoded.current_state_prefix == ""
         assert decoded.connection_creation_enabled is True
         assert decoded.executor_enabled is True
-        assert decoded.connection_entity == {}
+        assert decoded.connection_entity is None
 
     def test_round_trip_with_values(self) -> None:
         original = PublishInput(
@@ -438,15 +424,11 @@ class TestPublishInput:
         assert "transformed-metadata" in decoded.transformed_data_prefix
         assert decoded.connection_creation_enabled is False
         assert decoded.executor_enabled is False
-        assert decoded.connection_entity.get("typeName") == "Connection"
+        assert decoded.connection_entity is not None
+        assert decoded.connection_entity.type_name == "Connection"
 
-    def test_connection_entity_built_from_connection_ref_is_camel_case(self) -> None:
-        """connection_entity must use camelCase keys as publish-app expects.
-
-        Mirrors exactly how connector.py builds connection_entity:
-            connection_dict = connection.model_dump(by_alias=True)
-            PublishInput(..., connection_entity=connection_dict)
-        """
+    def test_connection_entity_serializes_camel_case_for_publish_app(self) -> None:
+        """connection_entity must serialize to camelCase keys as publish-app expects."""
         connection = ConnectionRef.model_validate(
             {
                 "typeName": "Connection",
@@ -461,12 +443,12 @@ class TestPublishInput:
                 },
             }
         )
-        connection_dict = connection.model_dump(by_alias=True)
         publish_input = PublishInput(
             connection_qualified_name="default/api/my-conn",
-            connection_entity=connection_dict,
+            connection_entity=connection,
         )
-        attrs = publish_input.connection_entity["attributes"]
+        assert publish_input.connection_entity is not None
+        attrs = publish_input.connection_entity.model_dump(by_alias=True)["attributes"]
         assert "qualifiedName" in attrs, "publish-app requires camelCase qualifiedName"
         assert "connectorName" in attrs, "publish-app requires camelCase connectorName"
         assert "adminGroups" in attrs, "publish-app requires camelCase adminGroups"

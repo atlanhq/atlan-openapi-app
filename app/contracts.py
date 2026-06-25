@@ -32,7 +32,7 @@ class PublishInput(Input):
     current_state_prefix: str = ""
     connection_creation_enabled: bool = True
     executor_enabled: bool = True
-    connection_entity: dict = {}  # conformance: ignore[P015] passed verbatim to publish-app; schema is owned by that service and cannot be typed here without cross-service coupling
+    connection_entity: ConnectionRef | None = None
 
 
 OpenAPIConnectorInput = AppInputContract
@@ -43,8 +43,6 @@ class OpenAPIConnectorOutput(Output):
 
     connection_qualified_name: str = ""
     transformed_data_prefix: str = ""
-    publish_state_prefix: str = ""
-    current_state_prefix: str = ""
 
     api_spec_count: int = 0
     """Number of APISpec entities extracted (always 0 or 1)."""
@@ -58,15 +56,8 @@ class OpenAPIConnectorOutput(Output):
     total_scanned: int = 0
     """Total number of assets scanned."""
 
-    atlan_loaded_count: int = 0
-    atlan_created_count: int = 0
-    atlan_updated_count: int = 0
-    atlan_validated_count: int = 0
-    atlan_error_count: int = 0
-    atlan_errors: list = []  # conformance: ignore[P015] carries diagnostic strings from SDK loader API responses; element format evolves with SDK versions
-
     publish_completed: bool = False
-    """True if publish-app was called and completed successfully."""
+    """True if the transformed file was uploaded to object storage."""
 
 
 # =============================================================================
@@ -114,8 +105,8 @@ class DownloadCloudSpecInput(Input):
     cloud_source: str = ""
     """Cloud storage credential GUID."""
 
-    spec_prefix: str = ""  # conformance: ignore[P012] object-store key prefix, not a local filesystem path; stable across all workers accessing the same cloud storage
-    """Object store directory path."""
+    spec_prefix: str = ""
+    """Object store key prefix for cloud spec discovery."""
 
     spec_key: str = ""
     """Object key (filename) in the object store."""

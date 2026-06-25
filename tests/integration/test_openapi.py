@@ -111,8 +111,8 @@ class TestOpenAPIConnectorExtraction:
     async def test_no_atlan_loading(
         self, extraction_result: OpenAPIConnectorOutput
     ) -> None:
-        """No Atlan loading should occur when load_to_atlan=False."""
-        assert extraction_result.atlan_loaded_count == 0
+        """No publish step should occur when load_to_atlan=False."""
+        assert extraction_result.publish_completed is False
 
     async def test_output_file_exists(
         self, extraction_result: OpenAPIConnectorOutput, store_root: Path
