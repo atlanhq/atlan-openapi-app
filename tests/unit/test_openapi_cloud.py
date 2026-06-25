@@ -114,12 +114,10 @@ paths:
 
         spec_path = tmp_path / "petstore.json"
         spec_path.write_bytes(orjson.dumps(_PETSTORE_SPEC))
-        output_dir = tmp_path / "raw"
 
         spec_file, path_file, spec_count, path_count = await _extract_spec_async(
             spec_url=str(spec_path),
             connection_qualified_name=_CLOUD_CONNECTION_QN,
-            output_dir=str(output_dir),
             auth_header="",
             logger=get_logger("test"),
         )

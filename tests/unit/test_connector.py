@@ -34,7 +34,6 @@ async def _run(spec_url: str, tmp_path: Path):
     return await _extract_spec_async(
         spec_url=spec_url,
         connection_qualified_name=CONN_QN,
-        output_dir=str(tmp_path / "out"),
         auth_header="",
         logger=_LOGGER,
     )

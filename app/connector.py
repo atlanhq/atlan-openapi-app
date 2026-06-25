@@ -112,7 +112,6 @@ _TRACKED_METHODS = ("get", "post", "put", "patch", "delete")
 async def _extract_spec_async(
     spec_url: str,
     connection_qualified_name: str,
-    output_dir: str,
     auth_header: str,
     logger: Logger,
 ) -> tuple[FileReference, FileReference, int, int]:
@@ -123,8 +122,7 @@ async def _extract_spec_async(
     """
     from app.api_client import OpenAPIApiClient
 
-    out_dir = Path(output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = Path(tempfile.mkdtemp(prefix="openapi-extract-"))
 
     client = OpenAPIApiClient(auth_header=auth_header)
     try:
@@ -271,8 +269,7 @@ def _transform_blocking(
     logger: Logger,
 ) -> TransformOutput:
     """Transform OpenAPI records to Atlan Atlas entity format."""
-    out_dir = Path(input.output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = Path(tempfile.mkdtemp(prefix="openapi-transform-"))
     output_file = out_dir / "openapi_metadata.json"
 
     connection = input.connection
@@ -402,20 +399,24 @@ class OpenAPIConnector(App):
                 )
             store = CloudStore(self.context.storage, provider="tenant")
 
+        tmp_dir = tempfile.mkdtemp(prefix="openapi-cloud-")
         prefix = input.spec_prefix.strip("/") if input.spec_prefix else ""
         key = input.spec_key.strip("/") if input.spec_key else ""
         if key:
             full_key = f"{prefix}/{key}" if prefix else key
-            local_paths = await store.download(
-                key=full_key, output_dir=input.output_dir
-            )
+            local_paths = await store.download(key=full_key, output_dir=tmp_dir)
         else:
             local_paths = await store.download(
                 prefix=prefix,
-                output_dir=input.output_dir,
+                output_dir=tmp_dir,
                 suffix_filter={".json", ".yaml", ".yml", ".zip"},
             )
-        return DownloadCloudSpecOutput(spec_paths=[str(p) for p in local_paths])
+        return DownloadCloudSpecOutput(
+            spec_files=[
+                FileReference(local_path=str(p), tier=StorageTier.RETAINED)
+                for p in local_paths
+            ]
+        )
 
     @task(
         timeout_seconds=3600,
@@ -455,7 +456,6 @@ class OpenAPIConnector(App):
         spec_file, path_file, spec_count, path_count = await _extract_spec_async(
             spec_url=input.spec_url,
             connection_qualified_name=input.connection_qualified_name,
-            output_dir=input.output_dir,
             auth_header=auth_header,
             logger=self.logger,
         )
@@ -522,10 +522,6 @@ class OpenAPIConnector(App):
                 constraint="required",
             )
 
-        output_dir = input.output_dir or str(
-            Path(tempfile.gettempdir()) / "openapi" / self.run_id
-        )
-
         if input.import_type == "CLOUD":
             if not input.spec_prefix and not input.spec_key:
                 raise CloudSpecLocationRequiredError(
@@ -540,10 +536,11 @@ class OpenAPIConnector(App):
                     cloud_source=input.cloud_source,
                     spec_prefix=input.spec_prefix,
                     spec_key=input.spec_key,
-                    output_dir=f"{output_dir}/cloud_download",
                 )
             )
-            spec_urls = cloud_result.spec_paths
+            spec_urls = [
+                ref.local_path for ref in cloud_result.spec_files if ref.local_path
+            ]
         elif input.import_type == "URL":
             if not input.spec_url:
                 raise SpecUrlRequiredError(
@@ -578,7 +575,6 @@ class OpenAPIConnector(App):
                 ExtractSpecInput(
                     spec_url=spec_url,
                     connection_qualified_name=conn_qn,
-                    output_dir=f"{output_dir}/raw/{i}",
                 )
             )
             all_extract_results.append(extract_result)
@@ -604,7 +600,6 @@ class OpenAPIConnector(App):
                         api_path_file=extract_result.api_path_file,
                         connection=connection,
                         connection_qualified_name=conn_qn,
-                        output_dir=f"{output_dir}/transform/{i}",
                         workflow_id=self.run_id,
                         workflow_type=self.context.app_name,
                         workflow_run_at_ms=workflow_run_at_ms,

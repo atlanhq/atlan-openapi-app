@@ -20,9 +20,12 @@ from typing import Any
 import pytest
 import pytest_asyncio
 from application_sdk.dev import embedded_runtime
-from application_sdk.execution._temporal.backend import TemporalExecutorBackend
-from application_sdk.execution._temporal.converter import create_data_converter_for_app
-from application_sdk.execution._temporal.worker import create_worker
+from application_sdk.execution import (
+    TemporalClient,
+    TemporalExecutorBackend,
+    create_temporal_client,
+    create_worker,
+)
 from application_sdk.infrastructure.context import (
     InfrastructureContext,
     set_infrastructure,
@@ -30,7 +33,6 @@ from application_sdk.infrastructure.context import (
 from application_sdk.observability.observability import AtlanObservability
 from application_sdk.storage import create_local_store, create_memory_store
 from application_sdk.testing.mocks import MockSecretStore, MockStateStore
-from temporalio.client import Client
 
 # Trigger OpenAPIConnector app registration before create_worker is called.
 from app.connector import OpenAPIConnector  # noqa: F401
@@ -125,15 +127,14 @@ async def embedded_temporal():
 
 
 @pytest_asyncio.fixture(scope="session")
-async def temporal_client(embedded_temporal) -> Client:
+async def temporal_client(embedded_temporal) -> TemporalClient:
     """Connect to the embedded Temporal dev server."""
-    data_converter = create_data_converter_for_app(OpenAPIConnector)
-    return await Client.connect(embedded_temporal.host, data_converter=data_converter)
+    return await create_temporal_client(host=embedded_temporal.host)
 
 
 @pytest_asyncio.fixture(scope="session")
 async def openapi_worker(
-    temporal_client: Client,
+    temporal_client: TemporalClient,
     infrastructure: InfrastructureContext,  # noqa: ARG001 — ensures infra is wired first
 ) -> Any:
     """Start the OpenAPI connector worker in-process."""
@@ -144,7 +145,7 @@ async def openapi_worker(
 
 @pytest.fixture(scope="session")
 def openapi_executor(
-    temporal_client: Client,
+    temporal_client: TemporalClient,
     openapi_worker: Any,  # noqa: ARG001 — ensures worker is running
 ) -> AppExecutor:
     """Executor for OpenAPI connector integration tests."""

@@ -173,7 +173,6 @@ class TestExtractSpecContracts:
         decoded = _round_trip(original, ExtractSpecInput)
         assert decoded.spec_url == ""
         assert decoded.connection_qualified_name == ""
-        assert decoded.output_dir == ""
         assert decoded.openapi_credential is None
 
     def test_input_round_trip_with_values(self) -> None:
@@ -181,13 +180,11 @@ class TestExtractSpecContracts:
         original = ExtractSpecInput(
             spec_url="https://petstore3.swagger.io/api/v3/openapi.json",
             connection_qualified_name="default/api/test-conn",
-            output_dir="/tmp/raw",
             openapi_credential=ref,
         )
         decoded = _round_trip(original, ExtractSpecInput)
         assert decoded.spec_url == "https://petstore3.swagger.io/api/v3/openapi.json"
         assert decoded.connection_qualified_name == "default/api/test-conn"
-        assert decoded.output_dir == "/tmp/raw"
         assert decoded.openapi_credential is not None
         assert decoded.openapi_credential.name == "openapi"
         assert decoded.openapi_credential.credential_type == "openapi"
@@ -239,7 +236,6 @@ class TestTransformContracts:
         assert decoded.api_path_file is None
         assert decoded.connection is None
         assert decoded.connection_qualified_name == ""
-        assert decoded.output_dir == ""
         assert decoded.workflow_id == ""
         assert decoded.workflow_type == ""
         assert decoded.workflow_run_at_ms == 0
@@ -253,7 +249,6 @@ class TestTransformContracts:
             api_path_file=path_ref,
             connection=_make_connection_ref("default/api/conn", "conn"),
             connection_qualified_name="default/api/conn",
-            output_dir="/tmp/out",
             workflow_id="wf-abc123",
             workflow_type="openapi",
             workflow_run_at_ms=1700000000000,
@@ -265,7 +260,6 @@ class TestTransformContracts:
         assert decoded.connection is not None
         assert decoded.connection.attributes.qualified_name == "default/api/conn"
         assert decoded.connection_qualified_name == "default/api/conn"
-        assert decoded.output_dir == "/tmp/out"
         assert decoded.workflow_id == "wf-abc123"
         assert decoded.workflow_type == "openapi"
         assert decoded.workflow_run_at_ms == 1700000000000
@@ -281,7 +275,6 @@ class TestTransformContracts:
                 "default/api/existing-conn", "existing-conn"
             ),
             connection_qualified_name="default/api/existing-conn",
-            output_dir="/tmp/out",
             workflow_id="wf-abc123",
             workflow_type="openapi",
             workflow_run_at_ms=1700000000000,
@@ -294,7 +287,6 @@ class TestTransformContracts:
         assert decoded.connection_qualified_name == "default/api/existing-conn"
         assert decoded.api_spec_file is not None
         assert decoded.api_path_file is not None
-        assert decoded.output_dir == "/tmp/out"
         assert decoded.workflow_id == "wf-abc123"
         assert decoded.workflow_type == "openapi"
         assert decoded.workflow_run_at_ms == 1700000000000
