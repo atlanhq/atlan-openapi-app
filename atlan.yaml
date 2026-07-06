@@ -13,20 +13,6 @@ entrypoints:
   display_name: OpenAPI Spec Loader
   icon_url: http://assets.atlan.com/assets/apispec.png
   type: connector
-deploy:
-  execution_mode: native
-  splitDeploymentEnabled: true
-  dapr:
-    objectstore: false
-    secretstore: false
-    statestore: false
-    eventstore: false
-    subscription: false
-    configurationstore: false
-    lock: false
-  keda:
-    enabled: true
-    minReplicaCount: 0
-    temporal:
-      targetQueueSize: 5
+  package_id: '@atlan/openapi'
+  marketplace_card: true
 release_model: semver
