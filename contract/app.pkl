@@ -1,5 +1,6 @@
 amends "@app-contract-toolkit/App.pkl"
 
+// conformance: ignore[K002] Connectors.* has no typealias re-export in App.pkl (only Widgets.* does); `pkl eval` fails without this import.
 import "@app-contract-toolkit/Connectors.pkl"
 
 name = "openapi"
@@ -15,6 +16,15 @@ uiConfig = new UIConfig {
     ["Configuration"] {
       description = "OpenAPI spec configuration"
       inputs {
+        // Hidden manifest-only field (P029 / DISTR-752): Heracles/AE derives
+        // agent-vs-direct credential routing from `extraction_method` at
+        // dispatch. This app has one fixed extraction path (task-based, no
+        // agent-mode toggle), so the value is a constant, not a user choice.
+        ["extraction_method"] = new TextInput {
+          title = "Extraction method"
+          hide = true
+          default = "direct"
+        }
         ["import_type"] = new Radio {
           title = "Import type"
           helpText = "How to provide the spec: 'URL' (HTTP fetch) or 'CLOUD' (object storage)."
