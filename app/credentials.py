@@ -27,10 +27,6 @@ from application_sdk.credentials.registry import (
     register_credential_type,
 )
 
-# Well-known key for handing the resolved auth header from validate() to
-# extract_spec, avoiding a second DAPR credential lookup in the task.
-VALIDATED_AUTH_HEADER_KEY = "_validated_openapi_auth_header"
-
 
 class OpenAPICredential:
     """Optional OpenAPI credential for private spec endpoints.

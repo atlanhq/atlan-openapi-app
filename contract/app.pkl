@@ -1,5 +1,6 @@
 amends "@app-contract-toolkit/App.pkl"
 
+// conformance: ignore[K002] Connectors.* has no typealias re-export in App.pkl@0.17.0 (only Widgets.* does); `pkl eval` fails without this import.
 import "@app-contract-toolkit/Connectors.pkl"
 
 name = "openapi"

@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 from application_sdk.contracts.types import ConnectionRef
 
-from pyatlan_v9.model.assets import APIPath, APISpec, Connection, RelatedAPISpec
+from pyatlan_v9.model.assets import APIPath, APISpec, Connection
 
 
 def apply_sync_metadata(
@@ -47,23 +47,37 @@ CONNECTOR_NAME = "api"
 def build_api_spec_qn(connection_qn: str, spec_title: str) -> str:
     """Build qualified name for an APISpec asset.
 
+    Delegates to the pyatlan ``APISpec.creator()`` factory so the
+    qualifiedName grammar lives in one place instead of being duplicated
+    here as a format string.
+
     Args:
         connection_qn: Atlan connection qualified name.
         spec_title: The spec title from spec['info']['title'].
     """
-    return f"{connection_qn}/{spec_title}"
+    qualified_name = APISpec.creator(
+        name=spec_title, connection_qualified_name=connection_qn
+    ).qualified_name
+    assert isinstance(qualified_name, str)
+    return qualified_name
 
 
 def build_api_path_qn(spec_qn: str, path_url: str) -> str:
     """Build qualified name for an APIPath asset.
 
-    path_url already starts with '/' so concat directly (no extra slash).
+    Delegates to the pyatlan ``APIPath.creator()`` factory so the
+    qualifiedName grammar lives in one place instead of being duplicated
+    here as a format string.
 
     Args:
         spec_qn: Parent APISpec qualified name.
         path_url: The path URL key from spec['paths'], e.g. '/pet/{petId}'.
     """
-    return f"{spec_qn}{path_url}"
+    qualified_name = APIPath.creator(
+        path_raw_uri=path_url, spec_qualified_name=spec_qn
+    ).qualified_name
+    assert isinstance(qualified_name, str)
+    return qualified_name
 
 
 # =============================================================================
@@ -106,14 +120,7 @@ def map_api_spec(
         workflow_type: Temporal workflow type / app name.
         workflow_run_at_ms: Workflow start time as millisecond UNIX timestamp.
     """
-    spec_qn = build_api_spec_qn(connection_qn, record.title)
-
-    asset = APISpec(
-        qualified_name=spec_qn,
-        name=record.title,
-        connector_name=CONNECTOR_NAME,
-        connection_qualified_name=connection_qn,
-    )
+    asset = APISpec.creator(name=record.title, connection_qualified_name=connection_qn)
 
     if record.spec_url:
         asset.source_url = record.spec_url
@@ -171,20 +178,13 @@ def map_api_path(
         workflow_type: Temporal workflow type / app name.
         workflow_run_at_ms: Workflow start time as millisecond UNIX timestamp.
     """
-    spec_qn = record.spec_qualified_name
-    path_qn = build_api_path_qn(spec_qn, record.path_url)
-
-    asset = APIPath(
-        qualified_name=path_qn,
-        name=record.path_url,
-        connector_name=CONNECTOR_NAME,
+    asset = APIPath.creator(
+        path_raw_uri=record.path_url,
+        spec_qualified_name=record.spec_qualified_name,
         connection_qualified_name=connection_qn,
-        api_spec_name=record.spec_title,
-        api_spec_qualified_name=spec_qn,
-        api_spec=RelatedAPISpec(qualified_name=spec_qn),
-        api_path_raw_uri=record.path_url,
-        api_path_is_templated=record.is_templated,
     )
+    asset.api_spec_name = record.spec_title
+    asset.api_path_is_templated = record.is_templated
 
     if record.summary:
         asset.api_path_summary = record.summary

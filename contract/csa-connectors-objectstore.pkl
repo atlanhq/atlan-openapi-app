@@ -1,5 +1,6 @@
 amends "@app-contract-toolkit/Credential.pkl"
 
+// conformance: ignore[K002] Credential.pkl@0.17.0 does not re-export Config.* as typealiases; `pkl eval` fails without this import (Config.TextInput/PasswordInput/NestedInput below need it).
 import "@app-contract-toolkit/Config.pkl"
 
 name = "csa-connectors-objectstore"

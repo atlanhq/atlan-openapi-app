@@ -52,7 +52,6 @@ from app.contracts import (
     TransformInput,
     TransformOutput,
 )
-from app.credentials import VALIDATED_AUTH_HEADER_KEY
 
 T = TypeVar("T")
 
@@ -434,14 +433,7 @@ class OpenAPIConnector(App):
                 constraint="required",
             )
 
-        # Claim the auth_header that validate() stored in app state, avoiding a
-        # second DAPR credential lookup. Falls back to resolve_credential() if
-        # state was not populated (e.g. standalone / test execution).
-        auth_header: str | None = self.get_app_state(VALIDATED_AUTH_HEADER_KEY)  # type: ignore[assignment]
-        if auth_header is not None:
-            self.set_app_state(VALIDATED_AUTH_HEADER_KEY, None)  # claim ownership
-            self.logger.debug("using pre-validated auth_header from validate()")
-        elif input.openapi_credential is not None:
+        if input.openapi_credential is not None:
             from app.credentials import OpenAPICredential
 
             credential = await self.context.resolve_credential(input.openapi_credential)
