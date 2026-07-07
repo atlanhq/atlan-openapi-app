@@ -8,6 +8,7 @@ inputs and outputs to ensure Temporal serialization works correctly.
 from typing import Annotated
 
 from application_sdk.app import Input, Output
+from application_sdk.contracts.base import PublishInputMixin
 from application_sdk.contracts.types import ConnectionRef, FileReference, MaxItems
 from application_sdk.credentials.ref import CredentialRef
 
@@ -38,11 +39,29 @@ class PublishInput(Input):
 OpenAPIConnectorInput = AppInputContract
 
 
-class OpenAPIConnectorOutput(Output):
-    """Output from the OpenAPI Connector App."""
+class OpenAPIConnectorOutput(PublishInputMixin, Output):
+    """Output from the OpenAPI Connector App.
 
+    Mixes in ``PublishInputMixin`` so ``publish_state_prefix``,
+    ``staging_data_prefix``, and ``current_state_prefix`` are auto-derived
+    from ``connection_qualified_name`` and always present in the serialized
+    output — the publish node's manifest args read them via
+    ``$.extract.outputs.*`` JSONPath, which fails outright (not just with an
+    empty value) if the key is absent entirely.
+    """
+
+    # Redeclared explicitly (not just inherited from PublishInputMixin): B005's
+    # ledger checker is a single-class AST scanner that doesn't resolve fields
+    # across base classes. A field visible only via inheritance reads as
+    # "removed" if already ledger-tracked, and is silently invisible to the
+    # ledger generator (never gets tracked) otherwise — so every mixin field
+    # this contract relies on must be redeclared here to stay B005-protected
+    # against a future accidental removal (the exact bug this mixin fixes).
     connection_qualified_name: str = ""
     transformed_data_prefix: str = ""
+    publish_state_prefix: str = ""
+    staging_data_prefix: str = ""
+    current_state_prefix: str = ""
 
     api_spec_count: int = 0
     """Number of APISpec entities extracted (always 0 or 1)."""

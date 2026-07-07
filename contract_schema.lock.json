@@ -236,6 +236,12 @@
     },
     {
       "contract": "OpenAPIConnectorOutput",
+      "field": "current_state_prefix",
+      "status": "active",
+      "type": "str"
+    },
+    {
+      "contract": "OpenAPIConnectorOutput",
       "field": "output_file",
       "status": "active",
       "type": "FileReference | None"
@@ -245,6 +251,18 @@
       "field": "publish_completed",
       "status": "active",
       "type": "bool"
+    },
+    {
+      "contract": "OpenAPIConnectorOutput",
+      "field": "publish_state_prefix",
+      "status": "active",
+      "type": "str"
+    },
+    {
+      "contract": "OpenAPIConnectorOutput",
+      "field": "staging_data_prefix",
+      "status": "active",
+      "type": "str"
     },
     {
       "contract": "OpenAPIConnectorOutput",

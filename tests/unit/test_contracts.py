@@ -147,6 +147,40 @@ class TestOpenAPIConnectorOutput:
         assert decoded.output_file.local_path == "/custom/path/output.jsonl"
         assert decoded.output_file.local_path is not None
 
+    def test_publish_paths_auto_derive_from_connection_qn(self) -> None:
+        """publish_state_prefix/staging_data_prefix/current_state_prefix must be
+        auto-derived (via PublishInputMixin) and non-empty whenever
+        connection_qualified_name is set — the publish DAG node reads them via
+        `$.extract.outputs.*` JSONPath, which fails outright (not just with an
+        empty value) if the key is absent (DISTR-752-style regression)."""
+        original = OpenAPIConnectorOutput(
+            connection_qualified_name="default/api/1234567890"
+        )
+        assert original.publish_state_prefix == (
+            "persistent-artifacts/apps/atlan-publish-app/state/default/api/1234567890/publish-state"
+        )
+        assert original.staging_data_prefix == (
+            "persistent-artifacts/apps/atlan-publish-app/state/default/api/1234567890"
+        )
+        assert original.current_state_prefix == (
+            "argo-artifacts/default/api/1234567890/current-state"
+        )
+
+        decoded = _round_trip(original, OpenAPIConnectorOutput)
+        assert decoded.publish_state_prefix == original.publish_state_prefix
+        assert decoded.staging_data_prefix == original.staging_data_prefix
+        assert decoded.current_state_prefix == original.current_state_prefix
+
+    def test_publish_paths_serialized_even_when_empty(self) -> None:
+        """The publish-path keys must always be present in serialized output,
+        even with no connection_qualified_name — a missing key (not merely an
+        empty value) is what breaks the publish node's JSONPath resolution."""
+        original = OpenAPIConnectorOutput()
+        dumped = original.model_dump()
+        assert "publish_state_prefix" in dumped
+        assert "staging_data_prefix" in dumped
+        assert "current_state_prefix" in dumped
+
 
 # =============================================================================
 # ExtractSpecInput / ExtractSpecOutput
