@@ -11,11 +11,23 @@ workflowType = name
 hasCredentialConfig = false
 metadata { ["release_model"] = "semver" }
 
+// Surface `extraction_method` at the manifest's top-level extract args (P029 /
+// DISTR-752): Heracles/AE derives agent-vs-direct credential routing from this
+// field at dispatch. This app has one fixed extraction path (task-based, no
+// agent-mode toggle), so the value is a hidden constant rather than a
+// user-facing choice.
+manifestTopLevelArgs { ["extraction_method"] = "extraction_method" }
+
 uiConfig = new UIConfig {
   tasks {
     ["Configuration"] {
       description = "OpenAPI spec configuration"
       inputs {
+        ["extraction_method"] = new TextInput {
+          title = "Extraction method"
+          hide = true
+          default = "direct"
+        }
         ["import_type"] = new Radio {
           title = "Import type"
           helpText = "How to provide the spec: 'URL' (HTTP fetch) or 'CLOUD' (object storage)."
