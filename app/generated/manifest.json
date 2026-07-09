@@ -22,6 +22,9 @@
           "spec_key": "{{spec_key}}",
           "cloud_source": "{{cloud_source}}"
         }
+      },
+      "error_handling": {
+        "start_to_close_timeout_seconds": 86400
       }
     },
     "publish": {

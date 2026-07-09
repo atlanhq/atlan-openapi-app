@@ -11,6 +11,14 @@ workflowType = name
 hasCredentialConfig = false
 metadata { ["release_model"] = "semver" }
 
+pipeline {
+  extract = new ExtractStep {
+    errorHandling = new ErrorHandlingConfig {
+      startToCloseTimeoutSeconds = 86400
+    }
+  }
+}
+
 uiConfig = new UIConfig {
   tasks {
     ["Configuration"] {
