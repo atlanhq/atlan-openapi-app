@@ -52,15 +52,21 @@ class TestOpenAPIConnectorInput:
         assert decoded.checkpoint_dir == ""
         assert decoded.load_to_atlan is True
         assert decoded.publish_dry_run is False
-        # CONNECT-55: default is CREATE (normal full-diff publish path).
-        assert decoded.connection_usage == "CREATE"
-
-    def test_connection_usage_reuse_round_trips(self) -> None:
-        """connection_usage=REUSE survives round-trip — it drives the
-        connector's assertion-only publish signal (CONNECT-55)."""
-        original = OpenAPIConnectorInput(connection_usage="REUSE")
-        decoded = _round_trip(original, OpenAPIConnectorInput)
+        # CONNECT-55: default is REUSE, matching the CSA reference package.
         assert decoded.connection_usage == "REUSE"
+        assert decoded.connection_qualified_name == ""
+
+    def test_connection_usage_and_qn_round_trip(self) -> None:
+        """connection_usage + connection_qualified_name survive round-trip — the
+        REUSE path selects an existing connection via connection_qualified_name
+        (CONNECT-55)."""
+        original = OpenAPIConnectorInput(
+            connection_usage="CREATE",
+            connection_qualified_name="default/api/existing",
+        )
+        decoded = _round_trip(original, OpenAPIConnectorInput)
+        assert decoded.connection_usage == "CREATE"
+        assert decoded.connection_qualified_name == "default/api/existing"
 
     def test_round_trip_with_values(self) -> None:
         """All non-default values must survive round-trip."""
@@ -278,6 +284,7 @@ class TestTransformContracts:
         assert decoded.api_path_file is None
         assert decoded.connection is None
         assert decoded.connection_qualified_name == ""
+        assert decoded.emit_connection is True
         assert decoded.workflow_id == ""
         assert decoded.workflow_type == ""
         assert decoded.workflow_run_at_ms == 0

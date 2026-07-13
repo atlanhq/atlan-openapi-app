@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import ClassVar
 
+from application_sdk.contracts.types import FileReference
 from application_sdk.templates.contracts import ExtractionInput
 
 
@@ -16,17 +17,21 @@ class AppInputContract(ExtractionInput):
     }
 
     import_type: str = "URL"
-    """How to provide the spec: 'URL' (HTTP fetch) or 'CLOUD' (object storage)."""
+    """Select how you want to provide the OpenAPI spec file to be imported."""
     spec_url: str = ""
-    """URL to the OpenAPI spec JSON/YAML document. Required when import_type='URL'."""
+    """Full URL to the JSON form of the OpenAPI specification."""
+    spec_file: FileReference | None = None
+    """Select the OpenAPI spec file containing metadata to import."""
     spec_prefix: str = ""
-    """Object store directory path. Required when import_type='CLOUD'."""
+    """Enter the directory (path) within the object store from which to retrieve the OpenAPI spec file."""
     spec_key: str = ""
-    """Object key (filename) in the object store. Required when import_type='CLOUD'."""
+    """Enter the object key (filename), including its extension, within the object store and prefix."""
     cloud_source: str = ""
-    """Cloud storage credential (csa-connectors-objectstore). Required when import_type='CLOUD'."""
-    connection_usage: str = "CREATE"
-    """CREATE a new connection (full diff), or REUSE an existing one (assertion-only publish: upsert only, never archives other assets)."""
+    """Enter details for the object store from which to retrieve the OpenAPI spec containing metadata to be imported."""
+    connection_usage: str = "REUSE"
+    """Whether to create a new connection to hold these API assets, or reuse an existing connection."""
+    connection_qualified_name: str = ""
+    """Select an existing connection to load assets into."""
     output_dir: str = ""
     """Directory for output JSONL files."""
     checkpoint_dir: str = ""

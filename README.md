@@ -42,8 +42,8 @@ make generate
 
 | Value | Required fields | Behaviour |
 |---|---|---|
-| `CREATE` (default) | `connection` (ConnectionRef) | Creates the connection and runs the **normal full-diff publish**: assets no longer present in the spec are archived. |
-| `REUSE` | `connection` (ConnectionRef, existing) | Targets an existing connection that may be shared with other sources, so publish runs in **assertion-only mode** (upsert-only: no diff, no deletes). The connector emits `assertion_only_enabled=true`, which the AE publish node forwards to publish-app via `$.extract.outputs.assertion_only_enabled`. |
+| `REUSE` (default) | `connection_qualified_name` (existing connection, selected via the connection picker) | Targets an existing connection that may be shared with other sources, so publish runs in **assertion-only mode** (upsert-only: no diff, no deletes). The connector emits `assertion_only_enabled=true` (forwarded to publish-app via `$.extract.outputs.assertion_only_enabled`) and does **not** re-emit the Connection entity, so the existing connection is never modified. |
+| `CREATE` | `connection` (ConnectionRef, new) | Creates the connection and runs the **normal full-diff publish**: assets no longer present in the spec are archived. |
 
 ### All input fields
 
@@ -55,7 +55,7 @@ make generate
 | `spec_prefix` | `str` | `""` | Object store directory prefix. Required when `import_type=CLOUD`. |
 | `spec_key` | `str` | `""` | Object key (filename) in the store. Required when `import_type=CLOUD`. |
 | `cloud_source` | `str` | `""` | Object storage credential ID. Required when `import_type=CLOUD`. |
-| `connection_usage` | `str` | `"CREATE"` | `CREATE` (full-diff publish) or `REUSE` (assertion-only publish: upsert only, never archives other assets). |
+| `connection_usage` | `str` | `"REUSE"` | `REUSE` (assertion-only publish: upsert only, never archives other assets) or `CREATE` (full-diff publish). |
 | `connection` | `ConnectionRef` | `None` | Connection to create. Required when `connection_usage=CREATE`. |
 | `connection_qualified_name` | `str` | `""` | Existing connection QN. Required when `connection_usage=REUSE`. |
 | `load_to_atlan` | `bool` | `true` | Upload transformed output and trigger publish-app via the AE DAG. |

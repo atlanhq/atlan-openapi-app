@@ -160,7 +160,14 @@ class TransformInput(Input):
 
     connection: ConnectionRef | None = None
     """Atlan connection reference. Always set by the workflow before calling transform.
-    The Connection entity is emitted first so the diff engine does not archive it."""
+    On the CREATE path the Connection entity is emitted first so the diff engine
+    does not archive it (see ``emit_connection``)."""
+
+    emit_connection: bool = True
+    """Whether to emit the Connection entity as the first output row (CONNECT-55).
+    True on CREATE (the connection is being created and must lead the diff).
+    False on REUSE, where the connection already exists and must not be
+    re-upserted/modified — only its child assets are emitted."""
 
     connection_qualified_name: str = ""
     """Connection qualified name — derived from connection.attributes.qualified_name.
