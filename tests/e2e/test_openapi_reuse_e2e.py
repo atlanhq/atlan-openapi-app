@@ -116,7 +116,15 @@ class TestOpenAPIReuseAssertionOnlyE2E(OpenapiGeneratedE2EBase):
     _reuse_qn: str = ""
 
     def agent_spec(self) -> AgentSpec:
-        return AgentSpec(agent_name=f"openapi-reuse-e2e-{self.run_id}")
+        # The agent_name MUST resolve to the queue the single CI worker polls,
+        # i.e. atlan-{ATLAN_APPLICATION_NAME}-{ATLAN_DEPLOYMENT_NAME} =
+        # atlan-openapi-e2e-full-ci-<run_id> (see .github/e2e/
+        # e2e-full-docker-compose.yaml). It is NOT a per-test identifier — every
+        # e2e class in this connector shares the one worker, so this matches the
+        # CREATE-path test's agent_name. Using a distinct name here would point
+        # the DAG at a queue with no worker (the SDK harness now fails fast with
+        # NoWorkerOnTaskQueueError instead of hanging).
+        return AgentSpec(agent_name=f"openapi-e2e-full-ci-{self.run_id}")
 
     def _mustache_substitutions(self) -> _ReuseSubstitutions:
         base = super()._mustache_substitutions()
