@@ -1,24 +1,27 @@
 """Full-DAG e2e test for the OpenAPI connector's REUSE / assertion-only path.
 
-This is the connection-reuse counterpart to ``test_openapi_e2e.py``. With
-``connection_usage="REUSE"`` the connector targets an *existing* connection
+With ``connection_usage="REUSE"`` the connector targets an *existing* connection
 (selected via ``connection_qualified_name``), does NOT re-emit the Connection
 entity, and emits ``assertion_only_enabled=True``. The publish node reads that
 via ``$.extract.outputs.assertion_only_enabled`` and runs atlan-publish-app in
 assertion-only mode: the transformed rows are forwarded as pure upserts with NO
 diff and NO archival (see the publish-app assertion-only publish contract).
 
-Because assertion-only never *creates* a connection, REUSE requires the
-connection to already exist. The single scenario here therefore runs two DAGs
-against one connection:
+Design — seed out-of-band, single assertion-only run:
 
-1. **CREATE + Petstore** — establishes the connection and 13 APIPaths via the
-   normal full-diff publish path.
-2. **REUSE + a disjoint secondary spec** — assertion-only publish into the SAME
-   connection. This proves both that the assertion-only path lands assets all
-   the way through publish AND — the behaviour we actually need — that the first
-   spec's assets SURVIVE (a normal full-diff run would archive them, since
-   they're absent from the second spec's extraction).
+REUSE needs a pre-existing connection. Rather than establish it with a CREATE
+*publish* (which chains a flaky connection-policy-propagation race in front of
+the thing under test — a fresh connection 403s child writes until its access
+policies go live), this suite seeds the connection **and a foreign canary
+asset** directly via pyatlan, waits until writes succeed, then runs ONE
+REUSE/assertion-only DAG for Petstore. Because assertion-only never archives,
+the canary must survive — a normal full-diff publish would archive it (it isn't
+in Petstore's extraction). CREATE-mode publish is covered by
+``test_openapi_e2e``.
+
+This suite is independent of ``test_openapi_e2e`` (its own seeded connection and
+its own AE workflow slug), so the two can run concurrently against the shared
+CI worker.
 
 Requires ATLAN_BASE_URL + ATLAN_API_KEY. The module-level guard skips the test
 when those env vars are absent, so it never runs accidentally in local or CI
@@ -27,6 +30,7 @@ unit-test invocations. In CI, enabled by the ``e2e`` PR label.
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 
@@ -51,27 +55,12 @@ except ImportError as _exc:
         f"SDK does not yet export agnostic e2e harness: {_exc}", allow_module_level=True
     )
 
+logger = logging.getLogger(__name__)
 
-def _raw_url(repo_path: str) -> str:
-    """Build a raw.githubusercontent URL for a file in this repo.
-
-    Resolves against the current branch when running in CI (so a spec fixture
-    added in the same PR is reachable during that PR's e2e run), falling back to
-    ``main`` for post-merge / local runs.
-    """
-    ref = (
-        os.environ.get("GITHUB_HEAD_REF") or os.environ.get("GITHUB_REF_NAME") or "main"
-    )
-    return (
-        f"https://raw.githubusercontent.com/atlanhq/atlan-openapi-app/{ref}/{repo_path}"
-    )
-
-
-# Primary spec: the same Swagger Petstore v3 used by the CREATE-path e2e
-# (13 APIPaths + 1 APISpec). Secondary spec: a small, DISJOINT spec (3 APIPaths
-# + 1 APISpec, different title) so the two runs produce non-overlapping assets.
-_PETSTORE_URL = _raw_url("tests/integration/petstore3.json")
-_SECONDARY_URL = _raw_url("tests/e2e/openapi_secondary_spec.json")
+_PETSTORE_URL = (
+    "https://raw.githubusercontent.com/atlanhq/atlan-openapi-app/main"
+    "/tests/integration/petstore3.json"
+)
 
 
 class _ReuseSubstitutions(OpenapiMustacheSubstitutions):
@@ -91,43 +80,33 @@ class _ReuseSubstitutions(OpenapiMustacheSubstitutions):
 
 @pytest.mark.e2e
 class TestOpenAPIReuseAssertionOnlyE2E(OpenapiGeneratedE2EBase):
-    # Name-derived attrs (connector_short_name, connection_type,
-    # argo_package_name, argo_template_name, app_service_url) come from
-    # OpenapiGeneratedE2EBase. The base harness builds the connection QN as
-    # default/{connection_type}/{epoch} once per test and reuses it across every
-    # run_full_dag() call on this instance — which is exactly what the two-run
-    # scenario needs (CREATE then REUSE into one connection).
+    # Name-derived attrs come from OpenapiGeneratedE2EBase. agent_spec() must
+    # still resolve to the shared CI worker's queue (see agent_spec below), but
+    # a distinct connection_name_prefix gives this suite its OWN AE workflow slug
+    # so it doesn't share versioned state with test_openapi_e2e — the two are
+    # fully independent and can run concurrently.
+    connection_name_prefix = "reuse-e2e-full-ci"
 
     mode = RunMode.AGENT
 
-    # Floors are the Petstore counts — the primary spec of run 1.
-    expected_min_asset_counts = {"APISpec": 1, "APIPath": 13}
+    # Floors: Petstore (1 APISpec + 13 APIPaths) PLUS the seeded canary APISpec.
+    # Requiring APISpec>=2 makes the count-poll wait until both the canary and
+    # Petstore's spec are present — i.e. the canary survived the assertion-only
+    # publish. A normal diff would have archived it, leaving APISpec==1.
+    expected_min_asset_counts = {"APISpec": 2, "APIPath": 13}
     expect_lineage = False
 
     ae_poll_interval_seconds = 30
     ae_poll_timeout_seconds = 1800
-    # The harness stall guard (ae_stall_grace_seconds, default 180s) is left on:
-    # this suite runs two DAGs against one dedicated CI worker, so a pollerless
-    # queue means a real agent-name/task-queue mismatch and we fail fast with an
-    # actionable message instead of hanging for ae_poll_timeout_seconds.
     atlas_poll_interval_seconds = 30
     atlas_poll_timeout_seconds = 900
-
-    # Per-run state read by _mustache_substitutions(); flipped between the two
-    # run_full_dag() calls in the scenario below.
-    _connection_usage: str = "CREATE"
-    _spec_url: str = _PETSTORE_URL
-    _reuse_qn: str = ""
+    # inherits ae_stall_grace_seconds = 180 (dedicated CI worker).
 
     def agent_spec(self) -> AgentSpec:
-        # The agent_name MUST resolve to the queue the single CI worker polls,
-        # i.e. atlan-{ATLAN_APPLICATION_NAME}-{ATLAN_DEPLOYMENT_NAME} =
-        # atlan-openapi-e2e-full-ci-<run_id> (see .github/e2e/
-        # e2e-full-docker-compose.yaml). It is NOT a per-test identifier — every
-        # e2e class in this connector shares the one worker, so this matches the
-        # CREATE-path test's agent_name. Using a distinct name here would point
-        # the DAG at a queue with no worker (the SDK harness now fails fast with
-        # NoWorkerOnTaskQueueError instead of hanging).
+        # Must resolve to the queue the single CI worker polls
+        # (atlan-{ATLAN_APPLICATION_NAME}-{ATLAN_DEPLOYMENT_NAME} =
+        # atlan-openapi-e2e-full-ci-<run_id>). Shared with test_openapi_e2e; the
+        # persistent worker serves both suites' workflows concurrently.
         return AgentSpec(agent_name=f"openapi-e2e-full-ci-{self.run_id}")
 
     def _mustache_substitutions(self) -> _ReuseSubstitutions:
@@ -135,98 +114,121 @@ class TestOpenAPIReuseAssertionOnlyE2E(OpenapiGeneratedE2EBase):
         return _ReuseSubstitutions(
             connection=base.connection,
             credential=base.credential,
-            spec_url=self._spec_url,
-            connection_usage=self._connection_usage,
-            connection_qualified_name=self._reuse_qn,
+            spec_url=_PETSTORE_URL,
+            # The whole point of this suite: REUSE => assertion-only publish,
+            # targeting the connection we seed below.
+            connection_usage="REUSE",
+            connection_qualified_name=self.connection_qualified_name,
         )
 
-    # _credential_body() inherits BaseE2ETest default of None — the specs are
-    # public URLs that need no authentication.
+    # _credential_body() inherits BaseE2ETest default of None — Petstore is a
+    # public URL that needs no authentication.
 
     def test_full_dag_runs_end_to_end(self) -> None:
         """Override the base single-run scenario.
 
-        A bare REUSE run would have no connection to reuse (assertion-only never
-        creates one). The end-to-end REUSE proof lives in
-        ``test_reuse_assertion_only_publishes_without_archiving``, which
-        establishes the connection with a CREATE run first.
+        A bare REUSE run has no connection to reuse (assertion-only never creates
+        one). The end-to-end REUSE proof lives in
+        ``test_reuse_assertion_only_publishes_without_archiving``, which seeds the
+        connection first.
         """
         pytest.skip(
             "REUSE requires a pre-existing connection; covered by "
             "test_reuse_assertion_only_publishes_without_archiving"
         )
 
-    def _poll_asset_counts(
-        self, *, min_api_paths: int, timeout_seconds: int = 120
-    ) -> dict[str, int]:
-        """Poll Atlas until at least ``min_api_paths`` APIPaths are indexed under
-        the connection, or the timeout elapses. Returns the last counts seen.
+    def _seed_connection_and_canary(self) -> str:
+        """Create the connection + a foreign canary APISpec via pyatlan and
+        return the canary's qualified name.
 
-        Used after the REUSE run so late-indexing secondary-spec assets are given
-        time to appear before we assert on the combined total.
+        Seeding out-of-band (not via a CREATE publish) keeps the flaky
+        connection-policy race out of the assertion-only run under test. The
+        canary write is retried until it succeeds, which doubles as the gate that
+        the connection's policies are live before the DAG runs.
         """
-        deadline = time.monotonic() + timeout_seconds
-        counts: dict[str, int] = {}
+        # pyatlan is a heavy, testing-time-only import (mirrors the harness).
+        from pyatlan.client.atlan import AtlanClient  # noqa: PLC0415
+        from pyatlan.model.assets import APISpec, Connection  # noqa: PLC0415
+        from pyatlan.model.enums import AtlanConnectorType  # noqa: PLC0415
+
+        client = AtlanClient(
+            base_url=os.environ["ATLAN_BASE_URL"],
+            api_key=os.environ["ATLAN_API_KEY"],
+        )
+
+        admin_roles = list(
+            self.connection_admin_roles or getattr(self, "_auto_admin_roles", ())
+        )
+        admin_users = list(
+            self.connection_admin_users or getattr(self, "_auto_admin_users", ())
+        )
+        conn = Connection.creator(
+            client=client,
+            name=self.connection_display_name,
+            connector_type=AtlanConnectorType.API,
+            admin_roles=admin_roles or None,
+            admin_users=admin_users or None,
+        )
+        client.asset.save(conn)
+        # creator assigns the qualifiedName client-side; adopt it as the QN the
+        # REUSE run, connection poll, and teardown all key off.
+        self.connection_qualified_name = conn.qualified_name
+        logger.info("seeded connection %s", self.connection_qualified_name)
+
+        # Wait until the connection is searchable (policy provisioning starts).
+        assert self.client.poll_atlas_for_connection(
+            self.connection_qualified_name,
+            interval_seconds=self.atlas_poll_interval_seconds,
+            timeout_seconds=self.atlas_poll_timeout_seconds,
+        ), "seeded connection never became searchable"
+
+        # Write a foreign canary APISpec — a name Petstore never produces, so a
+        # normal diff would archive it. Retry until it succeeds: a fresh
+        # connection 403s child writes until its access policies are live.
+        canary = APISpec.creator(
+            name=f"connect55-canary-{self.run_id}",
+            connection_qualified_name=self.connection_qualified_name,
+        )
+        deadline = time.monotonic() + 300
         while True:
-            counts = self.client.count_assets_under_connection(
-                self.connection_qualified_name,
-                type_names=("APISpec", "APIPath"),
-            )
-            if counts.get("APIPath", 0) >= min_api_paths:
-                return counts
-            if time.monotonic() >= deadline:
-                return counts
-            time.sleep(self.atlas_poll_interval_seconds)
+            try:
+                client.asset.save(canary)
+                logger.info("seeded canary APISpec %s", canary.qualified_name)
+                return canary.qualified_name
+            except Exception:  # noqa: BLE001 — policies not live yet (403); retry
+                if time.monotonic() >= deadline:
+                    raise
+                logger.info("canary write not yet permitted; retrying")
+                time.sleep(self.atlas_poll_interval_seconds)
 
     def test_reuse_assertion_only_publishes_without_archiving(self) -> None:
-        """CREATE then assertion-only REUSE into one connection: the first spec's
-        assets must survive the second run.
+        """Assertion-only REUSE into a seeded connection must not archive the
+        connection's pre-existing (foreign) assets.
 
-        Run 1 (CREATE, Petstore, 13 paths) establishes the connection via the
-        normal full-diff publish. Run 2 (REUSE, secondary spec, 3 disjoint paths)
-        publishes assertion-only into the SAME connection. Because assertion-only
-        skips the diff, NOTHING is archived: after Run 2 both specs' assets
-        coexist. A normal full-diff Run 2 would instead archive all 13 Petstore
-        paths (absent from the secondary spec).
+        Seed connection C + a canary APISpec via pyatlan, then run ONE
+        REUSE/assertion-only DAG for Petstore into C. Because assertion-only
+        skips the diff, the canary survives and coexists with Petstore's assets
+        (APISpec==2). A normal full-diff run would archive the canary
+        (APISpec==1), since it isn't in Petstore's extraction.
         """
-        # --- Run 1: CREATE + Petstore (establishes the connection) ---
-        self._connection_usage = "CREATE"
-        self._spec_url = _PETSTORE_URL
-        self._reuse_qn = ""
-        outcome1 = self.run_full_dag()
-        assert outcome1.ae_result.all_nodes_succeeded, (
-            "Run 1 (CREATE) DAG nodes did not all succeed: "
-            f"{[n.name for n in outcome1.ae_result.failed_nodes]}"
-        )
-        assert outcome1.connection_in_atlas, "Run 1 connection not found in Atlas"
-        base_specs = outcome1.asset_counts.get("APISpec", 0)
-        base_paths = outcome1.asset_counts.get("APIPath", 0)
-        assert base_specs >= 1, f"Run 1 APISpec count too low: {base_specs}"
-        assert base_paths >= 13, f"Run 1 APIPath count too low: {base_paths}"
+        canary_qn = self._seed_connection_and_canary()
 
-        # --- Run 2: REUSE + disjoint secondary spec, SAME connection ---
-        self._connection_usage = "REUSE"
-        self._spec_url = _SECONDARY_URL
-        self._reuse_qn = self.connection_qualified_name
-        outcome2 = self.run_full_dag()
-        assert outcome2.ae_result.all_nodes_succeeded, (
-            "Run 2 (REUSE/assertion-only) DAG nodes did not all succeed: "
-            f"{[n.name for n in outcome2.ae_result.failed_nodes]}"
+        outcome = self.run_full_dag()
+        assert outcome.ae_result.all_nodes_succeeded, (
+            "REUSE/assertion-only DAG nodes did not all succeed: "
+            f"{[n.name for n in outcome.ae_result.failed_nodes]}"
         )
+        assert outcome.connection_in_atlas, "seeded connection not found in Atlas"
 
-        # After Run 2, both specs must coexist. The no-delete signal is that the
-        # Petstore assets are STILL present; the secondary spec adds >= 1 more.
-        final_counts = self._poll_asset_counts(min_api_paths=base_paths + 1)
-
-        assert final_counts.get("APISpec", 0) >= base_specs + 1, (
-            "Assertion-only re-publish archived the first spec's APISpec: "
-            f"before={base_specs}, after={final_counts.get('APISpec', 0)} "
-            "(expected both specs' APISpecs to coexist)"
+        # Petstore landed through the assertion-only publish path.
+        assert outcome.asset_counts.get("APIPath", 0) >= 13, (
+            f"Petstore APIPaths did not land: {outcome.asset_counts}"
         )
-        assert final_counts.get("APIPath", 0) >= base_paths + 1, (
-            "Assertion-only re-publish archived the first spec's APIPaths: "
-            f"base_paths={base_paths}, "
-            f"after_reuse_run={final_counts.get('APIPath', 0)} "
-            "(a full-diff run would have dropped to just the secondary spec's "
-            "paths — assertion-only must preserve all of them)"
+        # The no-delete signal: the canary APISpec and Petstore's APISpec both
+        # exist. A normal diff would have archived the canary, leaving only one.
+        assert outcome.asset_counts.get("APISpec", 0) >= 2, (
+            "Assertion-only re-publish archived the pre-existing canary APISpec "
+            f"({canary_qn}) — expected it to coexist with Petstore's spec, but "
+            f"only found {outcome.asset_counts.get('APISpec', 0)} APISpec(s). "
+            "A full-diff run would drop the canary; assertion-only must not."
         )
