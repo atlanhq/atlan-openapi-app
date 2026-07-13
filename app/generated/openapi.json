@@ -96,6 +96,26 @@
           "help": "Atlan connection to create or reuse.",
           "grid": 8
         }
+      },
+      "connection_usage": {
+        "type": "string",
+        "required": true,
+        "ui": {
+          "widget": "radio",
+          "label": "Connection usage",
+          "hidden": false,
+          "help": "CREATE a new connection (full diff), or REUSE an existing one (assertion-only publish: upsert only, never archives other assets).",
+          "grid": 8
+        },
+        "default": "CREATE",
+        "enum": [
+          "CREATE",
+          "REUSE"
+        ],
+        "enumNames": [
+          "Create",
+          "Reuse existing"
+        ]
       }
     },
     "anyOf": [
@@ -141,7 +161,8 @@
         "description": "Connection details",
         "id": "connection",
         "properties": [
-          "connection"
+          "connection",
+          "connection_usage"
         ]
       }
     ]

@@ -11,6 +11,28 @@ workflowType = name
 hasCredentialConfig = false
 metadata { ["release_model"] = "semver" }
 
+// CONNECT-55: replace the auto-generated publish node to add assertion-only
+// mode. Defining a "publish" key here REPLACES the default node (it does not
+// merge with the auto-generation layer), so the four cache / current-state
+// args the default node enables must be restated explicitly to preserve them —
+// only `assertion_only_enabled` is genuinely new.
+//
+// The connector emits `assertion_only_enabled` in its output (True when
+// connection_usage=REUSE); AE resolves the JSONPath at dispatch. When True,
+// publish-app skips the diff entirely and forwards the transformed rows as
+// pure upserts (no archival) — see atlan-publish-app assertion-only contract.
+extraNodes {
+  ["publish"] = new PublishNode {
+    args {
+      ["connection_cache_enabled"] = true
+      ["connection_cache_via_app_enabled"] = true
+      ["current_state_enabled"] = true
+      ["current_state_via_app_enabled"] = true
+      ["assertion_only_enabled"] = "$.extract.outputs.assertion_only_enabled"
+    }
+  }
+}
+
 uiConfig = new UIConfig {
   tasks {
     ["Configuration"] {
@@ -65,6 +87,18 @@ uiConfig = new UIConfig {
         ["connection"] = new ConnectionCreator {
           title = "Connection"
           helpText = "Atlan connection to create or reuse."
+          required = true
+        }
+        // CONNECT-55: CREATE runs the normal publish diff (archives assets no
+        // longer present). REUSE targets an existing connection that may be
+        // shared with other sources, so the connector derives assertion-only
+        // publish (upsert-only: no diff, no deletes) — see `assertion_only`
+        // wiring on the publish node below.
+        ["connection_usage"] = new Radio {
+          title = "Connection usage"
+          helpText = "CREATE a new connection (full diff), or REUSE an existing one (assertion-only publish: upsert only, never archives other assets)."
+          possibleValues { ["CREATE"] = "Create"; ["REUSE"] = "Reuse existing" }
+          default = "CREATE"
           required = true
         }
       }

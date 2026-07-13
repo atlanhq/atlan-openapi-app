@@ -78,6 +78,12 @@ class OpenAPIConnectorOutput(PublishInputMixin, Output):
     publish_completed: bool = False
     """True if the transformed file was uploaded to object storage."""
 
+    assertion_only_enabled: bool = False
+    """True when connection_usage=REUSE, signalling publish-app to run in
+    assertion-only mode: forward the transformed rows as pure upserts with no
+    diff and no archival. Read by the publish node via
+    ``$.extract.outputs.assertion_only_enabled`` (CONNECT-55)."""
+
 
 # =============================================================================
 # Task-level contracts: extract_spec

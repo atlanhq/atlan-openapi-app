@@ -52,6 +52,15 @@ class TestOpenAPIConnectorInput:
         assert decoded.checkpoint_dir == ""
         assert decoded.load_to_atlan is True
         assert decoded.publish_dry_run is False
+        # CONNECT-55: default is CREATE (normal full-diff publish path).
+        assert decoded.connection_usage == "CREATE"
+
+    def test_connection_usage_reuse_round_trips(self) -> None:
+        """connection_usage=REUSE survives round-trip — it drives the
+        connector's assertion-only publish signal (CONNECT-55)."""
+        original = OpenAPIConnectorInput(connection_usage="REUSE")
+        decoded = _round_trip(original, OpenAPIConnectorInput)
+        assert decoded.connection_usage == "REUSE"
 
     def test_round_trip_with_values(self) -> None:
         """All non-default values must survive round-trip."""
@@ -115,6 +124,19 @@ class TestOpenAPIConnectorOutput:
         assert decoded.output_file is None
         assert decoded.total_scanned == 0
         assert decoded.publish_completed is False
+        # CONNECT-55: default is False — the publish node reads this via
+        # `$.extract.outputs.assertion_only_enabled`, so it must always be
+        # present and default to the normal (full-diff) publish path.
+        assert decoded.assertion_only_enabled is False
+
+    def test_assertion_only_enabled_round_trips(self) -> None:
+        """assertion_only_enabled=True survives round-trip and is present in the
+        serialized payload — the publish node's JSONPath resolution fails
+        outright if the key is absent (CONNECT-55)."""
+        original = OpenAPIConnectorOutput(assertion_only_enabled=True)
+        assert "assertion_only_enabled" in original.model_dump()
+        decoded = _round_trip(original, OpenAPIConnectorOutput)
+        assert decoded.assertion_only_enabled is True
 
     def test_round_trip_with_values(self) -> None:
         """Non-default values survive round-trip."""

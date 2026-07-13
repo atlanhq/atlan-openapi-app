@@ -25,6 +25,8 @@ class AppInputContract(ExtractionInput):
     """Object key (filename) in the object store. Required when import_type='CLOUD'."""
     cloud_source: str = ""
     """Cloud storage credential (csa-connectors-objectstore). Required when import_type='CLOUD'."""
+    connection_usage: str = "CREATE"
+    """CREATE a new connection (full diff), or REUSE an existing one (assertion-only publish: upsert only, never archives other assets)."""
     output_dir: str = ""
     """Directory for output JSONL files."""
     checkpoint_dir: str = ""

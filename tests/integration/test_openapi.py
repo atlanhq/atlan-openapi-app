@@ -114,6 +114,57 @@ class TestOpenAPIConnectorExtraction:
         """No publish step should occur when load_to_atlan=False."""
         assert extraction_result.publish_completed is False
 
+    async def test_create_usage_is_not_assertion_only(
+        self, extraction_result: OpenAPIConnectorOutput
+    ) -> None:
+        """CONNECT-55: connection_usage=CREATE (the fixture) keeps the normal
+        full-diff publish path — assertion_only_enabled must be False."""
+        assert extraction_result.assertion_only_enabled is False
+
+    async def test_reuse_usage_enables_assertion_only(
+        self,
+        openapi_executor: "AppExecutor",
+        tmp_dir_class: Path,
+    ) -> None:
+        """CONNECT-55: connection_usage=REUSE makes the connector emit
+        assertion_only_enabled=True in its output, which the publish node reads
+        via `$.extract.outputs.assertion_only_enabled` to run publish-app in
+        assertion-only mode (upsert-only, no diff, no deletes)."""
+        output_dir = tmp_dir_class / "reuse_output"
+        output_dir.mkdir(exist_ok=True)
+
+        result = cast(
+            "OpenAPIConnectorOutput",
+            await openapi_executor.execute_app(
+                OpenAPIConnector,
+                OpenAPIConnectorInput(
+                    connection_usage="REUSE",
+                    connection=ConnectionRef.model_validate(
+                        {
+                            "typeName": "Connection",
+                            "attributes": {
+                                "qualifiedName": CONNECTION_QN,
+                                "name": CONNECTION_NAME,
+                                "category": "API",
+                                "adminGroups": ["admins"],
+                            },
+                        }
+                    ),
+                    spec_url=_SPEC_URL,
+                    output_dir=str(output_dir / "run1"),
+                    checkpoint_dir="",
+                    load_to_atlan=False,
+                ),
+                execution_id_prefix="test-openapi-reuse",
+            ),
+        )
+
+        assert result.assertion_only_enabled is True
+        # The connector still extracts and transforms normally — assertion-only
+        # only changes how publish-app consumes the output, not extraction.
+        assert result.api_spec_count >= 1
+        assert result.api_path_count >= 1
+
     async def test_output_file_exists(
         self, extraction_result: OpenAPIConnectorOutput, store_root: Path
     ) -> None:

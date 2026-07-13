@@ -549,11 +549,19 @@ class OpenAPIConnector(App):
                 value_summary=str(input.import_type),
             )
 
+        # CONNECT-55: REUSE targets an existing connection that may be shared
+        # with other sources, so publish must not diff/archive assets it didn't
+        # extract. Signal publish-app's assertion-only mode (upsert-only, no
+        # diff, no deletes). CREATE keeps the normal full-diff publish path.
+        assertion_only_enabled = input.connection_usage == "REUSE"
+
         self.logger.info(
-            "openapi connector starting connection_qualified_name=%s spec_urls=%s load_to_atlan=%s",
+            "openapi connector starting connection_qualified_name=%s spec_urls=%s load_to_atlan=%s connection_usage=%s assertion_only_enabled=%s",
             conn_qn,
             spec_urls,
             input.load_to_atlan,
+            input.connection_usage,
+            assertion_only_enabled,
         )
 
         # ================================================================
@@ -648,4 +656,5 @@ class OpenAPIConnector(App):
             output_file=output_file_ref,
             total_scanned=total_scanned,
             publish_completed=publish_completed,
+            assertion_only_enabled=assertion_only_enabled,
         )

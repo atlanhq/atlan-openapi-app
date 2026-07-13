@@ -1,0 +1,22 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "CONNECT-55 Secondary API",
+    "description": "A small spec whose title and paths are intentionally DISJOINT from the Swagger Petstore spec, so an assertion-only re-publish under a shared connection can prove that the Petstore assets are NOT archived (a normal-diff run would archive them).",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/widgets": {
+      "summary": "Widget collection",
+      "get": { "summary": "List widgets", "responses": { "200": { "description": "OK" } } }
+    },
+    "/gadgets": {
+      "summary": "Gadget collection",
+      "get": { "summary": "List gadgets", "responses": { "200": { "description": "OK" } } }
+    },
+    "/gizmos": {
+      "summary": "Gizmo collection",
+      "get": { "summary": "List gizmos", "responses": { "200": { "description": "OK" } } }
+    }
+  }
+}
