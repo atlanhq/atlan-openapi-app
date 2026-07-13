@@ -18,7 +18,6 @@
           "extraction_method": "{{extraction_method}}",
           "import_type": "{{import_type}}",
           "spec_url": "{{spec_url}}",
-          "spec_file": "{{spec_file}}",
           "spec_prefix": "{{spec_prefix}}",
           "spec_key": "{{spec_key}}",
           "cloud_source": "{{cloud_source}}",

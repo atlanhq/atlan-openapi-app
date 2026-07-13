@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from application_sdk.contracts.types import FileReference
 from application_sdk.templates.contracts import ExtractionInput
 
 
@@ -20,8 +19,6 @@ class AppInputContract(ExtractionInput):
     """Select how you want to provide the OpenAPI spec file to be imported."""
     spec_url: str = ""
     """Full URL to the JSON form of the OpenAPI specification."""
-    spec_file: FileReference | None = None
-    """Select the OpenAPI spec file containing metadata to import."""
     spec_prefix: str = ""
     """Enter the directory (path) within the object store from which to retrieve the OpenAPI spec file."""
     spec_key: str = ""

@@ -55,9 +55,14 @@ uiConfig = new UIConfig {
         ["import_type"] = new Radio {
           title = "Import spec from"
           helpText = "Select how you want to provide the OpenAPI spec file to be imported."
+          // The CSA reference also lists a (commented-out) DIRECT option backed
+          // by a hidden `spec_file` FileUploader. This App-Framework port omits
+          // both: DIRECT upload is unsupported, and a FileReference-typed
+          // manifest arg has no valid empty value (an unset `{{spec_file}}`
+          // substitutes to "" and fails FileReference validation, breaking
+          // argument decoding for every run).
           possibleValues {
             ["URL"] = "URL"
-            // ["DIRECT"] = "Direct file upload"  // parity with reference; DIRECT upload not supported here
             ["CLOUD"] = "Object storage"
           }
           default = "URL"
@@ -67,17 +72,6 @@ uiConfig = new UIConfig {
           required = true
           helpText = "Full URL to the JSON form of the OpenAPI specification."
           placeholderText = "https://petstore3.swagger.io/api/v3/openapi.json"
-        }
-        // Kept for contract parity with the reference (hidden). DIRECT file
-        // upload is not supported by this App-Framework port, so this input is
-        // never shown and the connector ignores it.
-        ["spec_file"] = new FileUploader {
-          title = "Spec file"
-          fileTypes { "application/json"; "application/zip"; "application/yaml" }
-          required = false
-          helpText = "Select the OpenAPI spec file containing metadata to import."
-          placeholderText = "Select OpenAPI JSON or ZIP file"
-          hide = true
         }
         ["spec_prefix"] = new TextInput {
           title = "Prefix (path)"
@@ -141,10 +135,6 @@ uiConfig = new UIConfig {
     new UIRule {
       whenInputs { ["import_type"] = "CLOUD" }
       required { "cloud_source"; "spec_prefix"; "spec_key" }
-    }
-    new UIRule {
-      whenInputs { ["import_type"] = "DIRECT" }
-      required { "spec_file" }
     }
     new UIRule {
       whenInputs { ["connection_usage"] = "REUSE" }

@@ -49,24 +49,6 @@
           "grid": 8
         }
       },
-      "spec_file": {
-        "type": "string",
-        "required": false,
-        "ui": {
-          "widget": "fileUpload",
-          "label": "Spec file",
-          "hidden": true,
-          "help": "Select the OpenAPI spec file containing metadata to import.",
-          "placeholder": "Select OpenAPI JSON or ZIP file",
-          "grid": 8,
-          "accept": [
-            "application/json",
-            "application/zip",
-            "application/yaml"
-          ],
-          "fileMetadata": true
-        }
-      },
       "spec_prefix": {
         "type": "string",
         "required": false,
@@ -175,16 +157,6 @@
       },
       {
         "properties": {
-          "import_type": {
-            "const": "DIRECT"
-          }
-        },
-        "required": [
-          "spec_file"
-        ]
-      },
-      {
-        "properties": {
           "connection_usage": {
             "const": "REUSE"
           }
@@ -213,7 +185,6 @@
           "extraction_method",
           "import_type",
           "spec_url",
-          "spec_file",
           "spec_prefix",
           "spec_key",
           "cloud_source"
