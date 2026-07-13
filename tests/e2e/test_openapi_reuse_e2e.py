@@ -106,6 +106,14 @@ class TestOpenAPIReuseAssertionOnlyE2E(OpenapiGeneratedE2EBase):
 
     ae_poll_interval_seconds = 30
     ae_poll_timeout_seconds = 1800
+    # Opt in to the harness stall guard: this suite runs two DAGs against ONE
+    # dedicated CI worker (docker-compose, not KEDA-autoscaled), so a queue with
+    # no poller means a real agent-name/task-queue mismatch, not a busy worker.
+    # Fail fast in ~3 min with an actionable message instead of hanging for the
+    # full ae_poll_timeout_seconds (30 min). Safe here precisely because the
+    # worker is dedicated; do NOT copy this onto suites that hit shared/
+    # autoscaled infra where legitimate pickup can take much longer.
+    ae_stall_grace_seconds = 180
     atlas_poll_interval_seconds = 30
     atlas_poll_timeout_seconds = 900
 
