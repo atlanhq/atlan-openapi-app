@@ -230,6 +230,18 @@
     },
     {
       "contract": "OpenAPIConnectorOutput",
+      "field": "artifacts",
+      "status": "active",
+      "type": "dict[str, Any] | None"
+    },
+    {
+      "contract": "OpenAPIConnectorOutput",
+      "field": "assertion_only_enabled",
+      "status": "active",
+      "type": "bool"
+    },
+    {
+      "contract": "OpenAPIConnectorOutput",
       "field": "connection_qualified_name",
       "status": "active",
       "type": "str"
@@ -242,9 +254,27 @@
     },
     {
       "contract": "OpenAPIConnectorOutput",
+      "field": "metrics",
+      "status": "active",
+      "type": "dict[str, Any] | None"
+    },
+    {
+      "contract": "OpenAPIConnectorOutput",
       "field": "output_file",
       "status": "active",
       "type": "FileReference | None"
+    },
+    {
+      "contract": "OpenAPIConnectorOutput",
+      "field": "output_path",
+      "status": "active",
+      "type": "str"
+    },
+    {
+      "contract": "OpenAPIConnectorOutput",
+      "field": "output_prefix",
+      "status": "active",
+      "type": "str"
     },
     {
       "contract": "OpenAPIConnectorOutput",
@@ -263,6 +293,12 @@
       "field": "staging_data_prefix",
       "status": "active",
       "type": "str"
+    },
+    {
+      "contract": "OpenAPIConnectorOutput",
+      "field": "status",
+      "status": "active",
+      "type": "OutputStatus"
     },
     {
       "contract": "OpenAPIConnectorOutput",
