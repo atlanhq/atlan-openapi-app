@@ -60,6 +60,11 @@ class TestOpenAPIE2E(OpenapiGeneratedE2EBase):
             connection=base.connection,
             credential=base.credential,
             spec_url="https://raw.githubusercontent.com/atlanhq/atlan-openapi-app/main/tests/integration/petstore3.json",
+            # This suite creates a fresh connection each run, so it must pin
+            # connection_usage=CREATE. The contract default is REUSE (matching
+            # the CSA package), which would take the assertion-only path and
+            # require a connection_qualified_name this create-flow never sets.
+            connection_usage="CREATE",
             # import_type defaults to "URL"; spec_prefix / spec_key /
             # cloud_source unused for direct-URL imports.
         )

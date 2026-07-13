@@ -60,6 +60,14 @@ T = TypeVar("T")
 # =============================================================================
 
 
+def _is_unsubstituted_placeholder(value: str) -> bool:
+    """True if a value still carries mustache braces from an unresolved manifest
+    template (e.g. ``"{{connection_qualified_name}}"``). Used to reject a REUSE
+    run that never had a real connection selected, before the placeholder leaks
+    into downstream object-store paths."""
+    return "{{" in value or "}}" in value
+
+
 def _has_valid_auth(credentials: dict[str, Any]) -> bool:
     """Return True if credentials have explicit key-based or role-based auth.
 
@@ -523,6 +531,21 @@ class OpenAPIConnector(App):
                     message="connection_qualified_name is required when connection_usage='REUSE'",
                     field="connection_qualified_name",
                     constraint="required when connection_usage='REUSE'",
+                )
+            # Guard against an unsubstituted manifest placeholder (e.g. a caller
+            # that runs REUSE without selecting a connection, so
+            # "{{connection_qualified_name}}" leaks through). Left unchecked it
+            # becomes a real-looking QN that only fails deep in publish with a
+            # cryptic FileNotFoundError on a path containing the braces.
+            if _is_unsubstituted_placeholder(conn_qn):
+                raise ConnectionRequiredError(
+                    message=(
+                        "connection_qualified_name is an unsubstituted placeholder "
+                        f"({conn_qn!r}) — REUSE requires an existing connection to be "
+                        "selected so its qualified name is provided."
+                    ),
+                    field="connection_qualified_name",
+                    constraint="must be a resolved connection qualified name",
                 )
             # Minimal ref: only the QN is needed to build child asset QNs. The
             # existing connection is left untouched (not emitted), so its
