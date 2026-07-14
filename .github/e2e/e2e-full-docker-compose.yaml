@@ -2,12 +2,15 @@
 # Merged on top of the SDK's base CI layer by the composite action.
 #
 # ATLAN_DEPLOYMENT_NAME drives the Temporal queue suffix via SDK _derive_task_queue:
-#   worker queue = atlan-openapi-e2e-full-ci-{GITHUB_RUN_ID}
-# The test's agent_spec() must produce the same suffix in agent_name so AE
-# dispatches to the queue the worker is listening on.
+#   worker queue = atlan-openapi-<deployment_name>
+# It is INHERITED from the sdr-e2e action's per-leg derivation
+# (e2e-full-ci-<run_id>[-<leg>], written to $GITHUB_ENV) so the worker and the
+# test's agent_spec() — which reads the same env via BaseE2ETest — produce the
+# same suffix and AE dispatches to the queue the worker listens on. Hard-coding
+# it here (dropping the leg suffix) would desync the two → "No Workers Running".
 
 services:
   atlan-app:
     environment:
       ATLAN_APP_MODULE: "app.connector:OpenAPIConnector"
-      ATLAN_DEPLOYMENT_NAME: "e2e-full-ci-${GITHUB_RUN_ID}"
+      ATLAN_DEPLOYMENT_NAME: "${ATLAN_DEPLOYMENT_NAME:-e2e-full-ci-${GITHUB_RUN_ID}}"

@@ -25,7 +25,6 @@ if not os.environ.get("ATLAN_BASE_URL") or not os.environ.get("ATLAN_API_KEY"):
 # installed SDK is older the test is cleanly skipped rather than erroring.
 try:
     from application_sdk.testing.e2e import RunMode  # noqa: E402
-    from application_sdk.testing.e2e.payload import AgentSpec  # noqa: E402
     from app.generated._e2e_base import OpenapiGeneratedE2EBase  # noqa: E402
     from app.generated._e2e_substitutions import OpenapiMustacheSubstitutions  # noqa: E402
 except ImportError as _exc:
@@ -51,8 +50,14 @@ class TestOpenAPIE2E(OpenapiGeneratedE2EBase):
     atlas_poll_interval_seconds = 30
     atlas_poll_timeout_seconds = 900
 
-    def agent_spec(self) -> AgentSpec:
-        return AgentSpec(agent_name=f"openapi-e2e-full-ci-{self.run_id}")
+    # NOTE: no agent_spec() override. BaseE2ETest.agent_spec derives the agent
+    # identity from the worker's own deployment env
+    # (atlan-{ATLAN_APPLICATION_NAME}-{ATLAN_DEPLOYMENT_NAME}), so it picks up
+    # the sdr-e2e per-leg ATLAN_DEPLOYMENT_NAME automatically and always matches
+    # the queue the worker polls. Hard-coding a run-id-keyed name here would pin
+    # the harness to the un-suffixed queue and desync it from the worker once the
+    # overlay inherits the per-leg value — see conformance T017. Local runs fall
+    # back to {connector}-{connection_name_prefix}-{run_id} via the base.
 
     def _mustache_substitutions(self) -> OpenapiMustacheSubstitutions:
         base = super()._mustache_substitutions()
