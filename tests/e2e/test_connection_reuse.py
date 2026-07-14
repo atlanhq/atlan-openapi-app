@@ -17,11 +17,12 @@ asset** directly via pyatlan, waits until writes succeed, then runs ONE
 REUSE/assertion-only DAG for Petstore. Because assertion-only never archives,
 the canary must survive — a normal full-diff publish would archive it (it isn't
 in Petstore's extraction). CREATE-mode publish is covered by
-``test_openapi_e2e``.
+``test_connection_create``.
 
-This suite is independent of ``test_openapi_e2e`` (its own seeded connection and
-its own AE workflow slug), so the two can run concurrently against the shared
-CI worker.
+This suite is independent of ``test_connection_create`` (its own seeded
+connection and its own AE workflow slug), and the matrix runs each suite as its
+own leg with a dedicated worker + Temporal queue, so the two run concurrently
+without sharing state.
 
 Requires ATLAN_BASE_URL + ATLAN_API_KEY. The module-level guard skips the test
 when those env vars are absent, so it never runs accidentally in local or CI
@@ -47,7 +48,6 @@ if not os.environ.get("ATLAN_BASE_URL") or not os.environ.get("ATLAN_API_KEY"):
 # installed SDK is older the test is cleanly skipped rather than erroring.
 try:
     from application_sdk.testing.e2e import RunMode  # noqa: E402
-    from application_sdk.testing.e2e.payload import AgentSpec  # noqa: E402
     from app.generated._e2e_base import OpenapiGeneratedE2EBase  # noqa: E402
     from app.generated._e2e_substitutions import OpenapiMustacheSubstitutions  # noqa: E402
 except ImportError as _exc:
@@ -79,12 +79,13 @@ class _ReuseSubstitutions(OpenapiMustacheSubstitutions):
 
 
 @pytest.mark.e2e
-class TestOpenAPIReuseAssertionOnlyE2E(OpenapiGeneratedE2EBase):
-    # Name-derived attrs come from OpenapiGeneratedE2EBase. agent_spec() must
-    # still resolve to the shared CI worker's queue (see agent_spec below), but
-    # a distinct connection_name_prefix gives this suite its OWN AE workflow slug
-    # so it doesn't share versioned state with test_openapi_e2e — the two are
-    # fully independent and can run concurrently.
+class TestConnectionReuse(OpenapiGeneratedE2EBase):
+    # Name-derived attrs come from OpenapiGeneratedE2EBase. agent_spec() is
+    # inherited: the base harness derives the worker queue from
+    # ATLAN_APPLICATION_NAME + ATLAN_DEPLOYMENT_NAME, and the matrix gives this
+    # leg its own per-leg ATLAN_DEPLOYMENT_NAME (hence its own worker + queue).
+    # A distinct connection_name_prefix additionally gives this suite its OWN AE
+    # workflow slug, so it never shares versioned state with test_connection_create.
     connection_name_prefix = "reuse-e2e-full-ci"
 
     mode = RunMode.AGENT
@@ -100,14 +101,7 @@ class TestOpenAPIReuseAssertionOnlyE2E(OpenapiGeneratedE2EBase):
     ae_poll_timeout_seconds = 1800
     atlas_poll_interval_seconds = 30
     atlas_poll_timeout_seconds = 900
-    # inherits ae_stall_grace_seconds = 180 (dedicated CI worker).
-
-    def agent_spec(self) -> AgentSpec:
-        # Must resolve to the queue the single CI worker polls
-        # (atlan-{ATLAN_APPLICATION_NAME}-{ATLAN_DEPLOYMENT_NAME} =
-        # atlan-openapi-e2e-full-ci-<run_id>). Shared with test_openapi_e2e; the
-        # persistent worker serves both suites' workflows concurrently.
-        return AgentSpec(agent_name=f"openapi-e2e-full-ci-{self.run_id}")
+    # inherits ae_stall_grace_seconds = 180 (dedicated per-leg CI worker).
 
     def _mustache_substitutions(self) -> _ReuseSubstitutions:
         base = super()._mustache_substitutions()

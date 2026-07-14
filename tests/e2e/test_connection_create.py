@@ -25,7 +25,6 @@ if not os.environ.get("ATLAN_BASE_URL") or not os.environ.get("ATLAN_API_KEY"):
 # installed SDK is older the test is cleanly skipped rather than erroring.
 try:
     from application_sdk.testing.e2e import RunMode  # noqa: E402
-    from application_sdk.testing.e2e.payload import AgentSpec  # noqa: E402
     from app.generated._e2e_base import OpenapiGeneratedE2EBase  # noqa: E402
     from app.generated._e2e_substitutions import OpenapiMustacheSubstitutions  # noqa: E402
 except ImportError as _exc:
@@ -35,11 +34,15 @@ except ImportError as _exc:
 
 
 @pytest.mark.e2e
-class TestOpenAPIE2E(OpenapiGeneratedE2EBase):
+class TestConnectionCreate(OpenapiGeneratedE2EBase):
     # Name-derived attrs (connector_short_name, connection_type,
     # argo_package_name, argo_template_name, app_service_url) come from
     # OpenapiGeneratedE2EBase. The base harness builds the connection QN
     # as default/{connection_type}/{epoch} automatically.
+    #
+    # agent_spec() is inherited: the base harness derives the worker queue from
+    # ATLAN_APPLICATION_NAME + ATLAN_DEPLOYMENT_NAME, so this leg's extract node
+    # lands on the per-leg queue the CI action provisions (one worker per leg).
 
     mode = RunMode.AGENT
 
@@ -50,9 +53,6 @@ class TestOpenAPIE2E(OpenapiGeneratedE2EBase):
     ae_poll_timeout_seconds = 1800
     atlas_poll_interval_seconds = 30
     atlas_poll_timeout_seconds = 900
-
-    def agent_spec(self) -> AgentSpec:
-        return AgentSpec(agent_name=f"openapi-e2e-full-ci-{self.run_id}")
 
     def _mustache_substitutions(self) -> OpenapiMustacheSubstitutions:
         base = super()._mustache_substitutions()
