@@ -94,9 +94,4 @@ jobs:
       # the first adopter + confirmed end-to-end proof of the boundary
       # crossing.
       two-store: true
-      # Our two e2e suites (TestOpenAPIE2E, TestOpenAPIReuseAssertionOnlyE2E)
-      # are mutually independent — each uses its own connection and AE workflow
-      # slug — so run them concurrently against the shared CI worker instead of
-      # back-to-back (~halves e2e wall-clock). Requires application-sdk#2668.
-      e2e-parallel-workers: "2"
     secrets: inherit
