@@ -236,6 +236,12 @@
     },
     {
       "contract": "OpenAPIConnectorOutput",
+      "field": "assertion_only_enabled",
+      "status": "active",
+      "type": "bool"
+    },
+    {
+      "contract": "OpenAPIConnectorOutput",
       "field": "connection_qualified_name",
       "status": "active",
       "type": "str"

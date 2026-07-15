@@ -42,8 +42,8 @@ make generate
 
 | Value | Required fields | Behaviour |
 |---|---|---|
-| `REUSE` | `connection_qualified_name` | Uses an existing Atlan connection. QN is passed through to the output. |
-| `CREATE` | `connection` (ConnectionRef) | Creates a new connection. A `Connection` entity is emitted in the JSONL output. |
+| `REUSE` (default) | `connection_qualified_name` (existing connection, selected via the connection picker) | Targets an existing connection that may be shared with other sources, so publish runs in **assertion-only mode** (upsert-only: no diff, no deletes). The connector emits `assertion_only_enabled=true` (forwarded to publish-app via `$.extract.outputs.assertion_only_enabled`) and does **not** re-emit the Connection entity, so the existing connection is never modified. |
+| `CREATE` | `connection` (ConnectionRef, new) | Creates the connection and runs the **normal full-diff publish**: assets no longer present in the spec are archived. |
 
 ### All input fields
 
@@ -55,7 +55,7 @@ make generate
 | `spec_prefix` | `str` | `""` | Object store directory prefix. Required when `import_type=CLOUD`. |
 | `spec_key` | `str` | `""` | Object key (filename) in the store. Required when `import_type=CLOUD`. |
 | `cloud_source` | `str` | `""` | Object storage credential ID. Required when `import_type=CLOUD`. |
-| `connection_usage` | `str` | `"REUSE"` | `CREATE` or `REUSE`. |
+| `connection_usage` | `str` | `"REUSE"` | `REUSE` (assertion-only publish: upsert only, never archives other assets) or `CREATE` (full-diff publish). |
 | `connection` | `ConnectionRef` | `None` | Connection to create. Required when `connection_usage=CREATE`. |
 | `connection_qualified_name` | `str` | `""` | Existing connection QN. Required when `connection_usage=REUSE`. |
 | `load_to_atlan` | `bool` | `true` | Upload transformed output and trigger publish-app via the AE DAG. |
@@ -75,6 +75,7 @@ make generate
 | `api_path_count` | `int` | Number of `APIPath` entities written. |
 | `total_scanned` | `int` | `api_spec_count + api_path_count`. |
 | `publish_completed` | `bool` | `true` if the upload step completed (file is in object storage). |
+| `assertion_only_enabled` | `bool` | `true` when `connection_usage=REUSE`. Read by the publish node via `$.extract.outputs.assertion_only_enabled` to run publish-app in assertion-only mode (no diff, no deletes). |
 | `output_file` | `FileReference` | Local path to the transformed JSONL file. |
 
 ---

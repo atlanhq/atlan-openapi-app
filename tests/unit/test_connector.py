@@ -152,3 +152,20 @@ class TestAvailableOperationsSorted:
         ops = records[0].available_operations
         assert ops == sorted(ops), f"operations not sorted: {ops}"
         assert set(ops) == {"GET", "POST", "DELETE"}
+
+
+class TestUnsubstitutedPlaceholder:
+    """REUSE must reject an unresolved manifest placeholder before it leaks into
+    object-store paths (CONNECT-55)."""
+
+    def test_detects_mustache_placeholder(self) -> None:
+        from app.connector import _is_unsubstituted_placeholder
+
+        assert _is_unsubstituted_placeholder("{{connection_qualified_name}}")
+        assert _is_unsubstituted_placeholder("default/api/{{epoch}}")
+
+    def test_real_qualified_name_is_not_a_placeholder(self) -> None:
+        from app.connector import _is_unsubstituted_placeholder
+
+        assert not _is_unsubstituted_placeholder("default/api/1783959234")
+        assert not _is_unsubstituted_placeholder("")

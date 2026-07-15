@@ -114,6 +114,69 @@ class TestOpenAPIConnectorExtraction:
         """No publish step should occur when load_to_atlan=False."""
         assert extraction_result.publish_completed is False
 
+    async def test_create_usage_is_not_assertion_only(
+        self, extraction_result: OpenAPIConnectorOutput
+    ) -> None:
+        """CONNECT-55: connection_usage=CREATE (the fixture) keeps the normal
+        full-diff publish path — assertion_only_enabled must be False."""
+        assert extraction_result.assertion_only_enabled is False
+
+    async def test_reuse_usage_enables_assertion_only(
+        self,
+        openapi_executor: "AppExecutor",
+        tmp_dir_class: Path,
+        store_root: Path,
+    ) -> None:
+        """CONNECT-55: connection_usage=REUSE selects an existing connection via
+        connection_qualified_name (not the ConnectionCreator) and makes the
+        connector emit assertion_only_enabled=True, which the publish node reads
+        via `$.extract.outputs.assertion_only_enabled` to run publish-app in
+        assertion-only mode (upsert-only, no diff, no deletes). On REUSE the
+        connector must NOT emit the Connection entity (the connection already
+        exists and must not be re-upserted)."""
+        output_dir = tmp_dir_class / "reuse_output"
+        output_dir.mkdir(exist_ok=True)
+
+        result = cast(
+            "OpenAPIConnectorOutput",
+            await openapi_executor.execute_app(
+                OpenAPIConnector,
+                OpenAPIConnectorInput(
+                    connection_usage="REUSE",
+                    connection_qualified_name=CONNECTION_QN,
+                    spec_url=_SPEC_URL,
+                    output_dir=str(output_dir / "run1"),
+                    checkpoint_dir="",
+                    load_to_atlan=False,
+                ),
+                execution_id_prefix="test-openapi-reuse",
+            ),
+        )
+
+        assert result.assertion_only_enabled is True
+        assert result.connection_qualified_name == CONNECTION_QN
+        # The connector still extracts and transforms normally — assertion-only
+        # only changes how publish-app consumes the output, not extraction.
+        assert result.api_spec_count >= 1
+        assert result.api_path_count >= 1
+
+        # REUSE must NOT emit the Connection entity — only its child assets.
+        assert result.output_file is not None
+        output_path = store_root / result.output_file.storage_path
+        type_names: set[str] = set()
+        with output_path.open() as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    record = orjson.loads(line)
+                    if "typeName" in record:
+                        type_names.add(record["typeName"])
+        assert "Connection" not in type_names, (
+            "REUSE must not re-emit the Connection entity"
+        )
+        assert "APISpec" in type_names
+        assert "APIPath" in type_names
+
     async def test_output_file_exists(
         self, extraction_result: OpenAPIConnectorOutput, store_root: Path
     ) -> None:

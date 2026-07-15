@@ -19,12 +19,12 @@
       },
       "import_type": {
         "type": "string",
-        "required": true,
+        "required": false,
         "ui": {
           "widget": "radio",
-          "label": "Import type",
+          "label": "Import spec from",
           "hidden": false,
-          "help": "How to provide the spec: 'URL' (HTTP fetch) or 'CLOUD' (object storage).",
+          "help": "Select how you want to provide the OpenAPI spec file to be imported.",
           "grid": 8
         },
         "default": "URL",
@@ -34,7 +34,7 @@
         ],
         "enumNames": [
           "URL",
-          "Cloud"
+          "Object storage"
         ]
       },
       "spec_url": {
@@ -42,9 +42,9 @@
         "required": true,
         "ui": {
           "widget": "input",
-          "label": "Spec URL",
+          "label": "Specification URL",
           "hidden": false,
-          "help": "URL to the OpenAPI spec JSON/YAML document. Required when import_type='URL'.",
+          "help": "Full URL to the JSON form of the OpenAPI specification.",
           "placeholder": "https://petstore3.swagger.io/api/v3/openapi.json",
           "grid": 8
         }
@@ -54,9 +54,9 @@
         "required": false,
         "ui": {
           "widget": "input",
-          "label": "Object store path",
+          "label": "Prefix (path)",
           "hidden": false,
-          "help": "Object store directory path. Required when import_type='CLOUD'.",
+          "help": "Enter the directory (path) within the object store from which to retrieve the OpenAPI spec file.",
           "placeholder": "path/to/file",
           "grid": 4
         }
@@ -66,9 +66,9 @@
         "required": false,
         "ui": {
           "widget": "input",
-          "label": "Object key",
+          "label": "Object key (filename)",
           "hidden": false,
-          "help": "Object key (filename) in the object store. Required when import_type='CLOUD'.",
+          "help": "Enter the object key (filename), including its extension, within the object store and prefix.",
           "placeholder": "openapi.json",
           "grid": 4
         }
@@ -78,13 +78,33 @@
         "required": true,
         "ui": {
           "widget": "credential",
-          "label": "Cloud source",
+          "label": "Import spec from",
           "hidden": false,
-          "help": "Cloud storage credential (csa-connectors-objectstore). Required when import_type='CLOUD'.",
+          "help": "Enter details for the object store from which to retrieve the OpenAPI spec containing metadata to be imported.",
           "grid": 8,
           "credentialType": "csa-connectors-objectstore",
           "isTestAuthenticationDisabled": true
         }
+      },
+      "connection_usage": {
+        "type": "string",
+        "required": true,
+        "ui": {
+          "widget": "radio",
+          "label": "Connection",
+          "hidden": false,
+          "help": "Whether to create a new connection to hold these API assets, or reuse an existing connection.",
+          "grid": 8
+        },
+        "default": "REUSE",
+        "enum": [
+          "CREATE",
+          "REUSE"
+        ],
+        "enumNames": [
+          "Create",
+          "Reuse"
+        ]
       },
       "connection": {
         "type": "string",
@@ -93,8 +113,22 @@
           "widget": "connection",
           "label": "Connection",
           "hidden": false,
-          "help": "Atlan connection to create or reuse.",
+          "help": "Enter details for a new connection to be created.",
           "grid": 8
+        }
+      },
+      "connection_qualified_name": {
+        "type": "string",
+        "required": true,
+        "ui": {
+          "widget": "connectionSelector",
+          "label": "Connection",
+          "hidden": false,
+          "help": "Select an existing connection to load assets into.",
+          "grid": 4,
+          "mode": "",
+          "start": 1,
+          "connectorName": "api"
         }
       }
     },
@@ -120,6 +154,26 @@
           "spec_prefix",
           "spec_key"
         ]
+      },
+      {
+        "properties": {
+          "connection_usage": {
+            "const": "REUSE"
+          }
+        },
+        "required": [
+          "connection_qualified_name"
+        ]
+      },
+      {
+        "properties": {
+          "connection_usage": {
+            "const": "CREATE"
+          }
+        },
+        "required": [
+          "connection"
+        ]
       }
     ],
     "steps": [
@@ -141,7 +195,9 @@
         "description": "Connection details",
         "id": "connection",
         "properties": [
-          "connection"
+          "connection_usage",
+          "connection",
+          "connection_qualified_name"
         ]
       }
     ]

@@ -20,7 +20,9 @@
           "spec_url": "{{spec_url}}",
           "spec_prefix": "{{spec_prefix}}",
           "spec_key": "{{spec_key}}",
-          "cloud_source": "{{cloud_source}}"
+          "cloud_source": "{{cloud_source}}",
+          "connection_usage": "{{connection_usage}}",
+          "connection_qualified_name": "{{connection_qualified_name}}"
         }
       },
       "error_handling": {
@@ -46,7 +48,8 @@
           "connection_cache_enabled": true,
           "connection_cache_via_app_enabled": true,
           "current_state_enabled": true,
-          "current_state_via_app_enabled": true
+          "current_state_via_app_enabled": true,
+          "assertion_only_enabled": "$.extract.outputs.assertion_only_enabled"
         }
       },
       "depends_on": {

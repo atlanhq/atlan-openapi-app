@@ -34,11 +34,15 @@ except ImportError as _exc:
 
 
 @pytest.mark.e2e
-class TestOpenAPIE2E(OpenapiGeneratedE2EBase):
+class TestConnectionCreate(OpenapiGeneratedE2EBase):
     # Name-derived attrs (connector_short_name, connection_type,
     # argo_package_name, argo_template_name, app_service_url) come from
     # OpenapiGeneratedE2EBase. The base harness builds the connection QN
     # as default/{connection_type}/{epoch} automatically.
+    #
+    # agent_spec() is inherited: the base harness derives the worker queue from
+    # ATLAN_APPLICATION_NAME + ATLAN_DEPLOYMENT_NAME, so this leg's extract node
+    # lands on the per-leg queue the CI action provisions (one worker per leg).
 
     mode = RunMode.AGENT
 
@@ -50,21 +54,17 @@ class TestOpenAPIE2E(OpenapiGeneratedE2EBase):
     atlas_poll_interval_seconds = 30
     atlas_poll_timeout_seconds = 900
 
-    # NOTE: no agent_spec() override. BaseE2ETest.agent_spec derives the agent
-    # identity from the worker's own deployment env
-    # (atlan-{ATLAN_APPLICATION_NAME}-{ATLAN_DEPLOYMENT_NAME}), so it picks up
-    # the sdr-e2e per-leg ATLAN_DEPLOYMENT_NAME automatically and always matches
-    # the queue the worker polls. Hard-coding a run-id-keyed name here would pin
-    # the harness to the un-suffixed queue and desync it from the worker once the
-    # overlay inherits the per-leg value — see conformance T017. Local runs fall
-    # back to {connector}-{connection_name_prefix}-{run_id} via the base.
-
     def _mustache_substitutions(self) -> OpenapiMustacheSubstitutions:
         base = super()._mustache_substitutions()
         return OpenapiMustacheSubstitutions(
             connection=base.connection,
             credential=base.credential,
             spec_url="https://raw.githubusercontent.com/atlanhq/atlan-openapi-app/main/tests/integration/petstore3.json",
+            # This suite creates a fresh connection each run, so it must pin
+            # connection_usage=CREATE. The contract default is REUSE (matching
+            # the CSA package), which would take the assertion-only path and
+            # require a connection_qualified_name this create-flow never sets.
+            connection_usage="CREATE",
             # import_type defaults to "URL"; spec_prefix / spec_key /
             # cloud_source unused for direct-URL imports.
         )

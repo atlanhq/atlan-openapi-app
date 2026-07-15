@@ -23,7 +23,7 @@ from typing import Any, TypeVar
 import msgspec
 from application_sdk.app import App, task
 from application_sdk.contracts.storage import UploadInput
-from application_sdk.contracts.types import FileReference, StorageTier
+from application_sdk.contracts.types import ConnectionRef, FileReference, StorageTier
 from application_sdk.errors import InternalError
 from app.errors import (
     CloudSpecLocationRequiredError,
@@ -58,6 +58,14 @@ T = TypeVar("T")
 # =============================================================================
 # Module-level constants
 # =============================================================================
+
+
+def _is_unsubstituted_placeholder(value: str) -> bool:
+    """True if a value still carries mustache braces from an unresolved manifest
+    template (e.g. ``"{{connection_qualified_name}}"``). Used to reject a REUSE
+    run that never had a real connection selected, before the placeholder leaks
+    into downstream object-store paths."""
+    return "{{" in value or "}}" in value
 
 
 def _has_valid_auth(credentials: dict[str, Any]) -> bool:
@@ -287,7 +295,10 @@ def _transform_blocking(
     api_path_count = 0
 
     with output_file.open("wb") as out_f:
-        out_f.write(map_connection(connection).to_nested_bytes() + b"\n")
+        # CONNECT-55: on REUSE (emit_connection=False) the connection already
+        # exists and must not be re-upserted — emit only its child assets.
+        if input.emit_connection:
+            out_f.write(map_connection(connection).to_nested_bytes() + b"\n")
 
         # Emit APISpec records
         for record in _iter_jsonl(input.api_spec_file, OpenAPISpecRecord):
@@ -505,14 +516,56 @@ class OpenAPIConnector(App):
         3. transform — map to Atlan Atlas entities (if records were extracted)
         4. publish — sync to Atlan via publish-app (if load_to_atlan=True)
         """
-        connection = input.connection
-        conn_qn = connection.attributes.qualified_name
-        if not conn_qn:
-            raise ConnectionRequiredError(
-                message="connection.qualified_name is required",
-                field="connection",
-                constraint="required",
+        # CONNECT-55: resolve the connection per connection_usage.
+        #  * CREATE → build a NEW connection from the ConnectionCreator input,
+        #    emit the Connection entity, and run the normal full-diff publish.
+        #  * REUSE  → target an EXISTING connection selected via
+        #    connection_qualified_name. Do NOT re-emit/modify it, and signal
+        #    publish-app's assertion-only mode (upsert-only: no diff, no deletes)
+        #    so assets owned by other sources in that shared connection are never
+        #    archived. The existing connection must already exist in Atlan.
+        if input.connection_usage == "REUSE":
+            conn_qn = input.connection_qualified_name
+            if not conn_qn:
+                raise ConnectionRequiredError(
+                    message="connection_qualified_name is required when connection_usage='REUSE'",
+                    field="connection_qualified_name",
+                    constraint="required when connection_usage='REUSE'",
+                )
+            # Guard against an unsubstituted manifest placeholder (e.g. a caller
+            # that runs REUSE without selecting a connection, so
+            # "{{connection_qualified_name}}" leaks through). Left unchecked it
+            # becomes a real-looking QN that only fails deep in publish with a
+            # cryptic FileNotFoundError on a path containing the braces.
+            if _is_unsubstituted_placeholder(conn_qn):
+                raise ConnectionRequiredError(
+                    message=(
+                        "connection_qualified_name is an unsubstituted placeholder "
+                        f"({conn_qn!r}) — REUSE requires an existing connection to be "
+                        "selected so its qualified name is provided."
+                    ),
+                    field="connection_qualified_name",
+                    constraint="must be a resolved connection qualified name",
+                )
+            # Minimal ref: only the QN is needed to build child asset QNs. The
+            # existing connection is left untouched (not emitted), so its
+            # attributes/ACLs are never overwritten by a partial upsert.
+            connection = ConnectionRef.model_validate(
+                {"typeName": "Connection", "attributes": {"qualifiedName": conn_qn}}
             )
+            emit_connection = False
+            assertion_only_enabled = True
+        else:  # CREATE (default path)
+            connection = input.connection
+            conn_qn = connection.attributes.qualified_name if connection else ""
+            if not conn_qn:
+                raise ConnectionRequiredError(
+                    message="connection.qualified_name is required when connection_usage='CREATE'",
+                    field="connection",
+                    constraint="required when connection_usage='CREATE'",
+                )
+            emit_connection = True
+            assertion_only_enabled = False
 
         if input.import_type == "CLOUD":
             if not input.spec_prefix and not input.spec_key:
@@ -550,10 +603,12 @@ class OpenAPIConnector(App):
             )
 
         self.logger.info(
-            "openapi connector starting connection_qualified_name=%s spec_urls=%s load_to_atlan=%s",
+            "openapi connector starting connection_qualified_name=%s spec_urls=%s load_to_atlan=%s connection_usage=%s assertion_only_enabled=%s",
             conn_qn,
             spec_urls,
             input.load_to_atlan,
+            input.connection_usage,
+            assertion_only_enabled,
         )
 
         # ================================================================
@@ -592,6 +647,7 @@ class OpenAPIConnector(App):
                         api_path_file=extract_result.api_path_file,
                         connection=connection,
                         connection_qualified_name=conn_qn,
+                        emit_connection=emit_connection,
                         workflow_id=self.run_id,
                         workflow_type=self.context.app_name,
                         workflow_run_at_ms=workflow_run_at_ms,
@@ -648,4 +704,5 @@ class OpenAPIConnector(App):
             output_file=output_file_ref,
             total_scanned=total_scanned,
             publish_completed=publish_completed,
+            assertion_only_enabled=assertion_only_enabled,
         )
