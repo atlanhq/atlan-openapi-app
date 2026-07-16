@@ -1,7 +1,5 @@
 amends "@app-contract-toolkit/Credential.pkl"
 
-import "@app-contract-toolkit/Config.pkl"
-
 name = "csa-connectors-objectstore"
 source = "Object Store"
 icon = "http://assets.atlan.com/assets/ph-shapes-light.svg"
@@ -15,39 +13,39 @@ options {
   ["s3"] = new NestedCredentialInput {
     optionLabel = "S3"
     inputs {
-      ["username"] = new Config.TextInput {
+      ["username"] = new TextInput {
         title = "AWS access key"
         helpText = "Enter your AWS access key."
         width = 4
       }
-      ["password"] = new Config.PasswordInput {
+      ["password"] = new PasswordInput {
         title = "AWS secret key"
         helpText = "Enter your AWS secret key."
         width = 4
       }
-      ["extra"] = new Config.NestedInput {
+      ["extra"] = new NestedInput {
         title = "S3 details"
         inputs {
-          ["aws_role_arn"] = new Config.TextInput {
+          ["aws_role_arn"] = new TextInput {
             title = "AWS Role ARN"
             helpText = "ARN of the AWS role to assume"
             placeholderText = "arn:aws:iam::123456789012:role/roleName"
             width = 8
             validationRules {
-              new Dynamic {
+              new ValidationRule {
                 pattern = #"^arn:aws:iam::\d{12}:role/.+"#
                 message = "Please enter a valid role ARN"
                 trigger = "blur"
               }
             }
           }
-          ["region"] = new Config.TextInput {
+          ["region"] = new TextInput {
             title = "Region"
             helpText = "Enter your AWS region."
             placeholderText = "us-west-1"
             width = 4
           }
-          ["s3_bucket"] = new Config.TextInput {
+          ["s3_bucket"] = new TextInput {
             title = "Bucket"
             helpText = "Enter the bucket from which to retrieve the object store object(s)."
             placeholderText = "bucket-name"
@@ -60,20 +58,20 @@ options {
   ["gcs"] = new NestedCredentialInput {
     optionLabel = "GCS"
     inputs {
-      ["username"] = new Config.TextInput {
+      ["username"] = new TextInput {
         title = "Project ID"
         helpText = "Enter the ID of the GCP project."
         width = 4
       }
-      ["password"] = new Config.PasswordInput {
+      ["password"] = new PasswordInput {
         title = "Service account JSON"
         helpText = "Enter the JSON for your service account credentials."
         width = 8
       }
-      ["extra"] = new Config.NestedInput {
+      ["extra"] = new NestedInput {
         title = "GCS details"
         inputs {
-          ["gcs_bucket"] = new Config.TextInput {
+          ["gcs_bucket"] = new TextInput {
             title = "Bucket"
             helpText = "Enter the bucket from which to retrieve the object store object(s)."
             placeholderText = "bucket-name"
@@ -86,30 +84,30 @@ options {
   ["adls"] = new NestedCredentialInput {
     optionLabel = "ADLS"
     inputs {
-      ["username"] = new Config.TextInput {
+      ["username"] = new TextInput {
         title = "Azure client ID"
         helpText = "Enter the unique application (client) ID assigned to your app by Azure AD when the app was registered."
         width = 4
       }
-      ["password"] = new Config.PasswordInput {
+      ["password"] = new PasswordInput {
         title = "Azure client secret"
         helpText = "Enter your client secret."
         width = 4
       }
-      ["extra"] = new Config.NestedInput {
+      ["extra"] = new NestedInput {
         title = "ADLS details"
         inputs {
-          ["azure_tenant_id"] = new Config.PasswordInput {
+          ["azure_tenant_id"] = new PasswordInput {
             title = "Azure tenant ID"
             helpText = "Enter the unique identifier of the Azure Active Directory instance."
             width = 4
           }
-          ["storage_account_name"] = new Config.TextInput {
+          ["storage_account_name"] = new TextInput {
             title = "Storage account name"
             helpText = "Enter the name of your storage account."
             width = 4
           }
-          ["adls_container"] = new Config.TextInput {
+          ["adls_container"] = new TextInput {
             title = "Container"
             helpText = "Enter the container from which to retrieve the object store object(s)."
             placeholderText = "container-name"
