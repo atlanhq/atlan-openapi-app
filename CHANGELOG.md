@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.5.1 (July 16, 2026)
+
+Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.5.0...v0.5.1
+
+### Bug Fixes
+
+- restore app_id in contract and add poe generate task (#241) (by @cmgrote in [3d1bc2e](https://github.com/atlanhq/atlan-openapi-app/commit/3d1bc2e))
+
+
 ## v0.5.0 (July 16, 2026)
 
 Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.4.0...v0.5.0
