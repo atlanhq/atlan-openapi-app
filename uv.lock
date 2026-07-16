@@ -724,7 +724,7 @@ wheels = [
 
 [[package]]
 name = "fastapi"
-version = "0.139.1"
+version = "0.139.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
@@ -733,9 +733,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "typing-inspection" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d0/71/f4cfcd72fd94af40d1c76141b69c3d27acaa3641e8fd64872929ff6998b9/fastapi-0.139.1.tar.gz", hash = "sha256:99461bde7ac3fc34c78443da1f4dad3ca8f3182580029a2827692db216a8d7ae", size = 422782, upload-time = "2026-07-16T09:18:34.222Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cd/95/d3f0ae10836324a2eab98a52b61210ac609f08200bf4bb0dc8132d32f78a/fastapi-0.139.2.tar.gz", hash = "sha256:333145a6891e9b5b3cfceb69baf817e8240cde4d4588ae5a10bf56ffacb6255e", size = 423428, upload-time = "2026-07-16T15:06:17.912Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b4/4d/73d2e5e891d56722f5b6def27f67e91332342a18468f2ea20aa5da9ff64d/fastapi-0.139.1-py3-none-any.whl", hash = "sha256:17faa81907751a8a85cd44c46f37fb576bde0078cb37de40bf1cd55de7104d87", size = 130147, upload-time = "2026-07-16T09:18:32.723Z" },
+    { url = "https://files.pythonhosted.org/packages/5f/c7/cb03251d9dfb177246a9809a76f189d21df32dbd4a845951881d11323b7f/fastapi-0.139.2-py3-none-any.whl", hash = "sha256:b9ad015a835173d59865e2f5d8296fbc2b317bf56a2ba1a5bfbdd03de2fd4b1c", size = 130234, upload-time = "2026-07-16T15:06:19.557Z" },
 ]
 
 [package.optional-dependencies]
@@ -894,11 +894,11 @@ wheels = [
 
 [[package]]
 name = "filelock"
-version = "3.30.0"
+version = "3.30.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/83/2b/8b6480a70a647035334a604d0931926de4b5cd1f57835d45ad5eed2b1a1e/filelock-3.30.0.tar.gz", hash = "sha256:1774e682dbe443bd60f9609162fc596e2c80dc84ffc2957068953406d0520090", size = 174927, upload-time = "2026-07-16T03:53:58.152Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/95/b7/e82e2bf111ba6ea135062e556f2ed7f4ff1c17a6c385e95ffddd99885535/filelock-3.30.1.tar.gz", hash = "sha256:6ad1b1ec6a5e2c91e02979b7d1096e5e964d83ad8a55679bacd1d96f917fda6e", size = 176008, upload-time = "2026-07-16T16:59:22.201Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/52/af/9b01bcf5c91e81899bb890b87bd9077732a9b3365c098e67fe77958c39ed/filelock-3.30.0-py3-none-any.whl", hash = "sha256:40632998f0772e64183bb819f086a1b9def6be1090cf1dcb9d45f46806ef279b", size = 93131, upload-time = "2026-07-16T03:53:56.727Z" },
+    { url = "https://files.pythonhosted.org/packages/90/5e/6060a5791d3d5b54aae21c510eb2f76a51e1b28c2122cc1e39b12237e2e7/filelock-3.30.1-py3-none-any.whl", hash = "sha256:69b98bab51bed4c86b141ef338f85ca07937573e8a7798f7fe6a31ccd94b9338", size = 93698, upload-time = "2026-07-16T16:59:20.727Z" },
 ]
 
 [[package]]
