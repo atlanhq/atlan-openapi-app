@@ -57,6 +57,11 @@ addopts = "-m 'not cloud_integration and not azure_integration'"
 download-components = "echo 'No Dapr components needed for OpenAPI connector'"
 start-deps = "echo 'No external deps needed — Temporal runs embedded in pytest'"
 stop-deps = "echo 'No external deps to stop'"
+# Regenerate atlan.yaml / app.yaml / app/generated/ from the pkl contract.
+# Mirrors the Makefile `generate` target. Required by the SDK Certify step
+# (build-and-publish-app.yaml runs `uv run poe generate` and hard-fails if the
+# task is missing), which gates every marketplace publish.
+generate = "pkl eval --project-dir contract -m . contract/app.pkl contract/csa-connectors-objectstore.pkl"
 
 [tool.ruff.lint]
 extend-select = ["G001", "G003", "G004", "T201", "LOG009"]

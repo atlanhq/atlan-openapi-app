@@ -9,7 +9,16 @@ connector = Connectors.API
 icon = "http://assets.atlan.com/assets/apispec.png"
 workflowType = name
 hasCredentialConfig = false
-metadata { ["release_model"] = "semver" }
+// app_id maps the contract to its Global Marketplace app record. It is emitted
+// as a top-level `app_id:` key in atlan.yaml and read by the publish step
+// (application-sdk build-and-publish-app.yaml → parse_atlan_yaml.py). Without
+// it the publish POST sends an empty app_id and the GM returns 404, silently
+// breaking every semver release (regression introduced when atlan.yaml became
+// fully pkl-generated; see CONNECT release-pipeline fix).
+metadata {
+  ["release_model"] = "semver"
+  ["app_id"] = "019d1f6b-6fea-7db3-96d8-e61e159d0351"
+}
 
 // CONNECT-55: replace the auto-generated publish node to add assertion-only
 // mode. Defining a "publish" key here REPLACES the default node (it does not
