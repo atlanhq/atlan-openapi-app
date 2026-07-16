@@ -16,3 +16,4 @@ entrypoints:
   package_id: '@atlan/openapi'
   marketplace_card: true
 release_model: semver
+app_id: 019d1f6b-6fea-7db3-96d8-e61e159d0351
