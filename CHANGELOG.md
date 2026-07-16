@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.5.0 (July 16, 2026)
+
+Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.4.0...v0.5.0
+
+### Features
+
+- migrate tests.yaml to tests-reusable + services-script hook (#134) (by @cmgrote in [ddc79ef](https://github.com/atlanhq/atlan-openapi-app/commit/ddc79ef))
+- assertion-only publish on connection_usage=REUSE (CONNECT-55) (#219) (by @cmgrote in [9ad1117](https://github.com/atlanhq/atlan-openapi-app/commit/9ad1117))
+
+### Bug Fixes
+
+- resolve E018 conformance warnings with domain-specific error subclasses (#133) (by @cmgrote in [c80dad5](https://github.com/atlanhq/atlan-openapi-app/commit/c80dad5))
+- regenerate manifest for app-contract-toolkit 0.14.2 (#170) (by @vaibhavatlan in [133e4e7](https://github.com/atlanhq/atlan-openapi-app/commit/133e4e7))
+- remediate conformance findings across CI, contracts, and asset mapping (#203) (by @cmgrote in [d170c85](https://github.com/atlanhq/atlan-openapi-app/commit/d170c85))
+- inherit per-leg ATLAN_DEPLOYMENT_NAME (overlay + agent_spec) (#226) (by @cmgrote in [46b880e](https://github.com/atlanhq/atlan-openapi-app/commit/46b880e))
+
+
 ## v0.4.0 (June 03, 2026)
 
 Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.3.0...v0.4.0
