@@ -118,19 +118,6 @@ class TestConnectionReuse(OpenapiGeneratedE2EBase):
     # _credential_body() inherits BaseE2ETest default of None — Petstore is a
     # public URL that needs no authentication.
 
-    def test_full_dag_runs_end_to_end(self) -> None:
-        """Override the base single-run scenario.
-
-        A bare REUSE run has no connection to reuse (assertion-only never creates
-        one). The end-to-end REUSE proof lives in
-        ``test_reuse_assertion_only_publishes_without_archiving``, which seeds the
-        connection first.
-        """
-        pytest.skip(
-            "REUSE requires a pre-existing connection; covered by "
-            "test_reuse_assertion_only_publishes_without_archiving"
-        )
-
     def _seed_connection_and_canary(self) -> str:
         """Create the connection + a foreign canary APISpec via pyatlan and
         return the canary's qualified name.
@@ -195,12 +182,14 @@ class TestConnectionReuse(OpenapiGeneratedE2EBase):
                 logger.info("canary write not yet permitted; retrying")
                 time.sleep(self.atlas_poll_interval_seconds)
 
-    def test_reuse_assertion_only_publishes_without_archiving(self) -> None:
-        """Assertion-only REUSE into a seeded connection must not archive the
-        connection's pre-existing (foreign) assets.
+    def test_full_dag_runs_end_to_end(self) -> None:
+        """REUSE full-DAG e2e: an assertion-only publish into a seeded connection
+        must not archive that connection's pre-existing (foreign) assets.
 
-        Seed connection C + a canary APISpec via pyatlan, then run ONE
-        REUSE/assertion-only DAG for Petstore into C. Because assertion-only
+        Overrides the base single-run scenario, which can't run bare here: REUSE
+        targets an *existing* connection (assertion-only never creates one), so
+        this seeds connection C + a canary APISpec via pyatlan first, then runs
+        ONE REUSE/assertion-only DAG for Petstore into C. Because assertion-only
         skips the diff, the canary survives and coexists with Petstore's assets
         (APISpec==2). A normal full-diff run would archive the canary
         (APISpec==1), since it isn't in Petstore's extraction.
