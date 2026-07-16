@@ -118,18 +118,13 @@ class TestConnectionReuse(OpenapiGeneratedE2EBase):
     # _credential_body() inherits BaseE2ETest default of None — Petstore is a
     # public URL that needs no authentication.
 
-    def test_full_dag_runs_end_to_end(self) -> None:
-        """Override the base single-run scenario.
-
-        A bare REUSE run has no connection to reuse (assertion-only never creates
-        one). The end-to-end REUSE proof lives in
-        ``test_reuse_assertion_only_publishes_without_archiving``, which seeds the
-        connection first.
-        """
-        pytest.skip(
-            "REUSE requires a pre-existing connection; covered by "
-            "test_reuse_assertion_only_publishes_without_archiving"
-        )
+    # De-select the inherited single-run scenario. A bare REUSE run has no
+    # connection to reuse (assertion-only never creates one); the end-to-end
+    # REUSE proof lives in test_reuse_assertion_only_publishes_without_archiving,
+    # which seeds the connection first. Assigning the inherited test name to None
+    # is pytest's idiom for removing a base-class test from a subclass, so there
+    # is no assertion-free test body to collect.
+    test_full_dag_runs_end_to_end = None
 
     def _seed_connection_and_canary(self) -> str:
         """Create the connection + a foreign canary APISpec via pyatlan and
