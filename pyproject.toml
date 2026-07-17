@@ -1,6 +1,6 @@
 [project]
 name = "openapi"
-version = "0.5.1"
+version = "0.5.2"
 description = "OpenAPI Spec Loader connector"
 requires-python = ">=3.11"
 dependencies = [
