@@ -1,0 +1,410 @@
+{
+  "icon": "http://assets.atlan.com/assets/apispec.png",
+  "helpdeskLink": "",
+  "logo": "http://assets.atlan.com/assets/apispec.png",
+  "connector": "api",
+  "defaultConnectorType": "rest",
+  "config": {
+    "properties": {
+      "name": {
+        "type": "string",
+        "required": false,
+        "ui": {
+          "label": "Name",
+          "hidden": true,
+          "placeholder": "Host Name"
+        }
+      },
+      "connector": {
+        "type": "string",
+        "required": false,
+        "ui": {
+          "label": "Connector",
+          "hidden": true,
+          "placeholder": "Connector"
+        }
+      },
+      "connectorType": {
+        "type": "string",
+        "required": false,
+        "ui": {
+          "key": "_host",
+          "label": "connectorType",
+          "placeholder": "connectorType",
+          "hidden": true
+        }
+      },
+      "auth-type": {
+        "type": "string",
+        "enum": [
+          "url",
+          "s3",
+          "gcs",
+          "adls"
+        ],
+        "default": "url",
+        "required": true,
+        "enumNames": [
+          "URL",
+          "S3",
+          "GCS",
+          "ADLS"
+        ],
+        "ui": {
+          "widget": "radio",
+          "hidden": false,
+          "label": "Import spec from"
+        }
+      },
+      "url": {
+        "type": "object",
+        "ui": {
+          "widget": "nested",
+          "label": "",
+          "hidden": true,
+          "nestedValue": false
+        },
+        "properties": {
+          "spec_url": {
+            "type": "string",
+            "required": true,
+            "ui": {
+              "widget": "input",
+              "label": "Specification URL",
+              "hidden": false,
+              "help": "Full URL to the JSON form of the OpenAPI specification.",
+              "placeholder": "https://petstore3.swagger.io/api/v3/openapi.json",
+              "grid": 8
+            }
+          },
+          "auth_header": {
+            "type": "string",
+            "ui": {
+              "widget": "password",
+              "label": "Authorization header",
+              "hidden": false,
+              "help": "Optional. e.g. `Bearer <token>` for private OpenAPI spec URLs.",
+              "grid": 8
+            }
+          }
+        }
+      },
+      "s3": {
+        "type": "object",
+        "ui": {
+          "widget": "nested",
+          "label": "",
+          "hidden": true,
+          "nestedValue": false
+        },
+        "properties": {
+          "username": {
+            "type": "string",
+            "ui": {
+              "widget": "input",
+              "label": "AWS access key",
+              "hidden": false,
+              "help": "Enter your AWS access key.",
+              "grid": 4
+            }
+          },
+          "password": {
+            "type": "string",
+            "ui": {
+              "widget": "password",
+              "label": "AWS secret key",
+              "hidden": false,
+              "help": "Enter your AWS secret key.",
+              "grid": 4
+            }
+          },
+          "extra": {
+            "type": "object",
+            "ui": {
+              "widget": "nested",
+              "label": "S3 details",
+              "header": "S3 details",
+              "hidden": false
+            },
+            "properties": {
+              "aws_role_arn": {
+                "type": "string",
+                "ui": {
+                  "widget": "input",
+                  "label": "AWS Role ARN",
+                  "hidden": false,
+                  "help": "ARN of the AWS role to assume",
+                  "placeholder": "arn:aws:iam::123456789012:role/roleName",
+                  "grid": 8,
+                  "rules": [
+                    {
+                      "pattern": "^arn:aws:iam::\\d{12}:role/.+",
+                      "message": "Please enter a valid role ARN",
+                      "trigger": "blur"
+                    }
+                  ]
+                }
+              },
+              "region": {
+                "type": "string",
+                "ui": {
+                  "widget": "input",
+                  "label": "Region",
+                  "hidden": false,
+                  "help": "Enter your AWS region.",
+                  "placeholder": "us-west-1",
+                  "grid": 4
+                }
+              },
+              "s3_bucket": {
+                "type": "string",
+                "ui": {
+                  "widget": "input",
+                  "label": "Bucket",
+                  "hidden": false,
+                  "help": "Enter the bucket from which to retrieve the object store object(s).",
+                  "placeholder": "bucket-name",
+                  "grid": 4
+                }
+              },
+              "spec_prefix": {
+                "type": "string",
+                "ui": {
+                  "widget": "input",
+                  "label": "Prefix (path)",
+                  "hidden": false,
+                  "help": "Enter the directory (path) within the object store from which to retrieve the OpenAPI spec file.",
+                  "placeholder": "path/to/file",
+                  "grid": 4
+                }
+              },
+              "spec_key": {
+                "type": "string",
+                "ui": {
+                  "widget": "input",
+                  "label": "Object key (filename)",
+                  "hidden": false,
+                  "help": "Enter the object key (filename), including its extension, within the object store and prefix.",
+                  "placeholder": "openapi.json",
+                  "grid": 4
+                }
+              }
+            }
+          }
+        }
+      },
+      "gcs": {
+        "type": "object",
+        "ui": {
+          "widget": "nested",
+          "label": "",
+          "hidden": true,
+          "nestedValue": false
+        },
+        "properties": {
+          "username": {
+            "type": "string",
+            "ui": {
+              "widget": "input",
+              "label": "Project ID",
+              "hidden": false,
+              "help": "Enter the ID of the GCP project.",
+              "grid": 4
+            }
+          },
+          "password": {
+            "type": "string",
+            "ui": {
+              "widget": "password",
+              "label": "Service account JSON",
+              "hidden": false,
+              "help": "Enter the JSON for your service account credentials.",
+              "grid": 8
+            }
+          },
+          "extra": {
+            "type": "object",
+            "ui": {
+              "widget": "nested",
+              "label": "GCS details",
+              "header": "GCS details",
+              "hidden": false
+            },
+            "properties": {
+              "gcs_bucket": {
+                "type": "string",
+                "ui": {
+                  "widget": "input",
+                  "label": "Bucket",
+                  "hidden": false,
+                  "help": "Enter the bucket from which to retrieve the object store object(s).",
+                  "placeholder": "bucket-name",
+                  "grid": 4
+                }
+              },
+              "spec_prefix": {
+                "type": "string",
+                "ui": {
+                  "widget": "input",
+                  "label": "Prefix (path)",
+                  "hidden": false,
+                  "help": "Enter the directory (path) within the object store from which to retrieve the OpenAPI spec file.",
+                  "placeholder": "path/to/file",
+                  "grid": 4
+                }
+              },
+              "spec_key": {
+                "type": "string",
+                "ui": {
+                  "widget": "input",
+                  "label": "Object key (filename)",
+                  "hidden": false,
+                  "help": "Enter the object key (filename), including its extension, within the object store and prefix.",
+                  "placeholder": "openapi.json",
+                  "grid": 4
+                }
+              }
+            }
+          }
+        }
+      },
+      "adls": {
+        "type": "object",
+        "ui": {
+          "widget": "nested",
+          "label": "",
+          "hidden": true,
+          "nestedValue": false
+        },
+        "properties": {
+          "username": {
+            "type": "string",
+            "ui": {
+              "widget": "input",
+              "label": "Azure client ID",
+              "hidden": false,
+              "help": "Enter the unique application (client) ID assigned to your app by Azure AD when the app was registered.",
+              "grid": 4
+            }
+          },
+          "password": {
+            "type": "string",
+            "ui": {
+              "widget": "password",
+              "label": "Azure client secret",
+              "hidden": false,
+              "help": "Enter your client secret.",
+              "grid": 4
+            }
+          },
+          "extra": {
+            "type": "object",
+            "ui": {
+              "widget": "nested",
+              "label": "ADLS details",
+              "header": "ADLS details",
+              "hidden": false
+            },
+            "properties": {
+              "azure_tenant_id": {
+                "type": "string",
+                "ui": {
+                  "widget": "password",
+                  "label": "Azure tenant ID",
+                  "hidden": false,
+                  "help": "Enter the unique identifier of the Azure Active Directory instance.",
+                  "grid": 4
+                }
+              },
+              "storage_account_name": {
+                "type": "string",
+                "ui": {
+                  "widget": "input",
+                  "label": "Storage account name",
+                  "hidden": false,
+                  "help": "Enter the name of your storage account.",
+                  "grid": 4
+                }
+              },
+              "adls_container": {
+                "type": "string",
+                "ui": {
+                  "widget": "input",
+                  "label": "Container",
+                  "hidden": false,
+                  "help": "Enter the container from which to retrieve the object store object(s).",
+                  "placeholder": "container-name",
+                  "grid": 4
+                }
+              },
+              "spec_prefix": {
+                "type": "string",
+                "ui": {
+                  "widget": "input",
+                  "label": "Prefix (path)",
+                  "hidden": false,
+                  "help": "Enter the directory (path) within the object store from which to retrieve the OpenAPI spec file.",
+                  "placeholder": "path/to/file",
+                  "grid": 4
+                }
+              },
+              "spec_key": {
+                "type": "string",
+                "ui": {
+                  "widget": "input",
+                  "label": "Object key (filename)",
+                  "hidden": false,
+                  "help": "Enter the object key (filename), including its extension, within the object store and prefix.",
+                  "placeholder": "openapi.json",
+                  "grid": 4
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "anyOf": [
+      {
+        "properties": {
+          "auth-type": {
+            "const": "url"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "properties": {
+          "auth-type": {
+            "const": "s3"
+          }
+        },
+        "required": [
+          "s3"
+        ]
+      },
+      {
+        "properties": {
+          "auth-type": {
+            "const": "gcs"
+          }
+        },
+        "required": [
+          "gcs"
+        ]
+      },
+      {
+        "properties": {
+          "auth-type": {
+            "const": "adls"
+          }
+        },
+        "required": [
+          "adls"
+        ]
+      }
+    ]
+  }
+}

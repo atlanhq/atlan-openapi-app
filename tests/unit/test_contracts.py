@@ -9,11 +9,15 @@ from pydantic import BaseModel
 from application_sdk.contracts.types import ConnectionRef, FileReference
 from application_sdk.credentials.ref import CredentialRef
 from app.contracts import (
+    DownloadCloudSpecInput,
+    DownloadCloudSpecOutput,
     ExtractSpecInput,
     ExtractSpecOutput,
     OpenAPIConnectorInput,
     OpenAPIConnectorOutput,
     PublishInput,
+    ResolveSourceTypeInput,
+    ResolveSourceTypeOutput,
     TransformInput,
     TransformOutput,
 )
@@ -46,8 +50,9 @@ class TestOpenAPIConnectorInput:
         original = OpenAPIConnectorInput()
         decoded = _round_trip(original, OpenAPIConnectorInput)
         assert decoded.connection.attributes.qualified_name == ""
-        assert decoded.import_type == "URL"
-        assert decoded.spec_url == ""
+        # The spec source now lives entirely in a single source credential;
+        # import_type / spec_url / spec_prefix / spec_key / cloud_source are gone.
+        assert decoded.openapi_credential is None
         assert decoded.output_dir == ""
         assert decoded.checkpoint_dir == ""
         assert decoded.load_to_atlan is True
@@ -70,10 +75,10 @@ class TestOpenAPIConnectorInput:
 
     def test_round_trip_with_values(self) -> None:
         """All non-default values must survive round-trip."""
+        ref = CredentialRef(name="openapi_source", credential_type="openapi")
         original = OpenAPIConnectorInput(
             connection=_make_connection_ref("default/api/test-conn", "test-conn"),
-            import_type="CLOUD",
-            spec_url="https://example.com/api.json",
+            openapi_credential=ref,
             output_dir="/tmp/out",
             checkpoint_dir="/tmp/ckpt",
             load_to_atlan=False,
@@ -83,34 +88,34 @@ class TestOpenAPIConnectorInput:
         assert decoded.connection is not None
         assert decoded.connection.attributes.name == "test-conn"
         assert decoded.connection.attributes.qualified_name == "default/api/test-conn"
-        assert decoded.import_type == "CLOUD"
-        assert decoded.spec_url == "https://example.com/api.json"
+        assert decoded.openapi_credential is not None
+        assert decoded.openapi_credential.name == "openapi_source"
         assert decoded.output_dir == "/tmp/out"
         assert decoded.checkpoint_dir == "/tmp/ckpt"
         assert decoded.load_to_atlan is False
         assert decoded.publish_dry_run is True
 
-    def test_round_trip_cloud_input_defaults(self) -> None:
-        """Cloud import fields have correct defaults."""
-        original = OpenAPIConnectorInput()
-        decoded = _round_trip(original, OpenAPIConnectorInput)
-        assert decoded.spec_prefix == ""
-        assert decoded.spec_key == ""
-        assert decoded.cloud_source == ""
-
-    def test_round_trip_cloud_import_fields(self) -> None:
-        """Cloud import fields survive round-trip."""
-        original = OpenAPIConnectorInput(
-            import_type="CLOUD",
-            spec_prefix="path/to/specs",
-            spec_key="openapi.json",
-            cloud_source="cred-guid-abc123",
+    def test_openapi_credential_round_trip(self) -> None:
+        """The single source credential survives round-trip — it is the only
+        spec-source field on the input (the source now lives entirely in the
+        resolved credential's authType)."""
+        ref = CredentialRef(
+            name="openapi_source", credential_type="openapi", store_name="vault"
         )
+        original = OpenAPIConnectorInput(openapi_credential=ref)
         decoded = _round_trip(original, OpenAPIConnectorInput)
-        assert decoded.import_type == "CLOUD"
-        assert decoded.spec_prefix == "path/to/specs"
-        assert decoded.spec_key == "openapi.json"
-        assert decoded.cloud_source == "cred-guid-abc123"
+        assert decoded.openapi_credential is not None
+        assert decoded.openapi_credential.name == "openapi_source"
+        assert decoded.openapi_credential.store_name == "vault"
+
+    def test_openapi_credential_guid_round_trip(self) -> None:
+        """A GUID-shaped source credential ref survives round-trip (the
+        object-store / platform-issued path)."""
+        ref = CredentialRef(credential_guid="cred-guid-abc123")
+        original = OpenAPIConnectorInput(openapi_credential=ref)
+        decoded = _round_trip(original, OpenAPIConnectorInput)
+        assert decoded.openapi_credential is not None
+        assert decoded.openapi_credential.credential_guid == "cred-guid-abc123"
 
 
 # =============================================================================
@@ -269,6 +274,69 @@ class TestExtractSpecContracts:
         assert decoded.api_path_file.local_path == "/tmp/raw/api_path.jsonl"
         assert decoded.api_spec_count == 1
         assert decoded.api_path_count == 17
+
+
+# =============================================================================
+# DownloadCloudSpecInput / DownloadCloudSpecOutput
+# =============================================================================
+
+
+class TestDownloadCloudSpecContracts:
+    def test_input_round_trip_defaults(self) -> None:
+        original = DownloadCloudSpecInput()
+        decoded = _round_trip(original, DownloadCloudSpecInput)
+        assert decoded.openapi_credential is None
+
+    def test_input_credential_round_trip(self) -> None:
+        """The object-store location (auth + spec_prefix/spec_key) now lives in
+        the resolved credential; the task carries only the credential ref."""
+        ref = CredentialRef(credential_guid="cloud-guid-1")
+        original = DownloadCloudSpecInput(openapi_credential=ref)
+        decoded = _round_trip(original, DownloadCloudSpecInput)
+        assert decoded.openapi_credential is not None
+        assert decoded.openapi_credential.credential_guid == "cloud-guid-1"
+
+    def test_output_round_trip_defaults(self) -> None:
+        original = DownloadCloudSpecOutput()
+        decoded = _round_trip(original, DownloadCloudSpecOutput)
+        assert decoded.spec_files == []
+
+    def test_output_round_trip_with_values(self) -> None:
+        original = DownloadCloudSpecOutput(
+            spec_files=[_sample_file_ref("/tmp/cloud/spec.json")]
+        )
+        decoded = _round_trip(original, DownloadCloudSpecOutput)
+        assert len(decoded.spec_files) == 1
+        assert decoded.spec_files[0].local_path == "/tmp/cloud/spec.json"
+
+
+# =============================================================================
+# ResolveSourceTypeInput / ResolveSourceTypeOutput
+# =============================================================================
+
+
+class TestResolveSourceTypeContracts:
+    def test_input_round_trip_defaults(self) -> None:
+        original = ResolveSourceTypeInput()
+        decoded = _round_trip(original, ResolveSourceTypeInput)
+        assert decoded.openapi_credential is None
+
+    def test_input_credential_round_trip(self) -> None:
+        ref = CredentialRef(credential_guid="src-guid-1")
+        original = ResolveSourceTypeInput(openapi_credential=ref)
+        decoded = _round_trip(original, ResolveSourceTypeInput)
+        assert decoded.openapi_credential is not None
+        assert decoded.openapi_credential.credential_guid == "src-guid-1"
+
+    def test_output_round_trip_defaults(self) -> None:
+        original = ResolveSourceTypeOutput()
+        decoded = _round_trip(original, ResolveSourceTypeOutput)
+        assert decoded.auth_type == ""
+
+    def test_output_round_trip_with_values(self) -> None:
+        original = ResolveSourceTypeOutput(auth_type="s3")
+        decoded = _round_trip(original, ResolveSourceTypeOutput)
+        assert decoded.auth_type == "s3"
 
 
 # =============================================================================

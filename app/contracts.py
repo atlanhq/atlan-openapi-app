@@ -125,16 +125,16 @@ class ExtractSpecOutput(Output):
 
 
 class DownloadCloudSpecInput(Input):
-    """Input for the download_cloud_spec task."""
+    """Input for the download_cloud_spec task.
 
-    cloud_source: str = ""
-    """Cloud storage credential GUID."""
+    The object-store location (bucket/account auth plus ``spec_prefix`` /
+    ``spec_key``) now lives entirely inside the resolved source credential —
+    the task resolves ``openapi_credential`` and reads the object key/prefix
+    from its ``extra`` dict."""
 
-    spec_prefix: str = ""
-    """Object store key prefix for cloud spec discovery."""
-
-    spec_key: str = ""
-    """Object key (filename) in the object store."""
+    openapi_credential: CredentialRef | None = None
+    """Source credential (object-store auth + ``extra.spec_prefix`` /
+    ``extra.spec_key``)."""
 
 
 class DownloadCloudSpecOutput(Output):
@@ -142,6 +142,28 @@ class DownloadCloudSpecOutput(Output):
 
     spec_files: Annotated[list[FileReference], MaxItems(1000)] = []
     """FileReferences for the downloaded spec files."""
+
+
+# =============================================================================
+# Task-level contracts: resolve_source_type
+# =============================================================================
+
+
+class ResolveSourceTypeInput(Input):
+    """Input for the resolve_source_type task."""
+
+    openapi_credential: CredentialRef | None = None
+    """Source credential whose ``authType`` selects the spec source."""
+
+
+class ResolveSourceTypeOutput(Output):
+    """Output from the resolve_source_type task.
+
+    Carries ONLY the non-secret ``authType`` selector (``"url"`` / ``"s3"`` /
+    ``"gcs"`` / ``"adls"``) so no secret material enters workflow history."""
+
+    auth_type: str = ""
+    """The credential's ``authType`` — the spec-source selector."""
 
 
 # =============================================================================
