@@ -4,6 +4,19 @@
   "logo": "http://assets.atlan.com/assets/apispec.png",
   "config": {
     "properties": {
+      "credential-guid": {
+        "type": "string",
+        "required": false,
+        "ui": {
+          "widget": "credential",
+          "label": "Object store",
+          "hidden": false,
+          "help": "Object store from which to retrieve the OpenAPI spec when importing from object storage.",
+          "grid": 8,
+          "credentialType": "atlan-connectors-openapi",
+          "isTestAuthenticationDisabled": true
+        }
+      },
       "extraction_method": {
         "type": "string",
         "required": false,
@@ -150,6 +163,7 @@
           }
         },
         "required": [
+          "credential-guid",
           "spec_prefix",
           "spec_key"
         ]
@@ -176,6 +190,14 @@
       }
     ],
     "steps": [
+      {
+        "title": "Credential",
+        "description": "Object store credential",
+        "id": "credential",
+        "properties": [
+          "credential-guid"
+        ]
+      },
       {
         "title": "Configuration",
         "description": "OpenAPI spec configuration",

@@ -210,6 +210,25 @@ credentialAuthOptions {
 // credential above.
 uiConfig = new UIConfig {
   tasks {
+    ["Credential"] {
+      description = "Object store credential"
+      inputs {
+        // Surfaces the generated object-store credential
+        // (atlan-connectors-openapi) as a step in the setup wizard — the same
+        // pattern atlan-mysql-app / atlan-metabase-app use. The provider radio
+        // (S3 / GCS / ADLS) and its fields are rendered from the generated
+        // credential configmap this `credType` points at; without this widget
+        // the configmap is generated but never shown. Required only for CLOUD
+        // imports (see the UI rule below) — URL imports need no credential.
+        ["credential-guid"] = new CredentialInput {
+          title = "Object store"
+          required = false
+          credType = "atlan-connectors-openapi"
+          helpText = "Object store from which to retrieve the OpenAPI spec when importing from object storage."
+          allowTestAuthentication = false
+        }
+      }
+    }
     ["Configuration"] {
       description = "OpenAPI spec configuration"
       inputs {
@@ -302,7 +321,7 @@ uiConfig = new UIConfig {
     }
     new UIRule {
       whenInputs { ["import_type"] = "CLOUD" }
-      required { "spec_prefix"; "spec_key" }
+      required { "credential-guid"; "spec_prefix"; "spec_key" }
     }
     new UIRule {
       whenInputs { ["connection_usage"] = "REUSE" }
