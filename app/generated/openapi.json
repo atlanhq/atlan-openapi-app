@@ -114,7 +114,8 @@
           "label": "Connection",
           "hidden": false,
           "help": "Enter details for a new connection to be created.",
-          "grid": 8
+          "grid": 8,
+          "connector": "api"
         }
       },
       "connection_qualified_name": {
