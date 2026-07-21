@@ -40,6 +40,16 @@ def _widget_ui(config: dict, key: str) -> dict:
     return config["config"]["properties"][key]["ui"]
 
 
+def _conditional_required(config: dict, input_key: str, input_value: str) -> list[str]:
+    """Return the ``required`` list of the ``anyOf`` branch guarded by
+    ``{input_key: input_value}`` (empty if no such branch exists)."""
+    for branch in config["config"].get("anyOf", []):
+        const = branch.get("properties", {}).get(input_key, {}).get("const")
+        if const == input_value:
+            return branch.get("required", [])
+    return []
+
+
 def test_generated_config_exists() -> None:
     assert _GENERATED_CONFIG.exists(), (
         f"{_GENERATED_CONFIG} missing — run `make generate`."
@@ -74,6 +84,73 @@ def test_create_widget_uses_api_connector_not_app_id() -> None:
         f"connections are minted as 'default/{_EXPECTED_CONNECTOR}/{{epoch}}'. "
         f"Got {connector!r}."
     )
+
+
+def test_spec_url_required_only_conditionally() -> None:
+    """spec_url must NOT be unconditionally required (that blocked Object
+    storage submission), but must still be required via the import_type=URL
+    branch. (BLDX-1568)"""
+    config = _load_config()
+    assert config["config"]["properties"]["spec_url"]["required"] is False, (
+        "spec_url.required is True — a field-level `required` makes the "
+        "'Specification URL' asterisk unconditional and blocks form submission "
+        "in Object storage (CLOUD) mode."
+    )
+    assert "spec_url" in _conditional_required(config, "import_type", "URL"), (
+        "spec_url must be conditionally required in the import_type=URL anyOf "
+        "branch (driven by its UIRule)."
+    )
+
+
+def test_cloud_source_required_only_conditionally() -> None:
+    """cloud_source must NOT be unconditionally required (that would block
+    URL-mode submission), but must still be required via the import_type=CLOUD
+    branch."""
+    config = _load_config()
+    assert config["config"]["properties"]["cloud_source"]["required"] is False, (
+        "cloud_source.required is True — a field-level `required` makes the "
+        "object-store credential unconditional and blocks form submission in "
+        "URL mode."
+    )
+    assert "cloud_source" in _conditional_required(config, "import_type", "CLOUD"), (
+        "cloud_source must be conditionally required in the import_type=CLOUD "
+        "anyOf branch (driven by its UIRule)."
+    )
+
+
+def test_connection_widgets_required_only_conditionally() -> None:
+    """The CREATE (connection) and REUSE (connection_qualified_name) widgets
+    must NOT be unconditionally required — connection_usage toggles which one
+    is active, and requiredness is driven by the UIRules. Each must still be
+    required in its own connection_usage branch. (BLDX-1568)"""
+    config = _load_config()
+    props = config["config"]["properties"]
+
+    assert props["connection"]["required"] is False, (
+        "connection.required is True — a field-level `required` makes the "
+        "CREATE-connection widget unconditional even in REUSE mode."
+    )
+    assert "connection" in _conditional_required(
+        config, "connection_usage", "CREATE"
+    ), "connection must be conditionally required in the connection_usage=CREATE branch."
+
+    assert props["connection_qualified_name"]["required"] is False, (
+        "connection_qualified_name.required is True — a field-level `required` "
+        "makes the REUSE-connection widget unconditional even in CREATE mode."
+    )
+    assert "connection_qualified_name" in _conditional_required(
+        config, "connection_usage", "REUSE"
+    ), (
+        "connection_qualified_name must be conditionally required in the "
+        "connection_usage=REUSE branch."
+    )
+
+
+def test_connection_usage_stays_unconditionally_required() -> None:
+    """connection_usage is always shown (it drives the toggle) and so keeps its
+    field-level required — guarding against over-eager cleanup. (BLDX-1568)"""
+    config = _load_config()
+    assert config["config"]["properties"]["connection_usage"]["required"] is True
 
 
 def test_both_connection_widgets_agree_on_connector() -> None:

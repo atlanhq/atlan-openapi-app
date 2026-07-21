@@ -77,7 +77,11 @@ uiConfig = new UIConfig {
         }
         ["spec_url"] = new TextInput {
           title = "Specification URL"
-          required = true
+          // Requiredness is conditional on import_type=URL and is driven solely
+          // by the UIRule below. A field-level `required = true` here would make
+          // the red-asterisk requirement unconditional, blocking form submission
+          // in Object storage (CLOUD) mode. Mirrors spec_prefix / spec_key,
+          // which are also required only via their CLOUD UIRule. (BLDX-1568)
           helpText = "Full URL to the JSON form of the OpenAPI specification."
           placeholderText = "https://petstore3.swagger.io/api/v3/openapi.json"
         }
@@ -95,7 +99,10 @@ uiConfig = new UIConfig {
         }
         ["cloud_source"] = new CredentialInput {
           title = "Import spec from"
-          required = true
+          // Requiredness is conditional on import_type=CLOUD and is driven solely
+          // by the UIRule below. A field-level `required = true` here would make
+          // it unconditional, mirroring the spec_url regression in the opposite
+          // direction (blocking URL-mode submission). (BLDX-1568)
           credType = "csa-connectors-objectstore"
           helpText = "Enter details for the object store from which to retrieve the OpenAPI spec containing metadata to be imported."
           allowTestAuthentication = false
@@ -120,14 +127,18 @@ uiConfig = new UIConfig {
           default = "REUSE"
           helpText = "Whether to create a new connection to hold these API assets, or reuse an existing connection."
         }
+        // connection / connection_qualified_name are the CREATE / REUSE halves
+        // of the connection step, toggled by connection_usage. Requiredness is
+        // conditional and driven solely by the UIRules below — a field-level
+        // `required = true` would make each unconditional (the same redundant
+        // double-declaration that broke spec_url). Only connection_usage, which
+        // is always shown, keeps field-level required. (BLDX-1568)
         ["connection"] = new ConnectionCreator {
           title = "Connection"
-          required = true
           helpText = "Enter details for a new connection to be created."
         }
         ["connection_qualified_name"] = new ConnectionSelector {
           title = "Connection"
-          required = true
           helpText = "Select an existing connection to load assets into."
           width = 4
           connectorFilter = Connectors.API.value

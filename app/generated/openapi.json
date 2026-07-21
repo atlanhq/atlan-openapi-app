@@ -39,7 +39,7 @@
       },
       "spec_url": {
         "type": "string",
-        "required": true,
+        "required": false,
         "ui": {
           "widget": "input",
           "label": "Specification URL",
@@ -75,7 +75,7 @@
       },
       "cloud_source": {
         "type": "string",
-        "required": true,
+        "required": false,
         "ui": {
           "widget": "credential",
           "label": "Import spec from",
@@ -108,7 +108,7 @@
       },
       "connection": {
         "type": "string",
-        "required": true,
+        "required": false,
         "ui": {
           "widget": "connection",
           "label": "Connection",
@@ -120,7 +120,7 @@
       },
       "connection_qualified_name": {
         "type": "string",
-        "required": true,
+        "required": false,
         "ui": {
           "widget": "connectionSelector",
           "label": "Connection",
