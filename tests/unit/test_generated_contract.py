@@ -132,7 +132,9 @@ def test_connection_widgets_required_only_conditionally() -> None:
     )
     assert "connection" in _conditional_required(
         config, "connection_usage", "CREATE"
-    ), "connection must be conditionally required in the connection_usage=CREATE branch."
+    ), (
+        "connection must be conditionally required in the connection_usage=CREATE branch."
+    )
 
     assert props["connection_qualified_name"]["required"] is False, (
         "connection_qualified_name.required is True — a field-level `required` "
