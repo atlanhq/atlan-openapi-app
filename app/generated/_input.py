@@ -24,6 +24,8 @@ class AppInputContract(ExtractionInput):
     """Enter the directory (path) within the object store from which to retrieve the OpenAPI spec file."""
     spec_key: str = ""
     """Enter the object key (filename), including its extension, within the object store and prefix."""
+    cloud_source: str = ""
+    """Deprecated: retained for backward compatibility with pre-migration CLOUD workflow configs. New runs use the connection credential."""
     connection_usage: str = "REUSE"
     """Whether to create a new connection to hold these API assets, or reuse an existing connection."""
     connection_qualified_name: str = ""

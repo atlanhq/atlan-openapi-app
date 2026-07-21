@@ -15,6 +15,7 @@ class OpenapiMustacheSubstitutions(MustacheSubstitutions):
     spec_url: str = Field(default="", alias="{{spec_url}}")
     spec_prefix: str = Field(default="", alias="{{spec_prefix}}")
     spec_key: str = Field(default="", alias="{{spec_key}}")
+    cloud_source: str = Field(default="", alias="{{cloud_source}}")
     connection_usage: Literal["CREATE", "REUSE"] = Field(
         default="REUSE",
         alias="{{connection_usage}}",

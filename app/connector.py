@@ -377,6 +377,22 @@ class OpenAPIConnector(App):
                 "resolved openapi_credential keys=%s",
                 list(credential_data.keys()),
             )
+        elif input.cloud_source:
+            # Backward-compat: pre-migration CLOUD configs pass a legacy
+            # object-store credential GUID (a csa-connectors-objectstore
+            # reference) here. It resolves to the same dict shape that
+            # CloudStore.from_credentials consumes, so existing configs keep
+            # working without re-selecting the credential.
+            from application_sdk.credentials.ref import (  # noqa: PLC0415
+                CredentialRef,
+            )
+
+            ref = CredentialRef(credential_guid=input.cloud_source)
+            credential_data = await self.context.resolve_credential_raw(ref)
+            self.logger.info(
+                "resolved legacy cloud_source credential keys=%s",
+                list(credential_data.keys()),
+            )
 
         if credential_data is not None and _has_valid_auth(credential_data):
             self.logger.info(
@@ -566,6 +582,7 @@ class OpenAPIConnector(App):
             cloud_result = await self.download_cloud_spec(
                 DownloadCloudSpecInput(
                     openapi_credential=input.openapi_credential,
+                    cloud_source=input.cloud_source,
                     spec_prefix=input.spec_prefix,
                     spec_key=input.spec_key,
                 )

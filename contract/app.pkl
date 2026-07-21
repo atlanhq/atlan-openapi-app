@@ -249,6 +249,17 @@ uiConfig = new UIConfig {
           placeholderText = "openapi.json"
           width = 4
         }
+        // Backward-compat shim: legacy object-store credential reference. Pre-
+        // migration CLOUD configs stored the object-store credential GUID here
+        // (a `csa-connectors-objectstore` CredentialInput). Kept as a hidden
+        // pass-through so those existing configs keep resolving — download_cloud_spec
+        // prefers the new generated `openapi_credential` and falls back to this.
+        // New runs leave it empty. Safe to remove in a future major version.
+        ["cloud_source"] = new TextInput {
+          title = "Object store credential (legacy)"
+          hide = true
+          helpText = "Deprecated: retained for backward compatibility with pre-migration CLOUD workflow configs. New runs use the connection credential."
+        }
       }
     }
     ["Connection"] {

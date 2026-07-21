@@ -73,6 +73,18 @@
           "grid": 4
         }
       },
+      "cloud_source": {
+        "type": "string",
+        "required": false,
+        "ui": {
+          "widget": "input",
+          "label": "Object store credential (legacy)",
+          "hidden": true,
+          "help": "Deprecated: retained for backward compatibility with pre-migration CLOUD workflow configs. New runs use the connection credential.",
+          "placeholder": "",
+          "grid": 8
+        }
+      },
       "connection_usage": {
         "type": "string",
         "required": true,
@@ -173,7 +185,8 @@
           "import_type",
           "spec_url",
           "spec_prefix",
-          "spec_key"
+          "spec_key",
+          "cloud_source"
         ]
       },
       {

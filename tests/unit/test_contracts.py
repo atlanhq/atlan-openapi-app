@@ -293,6 +293,20 @@ class TestDownloadCloudSpecContracts:
         assert decoded.spec_prefix == "path/to/specs"
         assert decoded.spec_key == "openapi.json"
 
+    def test_input_round_trip_legacy_cloud_source(self) -> None:
+        # Backward-compat: pre-migration CLOUD configs pass a legacy object-store
+        # credential GUID via cloud_source; download_cloud_spec falls back to it
+        # when openapi_credential is unset.
+        original = DownloadCloudSpecInput(
+            cloud_source="legacy-guid-123",
+            spec_prefix="path/to/specs",
+            spec_key="openapi.json",
+        )
+        decoded = _round_trip(original, DownloadCloudSpecInput)
+        assert decoded.openapi_credential is None
+        assert decoded.cloud_source == "legacy-guid-123"
+        assert decoded.spec_prefix == "path/to/specs"
+
 
 # =============================================================================
 # TransformInput / TransformOutput

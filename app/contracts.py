@@ -127,6 +127,10 @@ class DownloadCloudSpecInput(Input):
     openapi_credential: CredentialRef | None = None
     """Object-store credential (authType s3/gcs/adls) for cloud spec download."""
 
+    cloud_source: str = ""
+    """Backward-compat: legacy object-store credential GUID from pre-migration
+    CLOUD configs. Used as a fallback when ``openapi_credential`` is unset."""
+
     spec_prefix: str = ""
     """Object store key prefix for cloud spec discovery."""
 
