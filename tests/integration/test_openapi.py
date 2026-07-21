@@ -223,3 +223,41 @@ class TestOpenAPIConnectorExtraction:
                     assert qn.startswith(prefix), (
                         f"qualifiedName '{qn}' does not start with '{prefix}'"
                     )
+
+    async def test_qualified_names_use_api_connector(
+        self, extraction_result: OpenAPIConnectorOutput, store_root: Path
+    ) -> None:
+        """Every emitted qualifiedName — the Connection and all child assets —
+        must live under the ``default/api/`` connector prefix, never
+        ``default/openapi/`` (the app id). Guards the connector-type segment
+        against regression on the CREATE path."""
+        # The connector-type segment is the second path component:
+        # default/{connectorType}/{epoch}/...
+        api_prefix = "default/api/"
+        openapi_prefix = "default/openapi/"
+
+        assert extraction_result.connection_qualified_name.startswith(api_prefix), (
+            "connection_qualified_name "
+            f"'{extraction_result.connection_qualified_name}' must start with "
+            f"'{api_prefix}'"
+        )
+
+        output_path = store_root / extraction_result.output_file.storage_path
+        with output_path.open() as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                record = orjson.loads(line)
+                qn = record.get("attributes", {}).get("qualifiedName", "")
+                if not qn:
+                    qn = record.get("qualifiedName", "")
+                if not qn:
+                    continue
+                assert not qn.startswith(openapi_prefix), (
+                    f"qualifiedName '{qn}' uses the app id ('{openapi_prefix}') "
+                    "instead of the api connector type"
+                )
+                assert qn.startswith(api_prefix), (
+                    f"qualifiedName '{qn}' does not start with '{api_prefix}'"
+                )
