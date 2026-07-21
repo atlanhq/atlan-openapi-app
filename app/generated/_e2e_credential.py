@@ -6,7 +6,9 @@ from application_sdk.testing.e2e.credential import CredentialBody
 
 
 class OpenapiCredentialBodyExtra(BaseModel):
-    model_config = ConfigDict(frozen=True, populate_by_name=True, serialize_by_alias=True)
+    model_config = ConfigDict(
+        frozen=True, populate_by_name=True, serialize_by_alias=True
+    )
 
     aws_role_arn: str = Field(default="", alias="aws_role_arn")
     region: str = Field(default="", alias="region")
