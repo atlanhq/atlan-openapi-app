@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.6.0 (July 21, 2026)
+
+Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.5.3...v0.6.0
+
+### Features
+
+- generate spec-source credential from app.pkl (retire csa-connectors-objectstore.pkl) (#261) (by @vaibhavatlan in [782e292](https://github.com/atlanhq/atlan-openapi-app/commit/782e292))
+
+
 ## v0.5.3 (July 20, 2026)
 
 Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.5.2...v0.5.3
