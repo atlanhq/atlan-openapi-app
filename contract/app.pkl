@@ -210,25 +210,6 @@ credentialAuthOptions {
 // credential above.
 uiConfig = new UIConfig {
   tasks {
-    ["Credential"] {
-      description = "Object store credential"
-      inputs {
-        // Surfaces the generated object-store credential
-        // (atlan-connectors-openapi) as a step in the setup wizard — the same
-        // pattern atlan-mysql-app / atlan-metabase-app use. The provider radio
-        // (S3 / GCS / ADLS) and its fields are rendered from the generated
-        // credential configmap this `credType` points at; without this widget
-        // the configmap is generated but never shown. Required only for CLOUD
-        // imports (see the UI rule below) — URL imports need no credential.
-        ["credential-guid"] = new CredentialInput {
-          title = "Object store"
-          required = false
-          credType = "atlan-connectors-openapi"
-          helpText = "Object store from which to retrieve the OpenAPI spec when importing from object storage."
-          allowTestAuthentication = false
-        }
-      }
-    }
     ["Configuration"] {
       description = "OpenAPI spec configuration"
       inputs {
@@ -268,16 +249,19 @@ uiConfig = new UIConfig {
           placeholderText = "openapi.json"
           width = 4
         }
-        // Backward-compat shim: legacy object-store credential reference. Pre-
-        // migration CLOUD configs stored the object-store credential GUID here
-        // (a `csa-connectors-objectstore` CredentialInput). Kept as a hidden
-        // pass-through so those existing configs keep resolving — download_cloud_spec
-        // prefers the new generated `openapi_credential` and falls back to this.
-        // New runs leave it empty. Safe to remove in a future major version.
-        ["cloud_source"] = new TextInput {
-          title = "Object store credential (legacy)"
-          hide = true
-          helpText = "Deprecated: retained for backward compatibility with pre-migration CLOUD workflow configs. New runs use the connection credential."
+        // Object-store credential for the CLOUD import path — openapi's own
+        // inline credential widget (kept in this Configuration step, gated by
+        // import_type=CLOUD below), now pointing at the app-generated
+        // `atlan-connectors-openapi` configmap (from credentialAuthOptions
+        // above) instead of the platform-shared `csa-connectors-objectstore`.
+        // The provider radio (S3 / GCS / ADLS) + fields are rendered from that
+        // configmap. Backward-compatible: pre-migration configs stored a
+        // credential GUID here and still resolve by GUID at runtime.
+        ["cloud_source"] = new CredentialInput {
+          title = "Object store"
+          credType = "atlan-connectors-openapi"
+          helpText = "Object store from which to retrieve the OpenAPI spec file."
+          allowTestAuthentication = false
         }
       }
     }
@@ -321,7 +305,7 @@ uiConfig = new UIConfig {
     }
     new UIRule {
       whenInputs { ["import_type"] = "CLOUD" }
-      required { "credential-guid"; "spec_prefix"; "spec_key" }
+      required { "cloud_source"; "spec_prefix"; "spec_key" }
     }
     new UIRule {
       whenInputs { ["connection_usage"] = "REUSE" }

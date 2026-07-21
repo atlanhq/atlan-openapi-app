@@ -14,7 +14,6 @@
         "args": {
           "credential": "{{credential}}",
           "agent_json": "{{agent-json}}",
-          "credential_guid": "{{credential-guid}}",
           "connection": "{{connection}}",
           "extraction_method": "{{extraction_method}}",
           "import_type": "{{import_type}}",

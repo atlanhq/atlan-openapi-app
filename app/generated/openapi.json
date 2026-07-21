@@ -4,19 +4,6 @@
   "logo": "http://assets.atlan.com/assets/apispec.png",
   "config": {
     "properties": {
-      "credential-guid": {
-        "type": "string",
-        "required": false,
-        "ui": {
-          "widget": "credential",
-          "label": "Object store",
-          "hidden": false,
-          "help": "Object store from which to retrieve the OpenAPI spec when importing from object storage.",
-          "grid": 8,
-          "credentialType": "atlan-connectors-openapi",
-          "isTestAuthenticationDisabled": true
-        }
-      },
       "extraction_method": {
         "type": "string",
         "required": false,
@@ -90,12 +77,13 @@
         "type": "string",
         "required": false,
         "ui": {
-          "widget": "input",
-          "label": "Object store credential (legacy)",
-          "hidden": true,
-          "help": "Deprecated: retained for backward compatibility with pre-migration CLOUD workflow configs. New runs use the connection credential.",
-          "placeholder": "",
-          "grid": 8
+          "widget": "credential",
+          "label": "Object store",
+          "hidden": false,
+          "help": "Object store from which to retrieve the OpenAPI spec file.",
+          "grid": 8,
+          "credentialType": "atlan-connectors-openapi",
+          "isTestAuthenticationDisabled": true
         }
       },
       "connection_usage": {
@@ -163,7 +151,7 @@
           }
         },
         "required": [
-          "credential-guid",
+          "cloud_source",
           "spec_prefix",
           "spec_key"
         ]
@@ -190,14 +178,6 @@
       }
     ],
     "steps": [
-      {
-        "title": "Credential",
-        "description": "Object store credential",
-        "id": "credential",
-        "properties": [
-          "credential-guid"
-        ]
-      },
       {
         "title": "Configuration",
         "description": "OpenAPI spec configuration",

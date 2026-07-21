@@ -369,20 +369,12 @@ class OpenAPIConnector(App):
         from application_sdk.storage.cloud import CloudStore
 
         credential_data = None
-        if input.openapi_credential is not None:
-            credential_data = await self.context.resolve_credential_raw(
-                input.openapi_credential
-            )
-            self.logger.info(
-                "resolved openapi_credential keys=%s",
-                list(credential_data.keys()),
-            )
-        elif input.cloud_source:
-            # Backward-compat: pre-migration CLOUD configs pass a legacy
-            # object-store credential GUID (a csa-connectors-objectstore
-            # reference) here. It resolves to the same dict shape that
-            # CloudStore.from_credentials consumes, so existing configs keep
-            # working without re-selecting the credential.
+        if input.cloud_source:
+            # openapi's object-store credential: the `cloud_source`
+            # CredentialInput (credType atlan-connectors-openapi) supplies a
+            # credential GUID. Resolve it to the raw dict that
+            # CloudStore.from_credentials consumes. Pre-migration configs stored
+            # a csa-connectors-objectstore GUID here and still resolve by GUID.
             from application_sdk.credentials.ref import (  # noqa: PLC0415
                 CredentialRef,
             )
@@ -390,7 +382,17 @@ class OpenAPIConnector(App):
             ref = CredentialRef(credential_guid=input.cloud_source)
             credential_data = await self.context.resolve_credential_raw(ref)
             self.logger.info(
-                "resolved legacy cloud_source credential keys=%s",
+                "resolved cloud_source credential keys=%s",
+                list(credential_data.keys()),
+            )
+        elif input.openapi_credential is not None:
+            # Fallback: some platforms link the CredentialInput selection to the
+            # standard credential slot ({{credential}} -> openapi_credential).
+            credential_data = await self.context.resolve_credential_raw(
+                input.openapi_credential
+            )
+            self.logger.info(
+                "resolved openapi_credential keys=%s",
                 list(credential_data.keys()),
             )
 
@@ -408,7 +410,7 @@ class OpenAPIConnector(App):
                     "credential has no key/role auth, falling back to tenant store"
                 )
             else:
-                self.logger.info("no openapi_credential, using tenant store")
+                self.logger.info("no cloud_source credential, using tenant store")
             if self.context.storage is None:
                 raise TenantObjectStoreUnavailableError(
                     message=(
