@@ -37,15 +37,13 @@
       "auth-type": {
         "type": "string",
         "enum": [
-          "url",
           "s3",
           "gcs",
           "adls"
         ],
-        "default": "url",
+        "default": "s3",
         "required": true,
         "enumNames": [
-          "URL",
           "S3",
           "GCS",
           "ADLS"
@@ -53,40 +51,7 @@
         "ui": {
           "widget": "radio",
           "hidden": false,
-          "label": "Import spec from"
-        }
-      },
-      "url": {
-        "type": "object",
-        "ui": {
-          "widget": "nested",
-          "label": "",
-          "hidden": true,
-          "nestedValue": false
-        },
-        "properties": {
-          "spec_url": {
-            "type": "string",
-            "required": true,
-            "ui": {
-              "widget": "input",
-              "label": "Specification URL",
-              "hidden": false,
-              "help": "Full URL to the JSON form of the OpenAPI specification.",
-              "placeholder": "https://petstore3.swagger.io/api/v3/openapi.json",
-              "grid": 8
-            }
-          },
-          "auth_header": {
-            "type": "string",
-            "ui": {
-              "widget": "password",
-              "label": "Authorization header",
-              "hidden": false,
-              "help": "Optional. e.g. `Bearer <token>` for private OpenAPI spec URLs.",
-              "grid": 8
-            }
-          }
+          "label": "Cloud object store"
         }
       },
       "s3": {
@@ -166,28 +131,6 @@
                   "placeholder": "bucket-name",
                   "grid": 4
                 }
-              },
-              "spec_prefix": {
-                "type": "string",
-                "ui": {
-                  "widget": "input",
-                  "label": "Prefix (path)",
-                  "hidden": false,
-                  "help": "Enter the directory (path) within the object store from which to retrieve the OpenAPI spec file.",
-                  "placeholder": "path/to/file",
-                  "grid": 4
-                }
-              },
-              "spec_key": {
-                "type": "string",
-                "ui": {
-                  "widget": "input",
-                  "label": "Object key (filename)",
-                  "hidden": false,
-                  "help": "Enter the object key (filename), including its extension, within the object store and prefix.",
-                  "placeholder": "openapi.json",
-                  "grid": 4
-                }
               }
             }
           }
@@ -239,28 +182,6 @@
                   "hidden": false,
                   "help": "Enter the bucket from which to retrieve the object store object(s).",
                   "placeholder": "bucket-name",
-                  "grid": 4
-                }
-              },
-              "spec_prefix": {
-                "type": "string",
-                "ui": {
-                  "widget": "input",
-                  "label": "Prefix (path)",
-                  "hidden": false,
-                  "help": "Enter the directory (path) within the object store from which to retrieve the OpenAPI spec file.",
-                  "placeholder": "path/to/file",
-                  "grid": 4
-                }
-              },
-              "spec_key": {
-                "type": "string",
-                "ui": {
-                  "widget": "input",
-                  "label": "Object key (filename)",
-                  "hidden": false,
-                  "help": "Enter the object key (filename), including its extension, within the object store and prefix.",
-                  "placeholder": "openapi.json",
                   "grid": 4
                 }
               }
@@ -336,28 +257,6 @@
                   "placeholder": "container-name",
                   "grid": 4
                 }
-              },
-              "spec_prefix": {
-                "type": "string",
-                "ui": {
-                  "widget": "input",
-                  "label": "Prefix (path)",
-                  "hidden": false,
-                  "help": "Enter the directory (path) within the object store from which to retrieve the OpenAPI spec file.",
-                  "placeholder": "path/to/file",
-                  "grid": 4
-                }
-              },
-              "spec_key": {
-                "type": "string",
-                "ui": {
-                  "widget": "input",
-                  "label": "Object key (filename)",
-                  "hidden": false,
-                  "help": "Enter the object key (filename), including its extension, within the object store and prefix.",
-                  "placeholder": "openapi.json",
-                  "grid": 4
-                }
               }
             }
           }
@@ -365,16 +264,6 @@
       }
     },
     "anyOf": [
-      {
-        "properties": {
-          "auth-type": {
-            "const": "url"
-          }
-        },
-        "required": [
-          "url"
-        ]
-      },
       {
         "properties": {
           "auth-type": {

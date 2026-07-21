@@ -19,13 +19,10 @@ import orjson
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
-from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from application_sdk.contracts.types import ConnectionRef
-from application_sdk.credentials.ref import CredentialRef
-from application_sdk.credentials.resolver import CredentialResolver
 from app.connector import OpenAPIConnector
 from app.contracts import (
     OpenAPIConnectorInput,
@@ -45,15 +42,9 @@ _SPEC_URL = os.environ.get("OPENAPI_SPEC_URL") or str(_BUNDLED_SPEC)
 CONNECTION_NAME = "test-openapi-integration"
 CONNECTION_QN = f"default/api/{CONNECTION_NAME}"
 
-# The spec source is now credential-driven: a public URL is expressed as an
-# ``authType="url"`` credential carrying ``spec_url`` (and no secret). The GUID
-# path is patched in each workflow test so resolve_source_type + extract_spec
-# both resolve this same credential.
-_URL_GUID = "test-openapi-url-guid"
-
-
-def _url_credential() -> dict:
-    return {"authType": "url", "spec_url": _SPEC_URL, "auth_header": ""}
+# import_type="URL" fetches the public spec_url directly — no auth, no
+# credential resolution (the private-URL Bearer credential is a dropped
+# feature).
 
 
 @pytest.mark.cloud_integration
@@ -79,36 +70,32 @@ class TestOpenAPIConnectorExtraction:
         output_dir = tmp_dir_class / "output"
         output_dir.mkdir()
 
-        with patch.object(
-            CredentialResolver,
-            "_resolve_by_guid",
-            AsyncMock(return_value=_url_credential()),
-        ):
-            result = cast(
-                "OpenAPIConnectorOutput",
-                await openapi_executor.execute_app(
-                    OpenAPIConnector,
-                    OpenAPIConnectorInput(
-                        connection_usage="CREATE",
-                        connection=ConnectionRef.model_validate(
-                            {
-                                "typeName": "Connection",
-                                "attributes": {
-                                    "qualifiedName": CONNECTION_QN,
-                                    "name": CONNECTION_NAME,
-                                    "category": "API",
-                                    "adminGroups": ["admins"],
-                                },
-                            }
-                        ),
-                        openapi_credential=CredentialRef(credential_guid=_URL_GUID),
-                        output_dir=str(output_dir / "run1"),
-                        checkpoint_dir="",
-                        load_to_atlan=False,
+        result = cast(
+            "OpenAPIConnectorOutput",
+            await openapi_executor.execute_app(
+                OpenAPIConnector,
+                OpenAPIConnectorInput(
+                    connection_usage="CREATE",
+                    connection=ConnectionRef.model_validate(
+                        {
+                            "typeName": "Connection",
+                            "attributes": {
+                                "qualifiedName": CONNECTION_QN,
+                                "name": CONNECTION_NAME,
+                                "category": "API",
+                                "adminGroups": ["admins"],
+                            },
+                        }
                     ),
-                    execution_id_prefix="test-openapi-extraction",
+                    import_type="URL",
+                    spec_url=_SPEC_URL,
+                    output_dir=str(output_dir / "run1"),
+                    checkpoint_dir="",
+                    load_to_atlan=False,
                 ),
-            )
+                execution_id_prefix="test-openapi-extraction",
+            ),
+        )
 
         return result
 
@@ -155,26 +142,22 @@ class TestOpenAPIConnectorExtraction:
         output_dir = tmp_dir_class / "reuse_output"
         output_dir.mkdir(exist_ok=True)
 
-        with patch.object(
-            CredentialResolver,
-            "_resolve_by_guid",
-            AsyncMock(return_value=_url_credential()),
-        ):
-            result = cast(
-                "OpenAPIConnectorOutput",
-                await openapi_executor.execute_app(
-                    OpenAPIConnector,
-                    OpenAPIConnectorInput(
-                        connection_usage="REUSE",
-                        connection_qualified_name=CONNECTION_QN,
-                        openapi_credential=CredentialRef(credential_guid=_URL_GUID),
-                        output_dir=str(output_dir / "run1"),
-                        checkpoint_dir="",
-                        load_to_atlan=False,
-                    ),
-                    execution_id_prefix="test-openapi-reuse",
+        result = cast(
+            "OpenAPIConnectorOutput",
+            await openapi_executor.execute_app(
+                OpenAPIConnector,
+                OpenAPIConnectorInput(
+                    connection_usage="REUSE",
+                    connection_qualified_name=CONNECTION_QN,
+                    import_type="URL",
+                    spec_url=_SPEC_URL,
+                    output_dir=str(output_dir / "run1"),
+                    checkpoint_dir="",
+                    load_to_atlan=False,
                 ),
-            )
+                execution_id_prefix="test-openapi-reuse",
+            ),
+        )
 
         assert result.assertion_only_enabled is True
         assert result.connection_qualified_name == CONNECTION_QN

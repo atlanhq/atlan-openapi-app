@@ -2,23 +2,32 @@
 
 This script runs a combined handler + worker for local development and testing.
 
-The spec source (URL vs object store) is selected entirely by the source
-credential's ``authType``. Even a public URL is expressed as an
-``authType="url"`` credential that carries ``spec_url`` (and no secret). This
-dev script builds that credential from environment variables, stores it in an
-in-process ``MockSecretStore`` under the name ``openapi_source``, and references
-it from ``example_input`` via a named ``CredentialRef``.
+The spec source is selected by ``import_type`` (a plain workflow field):
+
+* ``import_type="URL"`` → fetch the public ``spec_url`` (no auth, no credential).
+* ``import_type="CLOUD"`` → download the spec from an object store using the
+  ``openapi_credential`` (an OBJECT-STORE credential: authType s3/gcs/adls with
+  ``username`` / ``password`` / ``extra.*``) plus ``spec_prefix`` / ``spec_key``
+  for the object location.
+
+For the CLOUD path this dev script builds the object-store credential from
+environment variables, stores it in an in-process ``MockSecretStore`` under the
+name ``openapi_source``, and references it from ``example_input`` via a named
+``CredentialRef``.
 
 Usage:
-    # 1. Set environment variables:
+    # 1. Start Temporal dev server (in a separate terminal):
+    temporal server start-dev --dynamic-config-value frontend.WorkerHeartbeatsEnabled=true
+
+    # 2. Set environment variables:
+    export OPENAPI_IMPORT_TYPE="URL"   # or "CLOUD"
     export OPENAPI_SPEC_URL="https://petstore3.swagger.io/api/v3/openapi.json"
-    # For private specs with auth:
-    # export OPENAPI_AUTH_HEADER="Bearer your-token"
     # For Atlan loading:
     # export ATLAN_API_KEY="atl-..."
     # export ATLAN_BASE_URL="https://your-tenant.atlan.com"
 
     # Object-store source instead of a URL (example, S3):
+    # export OPENAPI_IMPORT_TYPE="CLOUD"
     # export OPENAPI_SOURCE_AUTH_TYPE="s3"
     # export OPENAPI_SOURCE_USERNAME="<access-key-id>"
     # export OPENAPI_SOURCE_PASSWORD="<secret-access-key>"
@@ -27,21 +36,22 @@ Usage:
     # export OPENAPI_SPEC_PREFIX="specs"
     # export OPENAPI_SPEC_KEY="openapi.json"
 
-    # 2. Start the dev server:
+    # 3. Start the dev server:
     python -m app.run_dev
 
-    # 3. Start an extraction (public spec, no loading):
+    # 4. Extract metadata (public URL spec, no loading):
     curl -X POST http://localhost:8000/workflows/v1/start \\
       -H "Content-Type: application/json" \\
       -d '{
         "connection": {"qualifiedName": "default/api/test-openapi", "name": "test-openapi"},
         "connection_usage": "CREATE",
-        "openapi_credential": {"name": "openapi_source", "credential_type": "openapi"},
+        "import_type": "URL",
+        "spec_url": "https://petstore3.swagger.io/api/v3/openapi.json",
         "load_to_atlan": false
       }'
     # Response: {"success": true, "data": {"workflow_id": "...", "run_id": "..."}, ...}
 
-    # 4. Check the result (replace <workflow_id> with value from response):
+    # 5. Check the result (replace <workflow_id> with value from response):
     curl http://localhost:8000/workflows/v1/result/<workflow_id>
 """
 
@@ -55,38 +65,22 @@ from application_sdk.main import run_dev_combined
 
 from app.connector import OpenAPIConnector
 
-# Name the source credential is stored under in the in-process secret store,
-# referenced from example_input via a named CredentialRef.
+# Name the object-store source credential is stored under in the in-process
+# secret store, referenced from example_input via a named CredentialRef (used
+# only on the CLOUD path).
 _SOURCE_CREDENTIAL_NAME = "openapi_source"
 
 
-def _build_source_credential() -> dict[str, Any]:
-    """Build the source credential dict from environment variables.
+def _build_object_store_credential() -> dict[str, Any]:
+    """Build the OBJECT-STORE credential dict from environment variables.
 
-    The ``authType`` selects the spec source consumed by the connector:
-      * ``"url"``  → ``spec_url`` (+ optional ``auth_header``)
-      * ``"s3"`` / ``"gcs"`` / ``"adls"`` → object-store auth in
-        ``username`` / ``password`` / ``extra`` plus ``extra.spec_prefix`` /
-        ``extra.spec_key`` (consumed by ``CloudStore.from_credentials`` and
-        ``download_cloud_spec``).
+    Consumed by ``CloudStore.from_credentials`` in ``download_cloud_spec`` for
+    the CLOUD import path. ``authType`` selects the provider (s3 / gcs / adls);
+    auth material lives in ``username`` / ``password`` / ``extra``.
     """
-    auth_type = os.environ.get("OPENAPI_SOURCE_AUTH_TYPE", "url")
+    auth_type = os.environ.get("OPENAPI_SOURCE_AUTH_TYPE", "s3")
 
-    if auth_type == "url":
-        return {
-            "authType": "url",
-            "spec_url": os.environ.get(
-                "OPENAPI_SPEC_URL",
-                "https://petstore3.swagger.io/api/v3/openapi.json",
-            ),
-            "auth_header": os.environ.get("OPENAPI_AUTH_HEADER", ""),
-        }
-
-    # Object-store source (s3 / gcs / adls).
-    extra: dict[str, str] = {
-        "spec_prefix": os.environ.get("OPENAPI_SPEC_PREFIX", ""),
-        "spec_key": os.environ.get("OPENAPI_SPEC_KEY", ""),
-    }
+    extra: dict[str, str] = {}
     if auth_type == "s3":
         extra.update(
             {
@@ -118,9 +112,14 @@ def _build_source_credential() -> dict[str, Any]:
 
 async def main() -> None:
     """Run the dev server."""
-    secrets: dict[str, str] = {
-        _SOURCE_CREDENTIAL_NAME: orjson.dumps(_build_source_credential()).decode(),
-    }
+    import_type = os.environ.get("OPENAPI_IMPORT_TYPE", "URL")
+    spec_url = os.environ.get(
+        "OPENAPI_SPEC_URL", "https://petstore3.swagger.io/api/v3/openapi.json"
+    )
+    spec_prefix = os.environ.get("OPENAPI_SPEC_PREFIX", "")
+    spec_key = os.environ.get("OPENAPI_SPEC_KEY", "")
+
+    secrets: dict[str, str] = {}
 
     # Atlan credential for loading (optional)
     atlan_key = os.environ.get("ATLAN_API_KEY", "")
@@ -133,26 +132,37 @@ async def main() -> None:
             }
         ).decode()
 
+    example_input: dict[str, Any] = {
+        "connection": {
+            "qualifiedName": "default/api/test-openapi",
+            "name": "test-openapi",
+        },
+        "connection_usage": "CREATE",
+        "import_type": import_type,
+        "spec_url": spec_url,
+        "spec_prefix": spec_prefix,
+        "spec_key": spec_key,
+        "load_to_atlan": False,
+        "publish_dry_run": False,
+    }
+
+    # CLOUD path: build and reference the object-store credential. The URL path
+    # fetches a public spec_url and never resolves a credential.
+    if import_type == "CLOUD":
+        secrets[_SOURCE_CREDENTIAL_NAME] = orjson.dumps(
+            _build_object_store_credential()
+        ).decode()
+        example_input["openapi_credential"] = {
+            "name": _SOURCE_CREDENTIAL_NAME,
+            "credential_type": "openapi",
+        }
+
     credential_stores = {"default": MockSecretStore(secrets)}
 
     await run_dev_combined(
         OpenAPIConnector,
         credential_stores=credential_stores,
-        example_input={
-            "connection": {
-                "qualifiedName": "default/api/test-openapi",
-                "name": "test-openapi",
-            },
-            "connection_usage": "CREATE",
-            # Named reference to the source credential stored above; the connector
-            # resolves it to select the spec source via authType.
-            "openapi_credential": {
-                "name": _SOURCE_CREDENTIAL_NAME,
-                "credential_type": "openapi",
-            },
-            "load_to_atlan": False,
-            "publish_dry_run": False,
-        },
+        example_input=example_input,
     )
 
 

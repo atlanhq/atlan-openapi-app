@@ -85,9 +85,10 @@ _PETSTORE_SPEC = {
 
 # Credential shape expected by CloudStore.from_credentials / _create_azure_store.
 # username is the storage account name; password is the storage account key.
-# The object key/prefix are now carried in ``extra.spec_prefix`` /
-# ``extra.spec_key``; ``authType`` selects the source.
-def _azure_credential(spec_prefix: str, spec_key: str) -> dict:
+# The object location comes from the workflow input's import_type / spec_prefix
+# / spec_key; ``authType`` selects the source. ``download_cloud_spec`` resolves
+# this credential via the GUID path.
+def _azure_credential() -> dict:
     return {
         "authType": "adls",
         "username": _AZURITE_ACCOUNT,
@@ -95,8 +96,6 @@ def _azure_credential(spec_prefix: str, spec_key: str) -> dict:
         "extra": {
             "storage_account_name": _AZURITE_ACCOUNT,
             "adls_container": _CONTAINER,
-            "spec_prefix": spec_prefix,
-            "spec_key": spec_key,
         },
     }
 
@@ -216,7 +215,7 @@ class TestAzureCloudDownloadWorkflow:
             patch.object(
                 CredentialResolver,
                 "_resolve_by_guid",
-                AsyncMock(return_value=_azure_credential("single", "petstore.json")),
+                AsyncMock(return_value=_azure_credential()),
             ),
         ):
             result = cast(
@@ -236,6 +235,9 @@ class TestAzureCloudDownloadWorkflow:
                                 },
                             }
                         ),
+                        import_type="CLOUD",
+                        spec_prefix="single",
+                        spec_key="petstore.json",
                         openapi_credential=CredentialRef(credential_guid=_FAKE_GUID),
                         output_dir=str(output_dir / "run1"),
                         load_to_atlan=False,
@@ -378,7 +380,7 @@ class TestAzureLargeSpecWorkflow:
             patch.object(
                 CredentialResolver,
                 "_resolve_by_guid",
-                AsyncMock(return_value=_azure_credential(prefix, key)),
+                AsyncMock(return_value=_azure_credential()),
             ),
         ):
             result = cast(
@@ -398,6 +400,9 @@ class TestAzureLargeSpecWorkflow:
                                 },
                             }
                         ),
+                        import_type="CLOUD",
+                        spec_prefix=prefix,
+                        spec_key=key,
                         openapi_credential=CredentialRef(credential_guid=_FAKE_GUID),
                         output_dir=str(output_dir / "run1"),
                         load_to_atlan=False,

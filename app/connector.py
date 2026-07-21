@@ -26,8 +26,8 @@ from application_sdk.contracts.storage import UploadInput
 from application_sdk.contracts.types import ConnectionRef, FileReference, StorageTier
 from application_sdk.errors import InternalError
 from app.errors import (
+    CloudSpecLocationRequiredError,
     ConnectionRequiredError,
-    SourceCredentialRequiredError,
     SpecUrlRequiredError,
     TenantObjectStoreUnavailableError,
     UnknownImportTypeError,
@@ -49,8 +49,6 @@ from app.contracts import (
     ExtractSpecOutput,
     OpenAPIConnectorInput,
     OpenAPIConnectorOutput,
-    ResolveSourceTypeInput,
-    ResolveSourceTypeOutput,
     TransformInput,
     TransformOutput,
 )
@@ -360,40 +358,6 @@ class OpenAPIConnector(App):
     passthrough_modules = {"app.asset_mapper"}  # noqa: RUF012
 
     @task(
-        timeout_seconds=60,
-        heartbeat_timeout_seconds=30,
-        auto_heartbeat_seconds=10,
-    )
-    async def resolve_source_type(
-        self, input: ResolveSourceTypeInput
-    ) -> ResolveSourceTypeOutput:
-        """Resolve the source credential to its non-secret ``authType`` selector.
-
-        Runs as an activity (credential resolution is I/O and must not happen in
-        workflow code). Returns ONLY the ``authType`` string so no secret
-        material enters workflow history — ``run()`` uses it to dispatch between
-        the URL and object-store spec sources. A source credential is required.
-        """
-        if input.openapi_credential is None:
-            raise SourceCredentialRequiredError(
-                message=(
-                    "a source credential is required — its authType selects the "
-                    "spec source (url / s3 / gcs / adls)"
-                ),
-                field="openapi_credential",
-                constraint="required",
-            )
-
-        credential_data = await self.context.resolve_credential_raw(
-            input.openapi_credential
-        )
-        auth_type = (
-            credential_data.get("authType") or credential_data.get("auth_type") or ""
-        )
-        self.logger.info("resolved source auth_type=%s", auth_type)
-        return ResolveSourceTypeOutput(auth_type=auth_type)
-
-    @task(
         timeout_seconds=1800,
         heartbeat_timeout_seconds=120,
         auto_heartbeat_seconds=30,
@@ -401,41 +365,20 @@ class OpenAPIConnector(App):
     async def download_cloud_spec(
         self, input: DownloadCloudSpecInput
     ) -> DownloadCloudSpecOutput:
-        """Download OpenAPI spec from cloud storage. Runs as activity (has I/O).
-
-        The object-store location lives entirely inside the resolved source
-        credential: auth via ``authType`` / ``username`` / ``password`` /
-        ``extra`` (consumed by ``CloudStore.from_credentials``), and the object
-        key/prefix via ``extra.spec_key`` / ``extra.spec_prefix``.
-        """
+        """Download OpenAPI spec from cloud storage. Runs as activity (has I/O)."""
         from application_sdk.storage.cloud import CloudStore
 
-        if input.openapi_credential is None:
-            raise SourceCredentialRequiredError(
-                message=(
-                    "a source credential is required to download the spec from an "
-                    "object store"
-                ),
-                field="openapi_credential",
-                constraint="required",
+        credential_data = None
+        if input.openapi_credential is not None:
+            credential_data = await self.context.resolve_credential_raw(
+                input.openapi_credential
+            )
+            self.logger.info(
+                "resolved openapi_credential keys=%s",
+                list(credential_data.keys()),
             )
 
-        credential_data = await self.context.resolve_credential_raw(
-            input.openapi_credential
-        )
-        self.logger.info(
-            "resolved object-store credential keys=%s",
-            list(credential_data.keys()),
-        )
-
-        # Parse extra once (the resolved credential may carry it as a dict or a
-        # JSON string — mirror _has_valid_auth's handling). The object key/prefix
-        # are read from this same parsed dict.
-        extra = credential_data.get("extra") or credential_data.get("extras") or {}
-        if isinstance(extra, str):
-            extra = orjson.loads(extra) if extra else {}
-
-        if _has_valid_auth(credential_data):
+        if credential_data is not None and _has_valid_auth(credential_data):
             self.logger.info(
                 "using external cloud storage auth_type=%s",
                 credential_data.get("authType")
@@ -444,9 +387,12 @@ class OpenAPIConnector(App):
             )
             store = CloudStore.from_credentials(credential_data)
         else:
-            self.logger.info(
-                "credential has no key/role auth, falling back to tenant store"
-            )
+            if credential_data is not None:
+                self.logger.info(
+                    "credential has no key/role auth, falling back to tenant store"
+                )
+            else:
+                self.logger.info("no openapi_credential, using tenant store")
             if self.context.storage is None:
                 raise TenantObjectStoreUnavailableError(
                     message=(
@@ -457,16 +403,14 @@ class OpenAPIConnector(App):
                     retryable=False,
                     suggested_action=(
                         "Configure the Dapr objectstore binding on this deployment, "
-                        "or supply an external source credential with object-store auth."
+                        "or supply an external object-store credential."
                     ),
                 )
             store = CloudStore(self.context.storage, provider="tenant")
 
         tmp_dir = tempfile.mkdtemp(prefix="openapi-cloud-")
-        spec_prefix = extra.get("spec_prefix", "")
-        spec_key = extra.get("spec_key", "")
-        prefix = spec_prefix.strip("/") if spec_prefix else ""
-        key = spec_key.strip("/") if spec_key else ""
+        prefix = input.spec_prefix.strip("/") if input.spec_prefix else ""
+        key = input.spec_key.strip("/") if input.spec_key else ""
         if key:
             full_key = f"{prefix}/{key}" if prefix else key
             local_paths = await store.download(key=full_key, output_dir=tmp_dir)
@@ -489,34 +433,10 @@ class OpenAPIConnector(App):
         auto_heartbeat_seconds=30,
     )
     async def extract_spec(self, input: ExtractSpecInput) -> ExtractSpecOutput:
-        """Fetch the OpenAPI spec URL and extract APISpec + APIPath records.
+        """Fetch the OpenAPI spec URL and extract APISpec + APIPath records."""
+        self.logger.info("extract_spec task starting spec_url=%s", input.spec_url)
 
-        Dual-mode:
-
-        * credential mode (``openapi_credential`` set): resolve the raw
-          credential dict and take ``spec_url`` + ``auth_header`` from it
-          (``authType="url"`` source).
-        * local-path mode (``openapi_credential`` is None): use ``spec_url`` as
-          a local file path (a spec already downloaded from an object store) with
-          no auth header.
-        """
-        self.logger.info(
-            "extract_spec task starting spec_url=%s has_credential=%s",
-            input.spec_url,
-            input.openapi_credential is not None,
-        )
-
-        if input.openapi_credential is not None:
-            credential_data = await self.context.resolve_credential_raw(
-                input.openapi_credential
-            )
-            spec_url = credential_data.get("spec_url", "")
-            auth_header = credential_data.get("auth_header", "") or ""
-        else:
-            spec_url = input.spec_url
-            auth_header = ""
-
-        if not spec_url:
+        if not input.spec_url:
             raise SpecUrlRequiredError(
                 message="spec_url is required for extract_spec",
                 field="spec_url",
@@ -524,9 +444,9 @@ class OpenAPIConnector(App):
             )
 
         spec_file, path_file, spec_count, path_count = await _extract_spec_async(
-            spec_url=spec_url,
+            spec_url=input.spec_url,
             connection_qualified_name=input.connection_qualified_name,
-            auth_header=auth_header,
+            auth_header="",
             logger=self.logger,
         )
 
@@ -634,72 +554,66 @@ class OpenAPIConnector(App):
             emit_connection = True
             assertion_only_enabled = False
 
-        # ================================================================
-        # Step 1: Resolve the spec source (authType) and extract
-        # ================================================================
-        # The spec source (URL vs object store) is now selected entirely by the
-        # resolved credential's authType. resolve_source_type runs as an activity
-        # (credential resolution is I/O and must not happen in workflow code) and
-        # returns ONLY the non-secret authType selector — no secret material
-        # enters workflow history.
-        source_type = (
-            await self.resolve_source_type(
-                ResolveSourceTypeInput(openapi_credential=input.openapi_credential)
+        if input.import_type == "CLOUD":
+            if not input.spec_prefix and not input.spec_key:
+                raise CloudSpecLocationRequiredError(
+                    message="spec_prefix or spec_key required when import_type='CLOUD'",
+                    field="spec_prefix|spec_key",
+                    constraint="at least one is required when import_type='CLOUD'",
+                )
+            # Download spec from cloud storage via task (credential resolution
+            # and cloud I/O must run in an activity, not workflow code).
+            cloud_result = await self.download_cloud_spec(
+                DownloadCloudSpecInput(
+                    openapi_credential=input.openapi_credential,
+                    spec_prefix=input.spec_prefix,
+                    spec_key=input.spec_key,
+                )
             )
-        ).auth_type
+            spec_urls = [
+                ref.local_path for ref in cloud_result.spec_files if ref.local_path
+            ]
+        elif input.import_type == "URL":
+            if not input.spec_url:
+                raise SpecUrlRequiredError(
+                    message="spec_url is required when import_type='URL'",
+                    field="spec_url",
+                    constraint="required when import_type='URL'",
+                )
+            spec_urls = [input.spec_url]
+        else:
+            raise UnknownImportTypeError(
+                message=f"Unknown import_type: {input.import_type}",
+                field="import_type",
+                constraint="must be 'URL' or 'CLOUD'",
+                value_summary=str(input.import_type),
+            )
 
         self.logger.info(
-            "openapi connector starting connection_qualified_name=%s source_type=%s load_to_atlan=%s connection_usage=%s assertion_only_enabled=%s",
+            "openapi connector starting connection_qualified_name=%s spec_urls=%s load_to_atlan=%s connection_usage=%s assertion_only_enabled=%s",
             conn_qn,
-            source_type,
+            spec_urls,
             input.load_to_atlan,
             input.connection_usage,
             assertion_only_enabled,
         )
 
+        # ================================================================
+        # Step 1: Extract APISpec + APIPath (bundled, one per spec file)
+        # ================================================================
         total_scanned = 0
         all_extract_results: list[ExtractSpecOutput] = []
 
-        if source_type == "url":
-            # URL source: extract_spec resolves the credential itself to get
-            # spec_url + auth_header (secrets never leave the activity).
+        for i, spec_url in enumerate(spec_urls):
             extract_result = await self.extract_spec(
                 ExtractSpecInput(
-                    openapi_credential=input.openapi_credential,
+                    spec_url=spec_url,
                     connection_qualified_name=conn_qn,
                 )
             )
             all_extract_results.append(extract_result)
             total_scanned += (
                 extract_result.api_spec_count + extract_result.api_path_count
-            )
-        elif source_type in ("s3", "gcs", "adls"):
-            # Object-store source: download the spec file(s) via an activity
-            # (credential resolution + cloud I/O), then extract each local file
-            # in local-path mode (no credential passed to extract_spec).
-            cloud_result = await self.download_cloud_spec(
-                DownloadCloudSpecInput(openapi_credential=input.openapi_credential)
-            )
-            spec_paths = [
-                ref.local_path for ref in cloud_result.spec_files if ref.local_path
-            ]
-            for spec_path in spec_paths:
-                extract_result = await self.extract_spec(
-                    ExtractSpecInput(
-                        spec_url=spec_path,
-                        connection_qualified_name=conn_qn,
-                    )
-                )
-                all_extract_results.append(extract_result)
-                total_scanned += (
-                    extract_result.api_spec_count + extract_result.api_path_count
-                )
-        else:
-            raise UnknownImportTypeError(
-                message=f"Unknown source authType: {source_type!r}",
-                field="authType",
-                constraint="must be one of 'url', 's3', 'gcs', 'adls'",
-                value_summary=str(source_type),
             )
 
         # ================================================================

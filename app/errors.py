@@ -34,20 +34,15 @@ class SpecUrlRequiredError(InvalidInputError):
 
 
 @dataclass(kw_only=True)
-class SourceCredentialRequiredError(InvalidInputError):
-    """A source credential is required but was not supplied.
+class CloudSpecLocationRequiredError(InvalidInputError):
+    """spec_prefix or spec_key must be provided for CLOUD import_type."""
 
-    The spec source (URL vs object store) is now selected entirely by the
-    ``authType`` of the resolved source credential, so a credential is always
-    required — even a public URL is expressed as an ``authType="url"``
-    credential that carries ``spec_url`` (and no secret)."""
-
-    code: ClassVar[str] = "INVALID_INPUT_OPENAPI_SOURCE_CREDENTIAL_REQUIRED"
+    code: ClassVar[str] = "INVALID_INPUT_OPENAPI_CLOUD_SPEC_LOCATION_REQUIRED"
 
 
 @dataclass(kw_only=True)
 class UnknownImportTypeError(InvalidInputError):
-    """The resolved credential's ``authType`` is not a recognised value."""
+    """import_type is not a recognised value."""
 
     code: ClassVar[str] = "INVALID_INPUT_OPENAPI_UNKNOWN_IMPORT_TYPE"
 

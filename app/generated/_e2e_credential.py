@@ -11,8 +11,6 @@ class OpenapiCredentialBodyExtra(BaseModel):
     aws_role_arn: str = Field(default="", alias="aws_role_arn")
     region: str = Field(default="", alias="region")
     s3_bucket: str = Field(default="", alias="s3_bucket")
-    spec_prefix: str = Field(default="", alias="spec_prefix")
-    spec_key: str = Field(default="", alias="spec_key")
     gcs_bucket: str = Field(default="", alias="gcs_bucket")
     azure_tenant_id: str = Field(default="", alias="azure_tenant_id")
     storage_account_name: str = Field(default="", alias="storage_account_name")
@@ -21,9 +19,7 @@ class OpenapiCredentialBodyExtra(BaseModel):
 
 class OpenapiCredentialBody(CredentialBody):
     name: str = Field(alias="name")
-    auth_type: str = Field(default="url", alias="authType")
-    spec_url: str = Field(default="", alias="spec_url")
-    auth_header: str = Field(default="", alias="auth_header")
+    auth_type: str = Field(default="s3", alias="authType")
     username: str = Field(default="", alias="username")
     password: str = Field(default="", alias="password")
     extra: OpenapiCredentialBodyExtra = Field(
@@ -33,7 +29,7 @@ class OpenapiCredentialBody(CredentialBody):
 
 class OpenapiAgentCredentialBody(CredentialBody):
     name: str = Field(alias="name")
-    auth_type: str = Field(default="url", alias="authType")
+    auth_type: str = Field(default="s3", alias="authType")
     connector_config_name: str = Field(
         default="atlan-connectors-openapi", alias="connectorConfigName"
     )

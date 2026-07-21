@@ -16,6 +16,14 @@ class AppInputContract(ExtractionInput):
         "publish_dry_run",
     }
 
+    import_type: str = "URL"
+    """Select how you want to provide the OpenAPI spec file to be imported."""
+    spec_url: str = ""
+    """Full URL to the JSON form of the OpenAPI specification."""
+    spec_prefix: str = ""
+    """Enter the directory (path) within the object store from which to retrieve the OpenAPI spec file."""
+    spec_key: str = ""
+    """Enter the object key (filename), including its extension, within the object store and prefix."""
     connection_usage: str = "REUSE"
     """Whether to create a new connection to hold these API assets, or reuse an existing connection."""
     connection_qualified_name: str = ""

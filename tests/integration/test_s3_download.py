@@ -70,12 +70,12 @@ _PETSTORE_SPEC = {
 }
 
 
-# Shape expected by CloudStore.from_credentials / _create_s3_store. The spec
-# source is now fully credential-driven: the object key/prefix live in
-# ``extra.spec_prefix`` / ``extra.spec_key``, and ``authType`` selects the
-# source. ``resolve_source_type`` and ``download_cloud_spec`` both resolve this
-# same credential via the GUID path.
-def _s3_credential(spec_prefix: str, spec_key: str) -> dict:
+# Shape expected by CloudStore.from_credentials / _create_s3_store. The
+# object-store credential carries only auth (authType + username/password +
+# extra.s3_bucket/region); the object location comes from the workflow input's
+# import_type / spec_prefix / spec_key. ``download_cloud_spec`` resolves this
+# credential via the GUID path.
+def _s3_credential() -> dict:
     return {
         "authType": "s3",
         "username": _MINIO_USER,
@@ -83,8 +83,6 @@ def _s3_credential(spec_prefix: str, spec_key: str) -> dict:
         "extra": {
             "s3_bucket": _BUCKET,
             "region": "us-east-1",
-            "spec_prefix": spec_prefix,
-            "spec_key": spec_key,
         },
     }
 
@@ -207,7 +205,7 @@ class TestS3CloudDownloadWorkflow:
             patch.object(
                 CredentialResolver,
                 "_resolve_by_guid",
-                AsyncMock(return_value=_s3_credential("single", "petstore.json")),
+                AsyncMock(return_value=_s3_credential()),
             ),
         ):
             result = cast(
@@ -227,6 +225,9 @@ class TestS3CloudDownloadWorkflow:
                                 },
                             }
                         ),
+                        import_type="CLOUD",
+                        spec_prefix="single",
+                        spec_key="petstore.json",
                         openapi_credential=CredentialRef(credential_guid=_FAKE_GUID),
                         output_dir=str(output_dir / "run1"),
                         load_to_atlan=False,
@@ -369,7 +370,7 @@ class TestS3LargeSpecWorkflow:
             patch.object(
                 CredentialResolver,
                 "_resolve_by_guid",
-                AsyncMock(return_value=_s3_credential(prefix, key)),
+                AsyncMock(return_value=_s3_credential()),
             ),
         ):
             result = cast(
@@ -389,6 +390,9 @@ class TestS3LargeSpecWorkflow:
                                 },
                             }
                         ),
+                        import_type="CLOUD",
+                        spec_prefix=prefix,
+                        spec_key=key,
                         openapi_credential=CredentialRef(credential_guid=_FAKE_GUID),
                         output_dir=str(output_dir / "run1"),
                         load_to_atlan=False,
