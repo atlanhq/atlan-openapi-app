@@ -99,9 +99,6 @@ class ExtractSpecInput(Input):
     connection_qualified_name: str = ""
     """Atlan connection QN — used to pre-compute APISpec and APIPath QNs."""
 
-    openapi_credential: CredentialRef | None = None
-    """Optional credential for private specs (provides auth_header)."""
-
 
 class ExtractSpecOutput(Output):
     """Output from the extract_spec task."""
@@ -127,8 +124,12 @@ class ExtractSpecOutput(Output):
 class DownloadCloudSpecInput(Input):
     """Input for the download_cloud_spec task."""
 
+    openapi_credential: CredentialRef | None = None
+    """Object-store credential (authType s3/gcs/adls) for cloud spec download."""
+
     cloud_source: str = ""
-    """Cloud storage credential GUID."""
+    """Backward-compat: legacy object-store credential GUID from pre-migration
+    CLOUD configs. Used as a fallback when ``openapi_credential`` is unset."""
 
     spec_prefix: str = ""
     """Object store key prefix for cloud spec discovery."""

@@ -370,12 +370,29 @@ class OpenAPIConnector(App):
 
         credential_data = None
         if input.cloud_source:
-            from application_sdk.credentials.ref import CredentialRef
+            # openapi's object-store credential: the `cloud_source`
+            # CredentialInput (credType atlan-connectors-openapi) supplies a
+            # credential GUID. Resolve it to the raw dict that
+            # CloudStore.from_credentials consumes. Pre-migration configs stored
+            # a csa-connectors-objectstore GUID here and still resolve by GUID.
+            from application_sdk.credentials.ref import (  # noqa: PLC0415
+                CredentialRef,
+            )
 
             ref = CredentialRef(credential_guid=input.cloud_source)
             credential_data = await self.context.resolve_credential_raw(ref)
             self.logger.info(
                 "resolved cloud_source credential keys=%s",
+                list(credential_data.keys()),
+            )
+        elif input.openapi_credential is not None:
+            # Fallback: some platforms link the CredentialInput selection to the
+            # standard credential slot ({{credential}} -> openapi_credential).
+            credential_data = await self.context.resolve_credential_raw(
+                input.openapi_credential
+            )
+            self.logger.info(
+                "resolved openapi_credential keys=%s",
                 list(credential_data.keys()),
             )
 
@@ -404,7 +421,7 @@ class OpenAPIConnector(App):
                     retryable=False,
                     suggested_action=(
                         "Configure the Dapr objectstore binding on this deployment, "
-                        "or supply an external cloud_source credential."
+                        "or supply an external object-store credential."
                     ),
                 )
             store = CloudStore(self.context.storage, provider="tenant")
@@ -444,22 +461,10 @@ class OpenAPIConnector(App):
                 constraint="required",
             )
 
-        if input.openapi_credential is not None:
-            from app.credentials import OpenAPICredential
-
-            credential = await self.context.resolve_credential(input.openapi_credential)
-            auth_header = (
-                credential.auth_header
-                if isinstance(credential, OpenAPICredential)
-                else ""
-            )
-        else:
-            auth_header = ""
-
         spec_file, path_file, spec_count, path_count = await _extract_spec_async(
             spec_url=input.spec_url,
             connection_qualified_name=input.connection_qualified_name,
-            auth_header=auth_header,
+            auth_header="",
             logger=self.logger,
         )
 
@@ -578,6 +583,7 @@ class OpenAPIConnector(App):
             # and cloud I/O must run in an activity, not workflow code).
             cloud_result = await self.download_cloud_spec(
                 DownloadCloudSpecInput(
+                    openapi_credential=input.openapi_credential,
                     cloud_source=input.cloud_source,
                     spec_prefix=input.spec_prefix,
                     spec_key=input.spec_key,

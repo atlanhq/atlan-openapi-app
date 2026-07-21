@@ -1,7 +1,9 @@
 .PHONY: generate check-generate test-cloud-integration test-azure-integration
 
 generate:
-	pkl eval --project-dir contract -m . contract/app.pkl contract/csa-connectors-objectstore.pkl
+	pkl eval --project-dir contract -m . contract/app.pkl
+	uvx ruff check --fix --select F401 --quiet app/generated/*.py
+	uvx ruff format app/generated/*.py
 
 check-generate: generate
 	@git diff --exit-code app/generated/ atlan.yaml app.yaml \

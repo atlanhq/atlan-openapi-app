@@ -43,6 +43,7 @@ import pytest
 import pytest_asyncio
 
 from application_sdk.contracts.types import ConnectionRef
+from application_sdk.credentials.ref import CredentialRef
 from application_sdk.storage.cloud import CloudStore
 
 from app.connector import OpenAPIConnector
@@ -81,17 +82,23 @@ _PETSTORE_SPEC = {
     },
 }
 
+
 # Credential shape expected by CloudStore.from_credentials / _create_azure_store.
 # username is the storage account name; password is the storage account key.
-_AZURE_CREDENTIAL: dict = {
-    "authType": "adls",
-    "username": _AZURITE_ACCOUNT,
-    "password": _AZURITE_KEY,
-    "extra": {
-        "storage_account_name": _AZURITE_ACCOUNT,
-        "adls_container": _CONTAINER,
-    },
-}
+# The object location comes from the workflow input's import_type / spec_prefix
+# / spec_key; ``authType`` selects the source. ``download_cloud_spec`` resolves
+# this credential via the GUID path.
+def _azure_credential() -> dict:
+    return {
+        "authType": "adls",
+        "username": _AZURITE_ACCOUNT,
+        "password": _AZURITE_KEY,
+        "extra": {
+            "storage_account_name": _AZURITE_ACCOUNT,
+            "adls_container": _CONTAINER,
+        },
+    }
+
 
 _FAKE_GUID = "test-azurite-guid"
 _CONNECTION_NAME = "test-openapi-cloud-azure"
@@ -208,7 +215,7 @@ class TestAzureCloudDownloadWorkflow:
             patch.object(
                 CredentialResolver,
                 "_resolve_by_guid",
-                AsyncMock(return_value=_AZURE_CREDENTIAL),
+                AsyncMock(return_value=_azure_credential()),
             ),
         ):
             result = cast(
@@ -231,7 +238,7 @@ class TestAzureCloudDownloadWorkflow:
                         import_type="CLOUD",
                         spec_prefix="single",
                         spec_key="petstore.json",
-                        cloud_source=_FAKE_GUID,
+                        openapi_credential=CredentialRef(credential_guid=_FAKE_GUID),
                         output_dir=str(output_dir / "run1"),
                         load_to_atlan=False,
                     ),
@@ -373,7 +380,7 @@ class TestAzureLargeSpecWorkflow:
             patch.object(
                 CredentialResolver,
                 "_resolve_by_guid",
-                AsyncMock(return_value=_AZURE_CREDENTIAL),
+                AsyncMock(return_value=_azure_credential()),
             ),
         ):
             result = cast(
@@ -396,7 +403,7 @@ class TestAzureLargeSpecWorkflow:
                         import_type="CLOUD",
                         spec_prefix=prefix,
                         spec_key=key,
-                        cloud_source=_FAKE_GUID,
+                        openapi_credential=CredentialRef(credential_guid=_FAKE_GUID),
                         output_dir=str(output_dir / "run1"),
                         load_to_atlan=False,
                     ),

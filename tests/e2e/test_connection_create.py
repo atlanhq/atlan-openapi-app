@@ -65,8 +65,8 @@ class TestConnectionCreate(OpenapiGeneratedE2EBase):
             # the CSA package), which would take the assertion-only path and
             # require a connection_qualified_name this create-flow never sets.
             connection_usage="CREATE",
-            # import_type defaults to "URL"; spec_prefix / spec_key /
-            # cloud_source unused for direct-URL imports.
+            # import_type defaults to "URL"; spec_prefix / spec_key unused for
+            # direct-URL imports.
         )
 
     # _credential_body() inherits BaseE2ETest default of None —

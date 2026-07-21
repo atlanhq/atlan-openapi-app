@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from application_sdk.contracts.types import ConnectionRef, FileReference
 from application_sdk.credentials.ref import CredentialRef
 from app.contracts import (
+    DownloadCloudSpecInput,
     ExtractSpecInput,
     ExtractSpecOutput,
     OpenAPIConnectorInput,
@@ -96,7 +97,9 @@ class TestOpenAPIConnectorInput:
         decoded = _round_trip(original, OpenAPIConnectorInput)
         assert decoded.spec_prefix == ""
         assert decoded.spec_key == ""
-        assert decoded.cloud_source == ""
+        # The object-store credential (replaces the old cloud_source GUID) is
+        # None by default.
+        assert decoded.openapi_credential is None
 
     def test_round_trip_cloud_import_fields(self) -> None:
         """Cloud import fields survive round-trip."""
@@ -104,13 +107,14 @@ class TestOpenAPIConnectorInput:
             import_type="CLOUD",
             spec_prefix="path/to/specs",
             spec_key="openapi.json",
-            cloud_source="cred-guid-abc123",
+            openapi_credential=CredentialRef(name="src", credential_type="openapi"),
         )
         decoded = _round_trip(original, OpenAPIConnectorInput)
         assert decoded.import_type == "CLOUD"
         assert decoded.spec_prefix == "path/to/specs"
         assert decoded.spec_key == "openapi.json"
-        assert decoded.cloud_source == "cred-guid-abc123"
+        assert decoded.openapi_credential is not None
+        assert decoded.openapi_credential.name == "src"
 
 
 # =============================================================================
@@ -221,28 +225,18 @@ class TestExtractSpecContracts:
         decoded = _round_trip(original, ExtractSpecInput)
         assert decoded.spec_url == ""
         assert decoded.connection_qualified_name == ""
-        assert decoded.openapi_credential is None
 
     def test_input_round_trip_with_values(self) -> None:
-        ref = CredentialRef(name="openapi", credential_type="openapi")
+        # extract_spec fetches a public spec_url with no auth — the private-URL
+        # Bearer credential is a dropped feature, so ExtractSpecInput no longer
+        # carries a credential.
         original = ExtractSpecInput(
             spec_url="https://petstore3.swagger.io/api/v3/openapi.json",
             connection_qualified_name="default/api/test-conn",
-            openapi_credential=ref,
         )
         decoded = _round_trip(original, ExtractSpecInput)
         assert decoded.spec_url == "https://petstore3.swagger.io/api/v3/openapi.json"
         assert decoded.connection_qualified_name == "default/api/test-conn"
-        assert decoded.openapi_credential is not None
-        assert decoded.openapi_credential.name == "openapi"
-        assert decoded.openapi_credential.credential_type == "openapi"
-
-    def test_input_credential_ref_fields_survive(self) -> None:
-        ref = CredentialRef(name="cred", credential_type="openapi", store_name="vault")
-        original = ExtractSpecInput(openapi_credential=ref)
-        decoded = _round_trip(original, ExtractSpecInput)
-        assert decoded.openapi_credential is not None
-        assert decoded.openapi_credential.store_name == "vault"
 
     def test_output_round_trip_defaults(self) -> None:
         original = ExtractSpecOutput()
@@ -269,6 +263,49 @@ class TestExtractSpecContracts:
         assert decoded.api_path_file.local_path == "/tmp/raw/api_path.jsonl"
         assert decoded.api_spec_count == 1
         assert decoded.api_path_count == 17
+
+
+# =============================================================================
+# DownloadCloudSpecInput
+# =============================================================================
+
+
+class TestDownloadCloudSpecContracts:
+    def test_input_round_trip_defaults(self) -> None:
+        original = DownloadCloudSpecInput()
+        decoded = _round_trip(original, DownloadCloudSpecInput)
+        assert decoded.openapi_credential is None
+        assert decoded.spec_prefix == ""
+        assert decoded.spec_key == ""
+
+    def test_input_round_trip_with_values(self) -> None:
+        # cloud_source GUID string has been replaced by an object-store
+        # CredentialRef consumed by CloudStore.from_credentials.
+        ref = CredentialRef(name="src", credential_type="openapi")
+        original = DownloadCloudSpecInput(
+            openapi_credential=ref,
+            spec_prefix="path/to/specs",
+            spec_key="openapi.json",
+        )
+        decoded = _round_trip(original, DownloadCloudSpecInput)
+        assert decoded.openapi_credential is not None
+        assert decoded.openapi_credential.name == "src"
+        assert decoded.spec_prefix == "path/to/specs"
+        assert decoded.spec_key == "openapi.json"
+
+    def test_input_round_trip_legacy_cloud_source(self) -> None:
+        # Backward-compat: pre-migration CLOUD configs pass a legacy object-store
+        # credential GUID via cloud_source; download_cloud_spec falls back to it
+        # when openapi_credential is unset.
+        original = DownloadCloudSpecInput(
+            cloud_source="legacy-guid-123",
+            spec_prefix="path/to/specs",
+            spec_key="openapi.json",
+        )
+        decoded = _round_trip(original, DownloadCloudSpecInput)
+        assert decoded.openapi_credential is None
+        assert decoded.cloud_source == "legacy-guid-123"
+        assert decoded.spec_prefix == "path/to/specs"
 
 
 # =============================================================================

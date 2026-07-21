@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import ClassVar
 
+from application_sdk.credentials.ref import CredentialRef
 from application_sdk.templates.contracts import ExtractionInput
 
 
@@ -24,11 +25,12 @@ class AppInputContract(ExtractionInput):
     spec_key: str = ""
     """Enter the object key (filename), including its extension, within the object store and prefix."""
     cloud_source: str = ""
-    """Enter details for the object store from which to retrieve the OpenAPI spec containing metadata to be imported."""
+    """Object store from which to retrieve the OpenAPI spec file."""
     connection_usage: str = "REUSE"
     """Whether to create a new connection to hold these API assets, or reuse an existing connection."""
     connection_qualified_name: str = ""
     """Select an existing connection to load assets into."""
+    openapi_credential: CredentialRef | None = None
     output_dir: str = ""
     """Directory for output JSONL files."""
     checkpoint_dir: str = ""

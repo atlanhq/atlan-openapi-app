@@ -9,14 +9,34 @@ Covers the three bug-fixes for BLDX-1363:
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import orjson
+import pytest
 
-from app.connector import _extract_spec_async
+from app.connector import OpenAPIConnector, _extract_spec_async
+from app.contracts import ExtractSpecInput
+from app.errors import SpecUrlRequiredError
 from application_sdk.observability.logger_adaptor import get_logger
 
 CONN_QN = "default/api/test-conn"
 _LOGGER = get_logger("test_connector")
+
+
+def _make_connector() -> OpenAPIConnector:
+    """Build an OpenAPIConnector with a stubbed AppContext.
+
+    ``@task`` returns the raw function (it only attaches metadata), so task
+    bodies can be invoked directly on an instance with a fake ``_context``.
+    """
+    connector = OpenAPIConnector()
+    connector._context = SimpleNamespace(  # type: ignore[attr-defined]
+        logger=_LOGGER,
+        run_id="test-run",
+        app_name="openapi",
+        storage=None,
+    )
+    return connector
 
 
 # ---------------------------------------------------------------------------
@@ -169,3 +189,33 @@ class TestUnsubstitutedPlaceholder:
 
         assert not _is_unsubstituted_placeholder("default/api/1783959234")
         assert not _is_unsubstituted_placeholder("")
+
+
+# ---------------------------------------------------------------------------
+# extract_spec — fetches spec_url with no auth (the private-URL Bearer
+# credential is a dropped feature; extract_spec no longer takes a credential).
+# ---------------------------------------------------------------------------
+
+
+class TestExtractSpecNoAuth:
+    async def test_fetches_spec_url_without_credential(self, tmp_path: Path) -> None:
+        spec = {
+            "openapi": "3.0.4",
+            "info": {"title": "NoAuth", "version": "1.0"},
+            "paths": {"/a": {"get": {}}, "/b": {"post": {}}},
+        }
+        local = tmp_path / "spec.json"
+        local.write_bytes(orjson.dumps(spec))
+        connector = _make_connector()
+        out = await connector.extract_spec(
+            ExtractSpecInput(spec_url=str(local), connection_qualified_name=CONN_QN)
+        )
+        assert out.api_spec_count == 1
+        assert out.api_path_count == 2
+
+    async def test_empty_spec_url_raises(self) -> None:
+        connector = _make_connector()
+        with pytest.raises(SpecUrlRequiredError):
+            await connector.extract_spec(
+                ExtractSpecInput(spec_url="", connection_qualified_name=CONN_QN)
+            )

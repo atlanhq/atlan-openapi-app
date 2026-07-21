@@ -42,6 +42,10 @@ _SPEC_URL = os.environ.get("OPENAPI_SPEC_URL") or str(_BUNDLED_SPEC)
 CONNECTION_NAME = "test-openapi-integration"
 CONNECTION_QN = f"default/api/{CONNECTION_NAME}"
 
+# import_type="URL" fetches the public spec_url directly — no auth, no
+# credential resolution (the private-URL Bearer credential is a dropped
+# feature).
+
 
 @pytest.mark.cloud_integration
 class TestOpenAPIConnectorExtraction:
@@ -83,6 +87,7 @@ class TestOpenAPIConnectorExtraction:
                             },
                         }
                     ),
+                    import_type="URL",
                     spec_url=_SPEC_URL,
                     output_dir=str(output_dir / "run1"),
                     checkpoint_dir="",
@@ -144,6 +149,7 @@ class TestOpenAPIConnectorExtraction:
                 OpenAPIConnectorInput(
                     connection_usage="REUSE",
                     connection_qualified_name=CONNECTION_QN,
+                    import_type="URL",
                     spec_url=_SPEC_URL,
                     output_dir=str(output_dir / "run1"),
                     checkpoint_dir="",

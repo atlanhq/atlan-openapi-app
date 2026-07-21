@@ -37,6 +37,7 @@ import pytest
 import pytest_asyncio
 
 from application_sdk.contracts.types import ConnectionRef
+from application_sdk.credentials.ref import CredentialRef
 from application_sdk.storage.cloud import CloudStore
 
 from app.connector import OpenAPIConnector
@@ -68,13 +69,23 @@ _PETSTORE_SPEC = {
     },
 }
 
-# Shape expected by CloudStore.from_credentials / _create_s3_store
-_S3_CREDENTIAL: dict = {
-    "authType": "s3",
-    "username": _MINIO_USER,
-    "password": _MINIO_PASS,
-    "extra": {"s3_bucket": _BUCKET, "region": "us-east-1"},
-}
+
+# Shape expected by CloudStore.from_credentials / _create_s3_store. The
+# object-store credential carries only auth (authType + username/password +
+# extra.s3_bucket/region); the object location comes from the workflow input's
+# import_type / spec_prefix / spec_key. ``download_cloud_spec`` resolves this
+# credential via the GUID path.
+def _s3_credential() -> dict:
+    return {
+        "authType": "s3",
+        "username": _MINIO_USER,
+        "password": _MINIO_PASS,
+        "extra": {
+            "s3_bucket": _BUCKET,
+            "region": "us-east-1",
+        },
+    }
+
 
 _FAKE_GUID = "test-minio-s3-guid"
 _CONNECTION_NAME = "test-openapi-cloud-s3"
@@ -194,7 +205,7 @@ class TestS3CloudDownloadWorkflow:
             patch.object(
                 CredentialResolver,
                 "_resolve_by_guid",
-                AsyncMock(return_value=_S3_CREDENTIAL),
+                AsyncMock(return_value=_s3_credential()),
             ),
         ):
             result = cast(
@@ -217,7 +228,7 @@ class TestS3CloudDownloadWorkflow:
                         import_type="CLOUD",
                         spec_prefix="single",
                         spec_key="petstore.json",
-                        cloud_source=_FAKE_GUID,
+                        openapi_credential=CredentialRef(credential_guid=_FAKE_GUID),
                         output_dir=str(output_dir / "run1"),
                         load_to_atlan=False,
                     ),
@@ -359,7 +370,7 @@ class TestS3LargeSpecWorkflow:
             patch.object(
                 CredentialResolver,
                 "_resolve_by_guid",
-                AsyncMock(return_value=_S3_CREDENTIAL),
+                AsyncMock(return_value=_s3_credential()),
             ),
         ):
             result = cast(
@@ -382,7 +393,7 @@ class TestS3LargeSpecWorkflow:
                         import_type="CLOUD",
                         spec_prefix=prefix,
                         spec_key=key,
-                        cloud_source=_FAKE_GUID,
+                        openapi_credential=CredentialRef(credential_guid=_FAKE_GUID),
                         output_dir=str(output_dir / "run1"),
                         load_to_atlan=False,
                     ),
