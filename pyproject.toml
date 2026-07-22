@@ -4,7 +4,7 @@ version = "0.6.0"
 description = "OpenAPI Spec Loader connector"
 requires-python = ">=3.11"
 dependencies = [
-    "atlan-application-sdk>=3.6.0,<4.0.0",
+    "atlan-application-sdk>=3.22,<4",
 ]
 
 [build-system]
@@ -16,7 +16,7 @@ packages = ["app"]
 
 [dependency-groups]
 dev = [
-    "atlan-application-sdk[tests]>=3.6.0,<4.0.0",
+    "atlan-application-sdk[tests]>=3.22,<4",
     "pytest-asyncio>=1.3.0,<2",
     "respx>=0.22.0,<1",
     "pre-commit>=4.2.0,<5",
