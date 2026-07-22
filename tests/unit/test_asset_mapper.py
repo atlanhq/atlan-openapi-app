@@ -542,3 +542,156 @@ class TestMapApiPath:
             or result.api_path_available_operations is UNSET
             or result.api_path_available_operations == []
         )
+
+
+# =============================================================================
+# Mutation-testing gap closures (BLDX-1562)
+#
+# Each test below kills at least one mutant that survived the 2026-07-20
+# baseline run — i.e. a seeded bug the suite previously did not detect.
+# =============================================================================
+
+from app.asset_mapper import apply_sync_metadata  # noqa: E402
+
+
+class TestApplySyncMetadata:
+    """The sync-metadata stamp was previously asserted nowhere."""
+
+    def _stamped_spec(self) -> APISpec:
+        asset = APISpec.creator(name="Petstore", connection_qualified_name=CONN_QN)
+        apply_sync_metadata(asset, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS)
+        return asset
+
+    def test_status_is_exactly_active(self) -> None:
+        assert self._stamped_spec().status == "ACTIVE"
+
+    def test_tenant_id_is_exactly_default(self) -> None:
+        assert self._stamped_spec().tenant_id == "default"
+
+    def test_last_sync_run_is_workflow_id(self) -> None:
+        assert self._stamped_spec().last_sync_run == WORKFLOW_ID
+
+    def test_last_sync_run_at_is_run_timestamp(self) -> None:
+        assert self._stamped_spec().last_sync_run_at == WORKFLOW_RUN_AT_MS
+
+    def test_last_sync_workflow_name_is_workflow_type(self) -> None:
+        assert self._stamped_spec().last_sync_workflow_name == WORKFLOW_TYPE
+
+
+class TestMapConnectionNamePrecedence:
+    def test_explicit_name_wins_over_qn_segment(self) -> None:
+        """An explicit connection name must be used verbatim, not re-derived
+        from the qualified name (the default fixture hides this: its name
+        equals the last QN segment)."""
+        conn = map_connection(
+            _make_connection(qn="default/api/1712345678", name="Payments Gateway")
+        )
+        assert conn.name == "Payments Gateway"
+
+    def test_name_fallback_with_slashless_qualified_name(self) -> None:
+        """Fallback must take the whole QN when it has no '/' separator."""
+        bare = ConnectionRef.model_validate(
+            {
+                "typeName": "Connection",
+                "attributes": {"qualifiedName": "no-slashes-here"},
+            }
+        )
+        assert map_connection(bare).name == "no-slashes-here"
+
+
+class TestMapApiSpecSingleFieldGates:
+    """Each optional block must trigger when ONLY ONE of its source fields is
+    set — an `or`→`and` mutation in the gate expression survived the full-
+    fixture tests because every field was always populated together."""
+
+    def _map_with_only(self, **fields: str) -> APISpec:
+        empty = dict(
+            openapi_version="",
+            description="",
+            terms_of_service="",
+            contact_name="",
+            contact_email="",
+            contact_url="",
+            license_name="",
+            license_url="",
+            spec_version="",
+            external_docs_url="",
+            external_docs_description="",
+            spec_url="",
+        )
+        empty.update(fields)
+        record = OpenAPISpecRecord(title="Petstore", **empty)
+        return map_api_spec(
+            record, CONN_QN, WORKFLOW_ID, WORKFLOW_TYPE, WORKFLOW_RUN_AT_MS
+        )
+
+    def test_contact_email_alone_is_stamped(self) -> None:
+        asset = self._map_with_only(contact_email="support@example.com")
+        assert asset.api_spec_contact_email == "support@example.com"
+
+    def test_contact_name_alone_is_stamped(self) -> None:
+        asset = self._map_with_only(contact_name="Support")
+        assert asset.api_spec_contact_name == "Support"
+
+    def test_contact_url_alone_is_stamped(self) -> None:
+        asset = self._map_with_only(contact_url="https://example.com/contact")
+        assert asset.api_spec_contact_url == "https://example.com/contact"
+
+    def test_license_name_alone_is_stamped(self) -> None:
+        asset = self._map_with_only(license_name="Apache 2.0")
+        assert asset.api_spec_license_name == "Apache 2.0"
+
+    def test_license_url_alone_is_stamped(self) -> None:
+        asset = self._map_with_only(license_url="https://example.com/license")
+        assert asset.api_spec_license_url == "https://example.com/license"
+
+    def test_external_docs_url_alone_is_stamped(self) -> None:
+        asset = self._map_with_only(external_docs_url="https://docs.example.com")
+        assert asset.api_external_docs == {"url": "https://docs.example.com"}
+
+    def test_external_docs_description_alone_is_stamped(self) -> None:
+        asset = self._map_with_only(external_docs_description="Full documentation")
+        assert asset.api_external_docs == {"description": "Full documentation"}
+
+
+class TestMapApiSpecSyncMetadata:
+    """map_api_spec must pass its own workflow args through to the stamp."""
+
+    def test_sync_metadata_stamped_with_workflow_args(self) -> None:
+        result = map_api_spec(
+            _sample_spec_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
+        assert result.last_sync_run == WORKFLOW_ID
+        assert result.last_sync_workflow_name == WORKFLOW_TYPE
+        assert result.last_sync_run_at == WORKFLOW_RUN_AT_MS
+
+
+class TestMapApiPathConnectionQNAndSyncMetadata:
+    def test_explicit_connection_qualified_name_wins(self) -> None:
+        """The caller-provided connection QN must be used verbatim, not
+        re-derived from the spec QN (which would silently mis-home the asset
+        whenever the two disagree)."""
+        result = map_api_path(
+            _sample_path_record(),
+            "default/api/a-different-conn",
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
+        assert result.connection_qualified_name == "default/api/a-different-conn"
+
+    def test_sync_metadata_stamped_with_workflow_args(self) -> None:
+        result = map_api_path(
+            _sample_path_record(),
+            CONN_QN,
+            WORKFLOW_ID,
+            WORKFLOW_TYPE,
+            WORKFLOW_RUN_AT_MS,
+        )
+        assert result.last_sync_run == WORKFLOW_ID
+        assert result.last_sync_workflow_name == WORKFLOW_TYPE
+        assert result.last_sync_run_at == WORKFLOW_RUN_AT_MS

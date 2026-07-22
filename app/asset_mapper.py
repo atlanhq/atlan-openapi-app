@@ -95,7 +95,9 @@ def map_connection(connection: ConnectionRef) -> Connection:
     """
     conn_qn: str = connection.attributes.qualified_name
     _name = connection.attributes.name
-    conn_name: str = _name if _name else conn_qn.rsplit("/", 1)[-1]
+    # pragma: no mutate — maxsplit mutations of rsplit are equivalent under
+    # [-1] indexing (same last segment), so they can never be killed by a test
+    conn_name: str = _name if _name else conn_qn.rsplit("/", 1)[-1]  # pragma: no mutate
     native: Connection = connection.to_connection()
     native.connector_name = connection.attributes.connector_name or CONNECTOR_NAME
     native.connection_qualified_name = conn_qn

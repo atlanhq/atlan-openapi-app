@@ -117,3 +117,6 @@ sdr/config.yaml
 *.rar
 *.7z
 
+
+# mutmut mutation-testing working directory
+mutants/

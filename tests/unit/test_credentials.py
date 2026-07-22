@@ -82,3 +82,11 @@ class TestAutoRegistration:
     def test_type_in_type_list(self) -> None:
         registry = CredentialTypeRegistry()
         assert "openapi" in registry.registered_types()
+
+
+class TestOpenAPICredentialDefaults:
+    """Mutation-testing gap closure (BLDX-1562): the default auth_header
+    must be the empty string — request code branches on its truthiness."""
+
+    def test_default_auth_header_is_empty_string(self) -> None:
+        assert OpenAPICredential().auth_header == ""

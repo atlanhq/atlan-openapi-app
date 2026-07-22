@@ -169,3 +169,46 @@ class TestUnsubstitutedPlaceholder:
 
         assert not _is_unsubstituted_placeholder("default/api/1783959234")
         assert not _is_unsubstituted_placeholder("")
+
+
+# =============================================================================
+# Mutation-testing gap closures (BLDX-1562)
+# =============================================================================
+
+
+class TestUnsubstitutedPlaceholderPartialBraces:
+    """Half-substituted values (only one brace pair present) must still be
+    rejected — the existing tests only used values carrying BOTH braces, so
+    an `or`→`and` mutation in the check survived."""
+
+    def test_detects_lone_opening_braces(self) -> None:
+        from app.connector import _is_unsubstituted_placeholder
+
+        assert _is_unsubstituted_placeholder("default/api/{{epoch")
+
+    def test_detects_lone_closing_braces(self) -> None:
+        from app.connector import _is_unsubstituted_placeholder
+
+        assert _is_unsubstituted_placeholder("default/api/epoch}}")
+
+
+class TestHasValidAuth:
+    """Previously untested: the `extras` (plural) fallback key and the basic
+    auth-shape decisions that pick cloud store Path A vs Path B."""
+
+    def test_role_auth_via_extras_plural_key(self) -> None:
+        from app.connector import _has_valid_auth
+
+        assert _has_valid_auth({"extras": {"aws_role_arn": "arn:aws:iam::1:role/x"}})
+
+    def test_role_auth_via_extra_singular_key(self) -> None:
+        from app.connector import _has_valid_auth
+
+        assert _has_valid_auth({"extra": {"aws_role_arn": "arn:aws:iam::1:role/x"}})
+
+    def test_key_auth_requires_username_and_password(self) -> None:
+        from app.connector import _has_valid_auth
+
+        assert _has_valid_auth({"username": "u", "password": "p"})
+        assert not _has_valid_auth({"username": "u"})
+        assert not _has_valid_auth({})
