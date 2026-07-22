@@ -24,6 +24,8 @@ import msgspec
 from application_sdk.app import App, task
 from application_sdk.contracts.storage import UploadInput
 from application_sdk.contracts.types import ConnectionRef, FileReference, StorageTier
+from application_sdk.credentials.errors import CredentialRoutingError
+from application_sdk.credentials.ref import CredentialRef
 from application_sdk.errors import InternalError
 from app.errors import (
     CloudSpecLocationRequiredError,
@@ -369,30 +371,30 @@ class OpenAPIConnector(App):
         from application_sdk.storage.cloud import CloudStore
 
         credential_data = None
-        if input.cloud_source:
-            # openapi's object-store credential: the `cloud_source`
-            # CredentialInput (credType atlan-connectors-openapi) supplies a
-            # credential GUID. Resolve it to the raw dict that
-            # CloudStore.from_credentials consumes. Pre-migration configs stored
-            # a csa-connectors-objectstore GUID here and still resolve by GUID.
-            from application_sdk.credentials.ref import (  # noqa: PLC0415
-                CredentialRef,
-            )
-
-            ref = CredentialRef(credential_guid=input.cloud_source)
-            credential_data = await self.context.resolve_credential_raw(ref)
-            self.logger.info(
-                "resolved cloud_source credential keys=%s",
-                list(credential_data.keys()),
-            )
-        elif input.openapi_credential is not None:
-            # Fallback: some platforms link the CredentialInput selection to the
-            # standard credential slot ({{credential}} -> openapi_credential).
+        if input.openapi_credential is not None:
+            # Preferred: an object-store credential ref resolved once at the
+            # workflow entrypoint. In SDR (agent) mode this is the agent-aware
+            # ref built by CredentialRef.resolve(input) from the forwarded
+            # agent_json; in direct/PKL mode it is the standard credential slot
+            # ({{credential}} -> openapi_credential). Consumes CloudStore's
+            # required raw dict via resolve_credential_raw.
             credential_data = await self.context.resolve_credential_raw(
                 input.openapi_credential
             )
             self.logger.info(
                 "resolved openapi_credential keys=%s",
+                list(credential_data.keys()),
+            )
+        elif input.cloud_source:
+            # Legacy fallback only: pre-migration CLOUD configs stored a
+            # csa-connectors-objectstore GUID in `cloud_source` and still
+            # resolve strictly by GUID. Agent (SDR) mode is handled upstream by
+            # CredentialRef.resolve(input); this GUID path is kept purely as a
+            # fallback for those legacy configs.
+            ref = CredentialRef(credential_guid=input.cloud_source)
+            credential_data = await self.context.resolve_credential_raw(ref)
+            self.logger.info(
+                "resolved cloud_source credential keys=%s",
                 list(credential_data.keys()),
             )
 
@@ -579,11 +581,35 @@ class OpenAPIConnector(App):
                     field="spec_prefix|spec_key",
                     constraint="at least one is required when import_type='CLOUD'",
                 )
+            # Resolve the object-store credential ONCE, agent-aware, and thread
+            # the ref into the download task. In SDR (agent) mode the platform
+            # forwards `agent_json` on the workflow input rather than a pre-built
+            # ref or GUID; CredentialRef.resolve consumes it and selects the
+            # agent route (falling back to the direct credential_guid route).
+            # Precedence: an explicit openapi_credential slot (PKL/direct) →
+            # agent/direct routing via resolve() → the legacy cloud_source GUID
+            # (handled inside the task). CredentialRoutingError means no routable
+            # source is set, so we leave the ref unset and let the task fall back
+            # to cloud_source.
+            cloud_credential_ref = input.openapi_credential
+            if cloud_credential_ref is None:
+                try:
+                    cloud_credential_ref = CredentialRef.resolve(input)
+                except CredentialRoutingError:
+                    # Benign: no agent_json/credential_guid on the input, so
+                    # there is no routable object-store credential here. Fall
+                    # back to the legacy cloud_source GUID inside the task.
+                    self.logger.debug(
+                        "no routable object-store credential on input; "
+                        "falling back to cloud_source GUID",
+                        exc_info=True,
+                    )
+                    cloud_credential_ref = None
             # Download spec from cloud storage via task (credential resolution
             # and cloud I/O must run in an activity, not workflow code).
             cloud_result = await self.download_cloud_spec(
                 DownloadCloudSpecInput(
-                    openapi_credential=input.openapi_credential,
+                    openapi_credential=cloud_credential_ref,
                     cloud_source=input.cloud_source,
                     spec_prefix=input.spec_prefix,
                     spec_key=input.spec_key,
