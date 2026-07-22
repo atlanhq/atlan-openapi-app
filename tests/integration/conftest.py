@@ -128,8 +128,19 @@ async def embedded_temporal():
 
 @pytest_asyncio.fixture(scope="session")
 async def temporal_client(embedded_temporal) -> TemporalClient:
-    """Connect to the embedded Temporal dev server."""
-    return await create_temporal_client(host=embedded_temporal.host)
+    """Connect to the embedded Temporal dev server.
+
+    ``enable_prometheus=False``: the Temporal Rust-core runtime otherwise binds a
+    *fixed* Prometheus port (``TEMPORAL_PROMETHEUS_BIND_ADDRESS``) once per
+    process, and the CI integration job runs pytest under ``-n auto
+    --dist=loadfile`` — one worker process per test file. With three integration
+    files that is three processes racing to bind the same port, so all but one
+    fail with ``Failed starting Prometheus exporter: Address already in use`` and
+    the run wedges. A dev/test client needs no metrics endpoint, so disable it.
+    """
+    return await create_temporal_client(
+        host=embedded_temporal.host, enable_prometheus=False
+    )
 
 
 @pytest_asyncio.fixture(scope="session")
