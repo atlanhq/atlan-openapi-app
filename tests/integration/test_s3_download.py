@@ -22,7 +22,7 @@ Run locally:
         minio/minio server /data
     temporal server start-dev &
     AWS_ENDPOINT_URL=http://localhost:9000 \\
-        uv run pytest tests/integration/test_cloud_download.py -v -m cloud_integration
+        uv run pytest tests/integration/test_s3_download.py -v
 """
 
 from __future__ import annotations
@@ -46,7 +46,11 @@ from app.contracts import OpenAPIConnectorInput, OpenAPIConnectorOutput
 if TYPE_CHECKING:
     from tests.integration.conftest import AppExecutor
 
-pytestmark = pytest.mark.cloud_integration
+# Standard `integration` marker (fleet convention). Emulator availability is
+# handled at runtime by the module-scoped `require_minio` autouse fixture below,
+# NOT by an addopts marker-deselection — the directory-scoped integration CI job
+# runs `pytest tests/integration/` and a deselection would empty it.
+pytestmark = pytest.mark.integration
 
 # ---------------------------------------------------------------------------
 # Constants

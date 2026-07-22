@@ -44,12 +44,18 @@ filterwarnings = [
     # httpx internal deprecation — not triggered by our code, not fixable here
     "ignore:Use 'content=<\\.\\.\\.>' to upload raw bytes:DeprecationWarning",
 ]
+# Integration tests live under tests/integration/ and are run by the SDK's
+# directory-scoped integration CI job (`pytest tests/integration/`), so we do
+# NOT `addopts`-deselect them — a deselection would empty that job (collected 0
+# → pytest exit 5). Emulator-dependent tests self-skip when their service is
+# unreachable (see tests/integration/test_{s3,azure}_download.py), so a bare
+# local `pytest` stays green without MinIO/Azurite. The `integration` marker is
+# the fleet standard (matches atlan-mysql-app/atlan-metabase-app) and lets a dev
+# opt out locally with `-m "not integration"`.
 markers = [
-    "cloud_integration: requires a running S3-compatible emulator (MinIO)",
-    "azure_integration: requires a running Azure blob storage emulator (Azurite)",
+    "integration: requires external services (MinIO/Azurite emulators); deselect locally with '-m \"not integration\"'",
     "e2e: tenant-hitting end-to-end test (requires ATLAN_BASE_URL + ATLAN_API_KEY)",
 ]
-addopts = "-m 'not cloud_integration and not azure_integration'"
 
 [tool.poe.tasks]
 # No external deps needed: Dapr is mocked; Temporal runs embedded in-process via

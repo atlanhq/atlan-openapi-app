@@ -47,7 +47,10 @@ CONNECTION_QN = f"default/api/{CONNECTION_NAME}"
 # feature).
 
 
-@pytest.mark.cloud_integration
+# Runs entirely in-process (import_type="URL" against a bundled spec; conftest
+# mocks all infra), so no emulator is required — just the standard integration
+# marker for the tier.
+@pytest.mark.integration
 class TestOpenAPIConnectorExtraction:
     """Full extraction without checkpoint.
 

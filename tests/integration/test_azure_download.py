@@ -28,7 +28,7 @@ Run locally:
         --connection-string "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
     temporal server start-dev &
     AZURE_STORAGE_ENDPOINT=http://127.0.0.1:10000 \\
-        uv run pytest tests/integration/test_azure_download.py -v -m azure_integration
+        uv run pytest tests/integration/test_azure_download.py -v
 """
 
 from __future__ import annotations
@@ -52,7 +52,11 @@ from app.contracts import OpenAPIConnectorInput, OpenAPIConnectorOutput
 if TYPE_CHECKING:
     from tests.integration.conftest import AppExecutor
 
-pytestmark = pytest.mark.azure_integration
+# Standard `integration` marker (fleet convention). Emulator availability is
+# handled at runtime by the module-scoped `require_azurite` autouse fixture
+# below, NOT by an addopts marker-deselection — the directory-scoped integration
+# CI job runs `pytest tests/integration/` and a deselection would empty it.
+pytestmark = pytest.mark.integration
 
 # ---------------------------------------------------------------------------
 # Constants
