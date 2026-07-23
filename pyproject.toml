@@ -38,7 +38,14 @@ reportMissingImports = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# Keep tests and async fixtures on the SAME event loop. The session-scoped
+# worker/client fixtures (tests/integration/conftest.py) live on the session
+# loop; without pinning the test loop scope too it defaults to "function", so a
+# test that drives a fixture-owned resource (the Temporal worker) from its own
+# body submits work the session loop never polls and hangs until timeout. Both
+# scopes must match. (SDK conformance rule T019 guards this.)
 asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 filterwarnings = [
     # pyatlan and pyatlan_v9 both read their version via the deprecated
     # importlib.resources read_text/open_text API — not fixable from our side
