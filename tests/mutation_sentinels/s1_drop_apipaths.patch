@@ -1,0 +1,13 @@
+diff --git a/app/connector.py b/app/connector.py
+index 463e2aa..e6edf81 100644
+--- a/app/connector.py
++++ b/app/connector.py
+@@ -309,7 +309,7 @@ def _transform_blocking(
+             api_spec_count += 1
+ 
+         # Emit APIPath records
+-        for record in _iter_jsonl(input.api_path_file, OpenAPIPathRecord):
++        for record in _iter_jsonl(input.api_path_file, OpenAPIPathRecord) if False else []:
+             asset = map_api_path(
+                 record, conn_qn, workflow_id, workflow_type, workflow_run_at_ms
+             )

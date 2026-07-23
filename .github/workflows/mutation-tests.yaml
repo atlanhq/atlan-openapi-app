@@ -1,22 +1,23 @@
 name: Mutation tests (scheduled)
 
-# Weekly full-repo mutation testing (see application-sdk PR #2642 for the
-# diff-scoped PR variant; ticket BLDX-1562 for the program).
+# Three-lane mutation testing (BLDX-1562; design: docs/mutation-testing.md).
+# mutmut seeds small faults into app/ and checks each tier's tests catch them
+# — validating not just unit tests but whether the integration and e2e tiers
+# are meaningful too. All lanes are ADVISORY (never fail the build) and share
+# one static [tool.mutmut] config; the lane is selected by the MUTATION_LANE
+# env var, read by tests/conftest.py to pick that tier's kill-signal.
 #
-# mutmut seeds small faults ("mutants") into app/ and checks the unit suite
-# catches them. The run publishes a per-module scorecard to the job summary
-# and maintains ONE open issue (label: mutation-testing) holding the current
-# survivor work-list:
-#   - survivors found -> issue created / body refreshed
-#   - zero survivors  -> issue closed
-# Killing a survivor = adding a test that fails on the mutated code; the
-# next scheduled run verifies it and shrinks the list. Advisory: this lane
-# never fails the build.
+#   unit         — full app/, killed by the mocked unit suite (~30s). Weekly.
+#   integration  — app/connector.py (the orchestration gap unit tests can't
+#                  reach), killed by the deterministic `mutation_smoke` DAG
+#                  subset via the embedded runtime. Weekly.
+#   sentinels    — fault-injection drills: a few hand-picked real bug classes,
+#                  each asserted to turn its tier red. The e2e sentinels only
+#                  run where a live tenant is configured (release / e2e job);
+#                  integration sentinels run here.
 #
-# Config lives in [tool.mutmut] in pyproject.toml; the sandbox-compat
-# workaround lives in tests/conftest.py (guarded by MUTANT_UNDER_TEST).
-# All branching lives in .github/scripts/mutation_report.py so the run
-# block below stays straight-line.
+# Each lane maintains its own survivor work-list issue (labels
+# mutation-testing-unit / -integration), auto-closed at zero.
 
 on:
   schedule:
@@ -32,22 +33,54 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  mutation:
-    name: Full-repo mutation testing
+  unit-lane:
+    name: Unit-lane mutation
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      MUTATION_LANE: unit
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
-
       - name: Install dependencies
         run: uv sync --all-groups
-
-      - name: Run full mutation suite
+      - name: Run unit-lane mutation suite
         run: uv run --all-groups mutmut run
-
       - name: Publish scorecard and survivor work-list
         env:
           GH_TOKEN: ${{ github.token }}
-        run: uv run --all-groups python .github/scripts/mutation_report.py
+        run: uv run --all-groups python .github/scripts/mutation_report.py --lane unit
+
+  integration-lane:
+    name: Integration-lane mutation
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      MUTATION_LANE: integration
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+      - name: Install dependencies
+        run: uv sync --all-groups
+      # Only app/connector.py — the orchestration path the unit tier can't
+      # reach. The embedded Temporal runtime means no external services here.
+      - name: Run integration-lane mutation suite (connector orchestration)
+        run: uv run --all-groups mutmut run "app.connector.*"
+      - name: Publish scorecard and survivor work-list
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uv run --all-groups python .github/scripts/mutation_report.py --lane integration
+
+  sentinels:
+    name: Sentinel drills
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+      - name: Install dependencies
+        run: uv sync --all-groups
+      # Integration sentinels run here; e2e sentinels self-skip without a live
+      # tenant (ATLAN_BASE_URL/ATLAN_API_KEY) and are exercised on the e2e job.
+      - name: Run integration sentinel drills
+        run: uv run --all-groups python .github/scripts/mutation_sentinel.py --tier integration

@@ -94,12 +94,14 @@ class TestOpenAPIConnectorExtraction:
 
         return result
 
+    @pytest.mark.mutation_smoke
     async def test_workflow_completes(
         self, extraction_result: OpenAPIConnectorOutput
     ) -> None:
         """Workflow should complete without error."""
         assert extraction_result is not None
 
+    @pytest.mark.mutation_smoke
     async def test_assets_extracted(
         self, extraction_result: OpenAPIConnectorOutput
     ) -> None:
@@ -108,12 +110,14 @@ class TestOpenAPIConnectorExtraction:
         assert extraction_result.api_path_count >= 1
         assert extraction_result.total_scanned >= 2
 
+    @pytest.mark.mutation_smoke
     async def test_no_atlan_loading(
         self, extraction_result: OpenAPIConnectorOutput
     ) -> None:
         """No publish step should occur when load_to_atlan=False."""
         assert extraction_result.publish_completed is False
 
+    @pytest.mark.mutation_smoke
     async def test_create_usage_is_not_assertion_only(
         self, extraction_result: OpenAPIConnectorOutput
     ) -> None:
@@ -177,6 +181,7 @@ class TestOpenAPIConnectorExtraction:
         assert "APISpec" in type_names
         assert "APIPath" in type_names
 
+    @pytest.mark.mutation_smoke
     async def test_output_file_exists(
         self, extraction_result: OpenAPIConnectorOutput, store_root: Path
     ) -> None:
@@ -186,6 +191,7 @@ class TestOpenAPIConnectorExtraction:
         assert output_path.exists()
         assert output_path.stat().st_size > 0
 
+    @pytest.mark.mutation_smoke
     async def test_output_contains_expected_types(
         self, extraction_result: OpenAPIConnectorOutput, store_root: Path
     ) -> None:
@@ -204,6 +210,7 @@ class TestOpenAPIConnectorExtraction:
         assert "APISpec" in type_names
         assert "APIPath" in type_names
 
+    @pytest.mark.mutation_smoke
     async def test_qualified_names_follow_convention(
         self, extraction_result: OpenAPIConnectorOutput, store_root: Path
     ) -> None:

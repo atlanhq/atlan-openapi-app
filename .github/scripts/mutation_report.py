@@ -19,6 +19,7 @@ straight-line. Always exits 0 — the scheduled lane is advisory.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import subprocess
@@ -26,8 +27,18 @@ import sys
 from collections import Counter, defaultdict
 
 DETECTED = frozenset({"killed", "timeout", "caught by type check", "segfault"})
-ISSUE_LABEL = "mutation-testing"
-ISSUE_TITLE = "Mutation testing: surviving mutants work-list"
+
+# Per-lane labels/titles so the unit and integration lanes maintain
+# independent survivor work-list issues.
+LANE_LABEL = {
+    "unit": "mutation-testing-unit",
+    "integration": "mutation-testing-integration",
+}
+LANE_TITLE = {
+    "unit": "Mutation testing (unit lane): surviving mutants work-list",
+    "integration": "Mutation testing (integration lane): surviving mutants work-list",
+}
+LANE_TESTS = {"unit": "the unit suite", "integration": "the integration smoke tier"}
 
 
 def mutmut_results() -> str:
@@ -55,9 +66,9 @@ def parse(results_output: str) -> tuple[dict[str, Counter], list[str]]:
     return by_module, sorted(survivors)
 
 
-def scorecard(by_module: dict[str, Counter]) -> str:
+def scorecard(by_module: dict[str, Counter], lane: str) -> str:
     lines = [
-        "## Mutation testing — weekly full run",
+        f"## Mutation testing — {lane} lane (weekly full run)",
         "",
         "| module | killed | survived | no-tests | score |",
         "|---|---|---|---|---|",
@@ -83,11 +94,11 @@ def scorecard(by_module: dict[str, Counter]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def issue_body(survivors: list[str], card: str) -> str:
+def issue_body(survivors: list[str], card: str, lane: str) -> str:
     items = "\n".join(f"- [ ] `{name}`" for name in survivors)
     return (
         f"{card}\n"
-        "## Survivors — seeded bugs the unit suite does not catch\n\n"
+        f"## Survivors — seeded bugs {LANE_TESTS[lane]} does not catch\n\n"
         "Each unchecked item needs a test that fails on the mutated code. "
         "Inspect the exact code change with "
         "`uv run --group mutation mutmut show <mutant-name>`; equivalent "
@@ -99,14 +110,14 @@ def issue_body(survivors: list[str], card: str) -> str:
     )
 
 
-def find_open_issue() -> int | None:
+def find_open_issue(label: str) -> int | None:
     out = subprocess.run(
         [
             "gh",
             "issue",
             "list",
             "--label",
-            ISSUE_LABEL,
+            label,
             "--state",
             "open",
             "--json",
@@ -122,8 +133,9 @@ def find_open_issue() -> int | None:
     return issues[0]["number"] if issues else None
 
 
-def upsert_issue(survivors: list[str], card: str) -> None:
-    number = find_open_issue()
+def upsert_issue(survivors: list[str], card: str, lane: str) -> None:
+    label = LANE_LABEL[lane]
+    number = find_open_issue(label)
     if not survivors:
         if number is not None:
             subprocess.run(
@@ -133,12 +145,12 @@ def upsert_issue(survivors: list[str], card: str) -> None:
                     "close",
                     str(number),
                     "--comment",
-                    "Weekly mutation run found zero surviving mutants — work-list complete. 🎉",
+                    f"Weekly {lane}-lane mutation run found zero surviving mutants — work-list complete. 🎉",
                 ],
                 check=True,
             )
         return
-    body = issue_body(survivors, card)
+    body = issue_body(survivors, card, lane)
     if number is None:
         subprocess.run(
             [
@@ -146,9 +158,9 @@ def upsert_issue(survivors: list[str], card: str) -> None:
                 "issue",
                 "create",
                 "--title",
-                ISSUE_TITLE,
+                LANE_TITLE[lane],
                 "--label",
-                ISSUE_LABEL,
+                label,
                 "--body",
                 body,
             ],
@@ -161,18 +173,24 @@ def upsert_issue(survivors: list[str], card: str) -> None:
         )
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--lane", default="unit", choices=["unit", "integration"])
+    args = parser.parse_args(argv)
+
     by_module, survivors = parse(mutmut_results())
-    card = scorecard(by_module)
-    print(card)
+    card = scorecard(by_module, args.lane)
+    print(card)  # noqa: T201 — CLI output
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY", "")
     if summary_path:
         with open(summary_path, "a") as fh:
             fh.write(card)
     if os.environ.get("GITHUB_ACTIONS") == "true":
-        upsert_issue(survivors, card)
+        upsert_issue(survivors, card, args.lane)
     else:
-        print(f"(local run — skipping issue upsert; {len(survivors)} survivors)")
+        print(  # noqa: T201 — CLI output
+            f"(local {args.lane}-lane run — skipping issue upsert; {len(survivors)} survivors)"
+        )
     return 0
 
 

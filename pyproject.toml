@@ -77,8 +77,11 @@ do_not_mutate = ["app/generated/*"]
 # Mutating __file__-based path derivation inside default arguments evaluates
 # at import time and crashes collection; such mutants are noise anyway.
 do_not_mutate_patterns = ['__file__']
-# Only the hermetic unit tier; integration/e2e need containers/tenants.
-pytest_add_cli_args_test_selection = ["tests/unit"]
+# Collect the whole tests/ tree and clear addopts; the MUTATION_LANE env var
+# (read by tests/conftest.py) narrows collection to the active lane's tests.
+# One static config serves all three lanes — see docs/mutation-testing.md.
+pytest_add_cli_args_test_selection = ["tests"]
+pytest_add_cli_args = ["-o", "addopts=", "-p", "no:cacheprovider"]
 also_copy = [
     "contract/",
     "main.py",

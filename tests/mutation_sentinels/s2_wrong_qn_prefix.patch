@@ -1,0 +1,13 @@
+diff --git a/app/connector.py b/app/connector.py
+index 463e2aa..748f64e 100644
+--- a/app/connector.py
++++ b/app/connector.py
+@@ -286,7 +286,7 @@ def _transform_blocking(
+             field="connection",
+             constraint="required",
+         )
+-    conn_qn: str = connection.attributes.qualified_name
++conn_qn: str = "default/api/WRONG-PREFIX"
+     workflow_id = input.workflow_id
+     workflow_type = input.workflow_type
+     workflow_run_at_ms = input.workflow_run_at_ms

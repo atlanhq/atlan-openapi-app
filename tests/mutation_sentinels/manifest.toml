@@ -1,0 +1,30 @@
+# Lane 3 — e2e sentinel drills (BLDX-1562)
+#
+# Per-mutant mutation testing is off the table for the e2e tier (one e2e run
+# is 20-30 min against a live tenant). Instead we hand-pick a few "sentinel"
+# mutants — each a real bug class — and once per release assert the target
+# tier's tests go RED when that bug is injected. A sentinel that stays GREEN
+# is a documented blind spot in that tier, with a concrete fix (add the
+# assertion).
+#
+# Each sentinel is a hand-written patch (robust to mutmut key renumbering).
+# `tier` is the tier that SHOULD catch it; the driver applies the patch, runs
+# that tier, and expects failure.
+
+[[sentinel]]
+name = "s1_drop_apipaths"
+tier = "integration"
+bug_class = "asset type silently dropped"
+description = "Transform stops emitting APIPath assets entirely. A crawl would publish specs with zero paths and no error."
+
+[[sentinel]]
+name = "s2_wrong_qn_prefix"
+tier = "integration"
+bug_class = "wrong qualifiedName"
+description = "Child assets built under a hard-coded wrong connection prefix — assets land under the wrong connection on the tenant."
+
+[[sentinel]]
+name = "s4_wrong_connector_name"
+tier = "e2e"
+bug_class = "wrong connector attribution (loader-only effect)"
+description = "connector_name set to a bogus value. Extraction output still has the right types/counts/QNs (integration smoke passes), but a real tenant load mis-attributes the connection — only e2e against Atlas catches it."
