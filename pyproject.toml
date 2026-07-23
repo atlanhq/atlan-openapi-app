@@ -61,9 +61,11 @@ markers = [
 ]
 # Per-test hang guard (pytest-timeout) — NOT a `-m` deselection, so the
 # directory-scoped integration tier still collects every test (see the note
-# above / conformance T018). `thread` method fires reliably for asyncio/xdist
-# hangs that never yield back to the event loop.
-addopts = "--timeout=300 --timeout-method=thread"
+# above / conformance T018). `signal` (SIGALRM in the worker's main thread)
+# raises a normal per-test Timeout with a traceback and leaves the xdist worker
+# alive; `thread` would hard-`os._exit()` the worker, which xdist reports as the
+# misleading "node down: Not properly terminated" instead of a clean failure.
+addopts = "--timeout=300 --timeout-method=signal"
 
 [tool.poe.tasks]
 # No external deps needed: Dapr is mocked; Temporal runs embedded in-process via
