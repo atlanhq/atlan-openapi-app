@@ -47,7 +47,10 @@ CONNECTION_QN = f"default/api/{CONNECTION_NAME}"
 # feature).
 
 
-@pytest.mark.cloud_integration
+# Runs entirely in-process (import_type="URL" against a bundled spec; conftest
+# mocks all infra), so no emulator is required — just the standard integration
+# marker for the tier.
+@pytest.mark.integration
 class TestOpenAPIConnectorExtraction:
     """Full extraction without checkpoint.
 
@@ -126,23 +129,27 @@ class TestOpenAPIConnectorExtraction:
         full-diff publish path — assertion_only_enabled must be False."""
         assert extraction_result.assertion_only_enabled is False
 
-    async def test_reuse_usage_enables_assertion_only(
+    @pytest.fixture(scope="class")
+    async def reuse_result(
         self,
         openapi_executor: "AppExecutor",
         tmp_dir_class: Path,
-        store_root: Path,
-    ) -> None:
-        """CONNECT-55: connection_usage=REUSE selects an existing connection via
-        connection_qualified_name (not the ConnectionCreator) and makes the
-        connector emit assertion_only_enabled=True, which the publish node reads
-        via `$.extract.outputs.assertion_only_enabled` to run publish-app in
-        assertion-only mode (upsert-only, no diff, no deletes). On REUSE the
-        connector must NOT emit the Connection entity (the connection already
-        exists and must not be re-upserted)."""
+    ) -> OpenAPIConnectorOutput:
+        """Execute a REUSE-usage extraction (CONNECT-55).
+
+        Runs the workflow from a class-scoped async fixture — NOT from the test
+        body — so it executes on the same session-scoped event loop as the
+        ``openapi_worker``/``temporal_client`` fixtures. Driving ``execute_app``
+        directly from a (function-scoped) test coroutine submits the workflow on
+        a loop the worker never runs, so the worker never polls the task and the
+        test hangs until the pytest-timeout guard fires. Mirrors the
+        ``extraction_result`` (CREATE) fixture above and the ``*_extraction_result``
+        fixtures in the S3/Azure suites, which all run their workflow this way.
+        """
         output_dir = tmp_dir_class / "reuse_output"
         output_dir.mkdir(exist_ok=True)
 
-        result = cast(
+        return cast(
             "OpenAPIConnectorOutput",
             await openapi_executor.execute_app(
                 OpenAPIConnector,
@@ -158,6 +165,20 @@ class TestOpenAPIConnectorExtraction:
                 execution_id_prefix="test-openapi-reuse",
             ),
         )
+
+    async def test_reuse_usage_enables_assertion_only(
+        self,
+        reuse_result: OpenAPIConnectorOutput,
+        store_root: Path,
+    ) -> None:
+        """CONNECT-55: connection_usage=REUSE selects an existing connection via
+        connection_qualified_name (not the ConnectionCreator) and makes the
+        connector emit assertion_only_enabled=True, which the publish node reads
+        via `$.extract.outputs.assertion_only_enabled` to run publish-app in
+        assertion-only mode (upsert-only, no diff, no deletes). On REUSE the
+        connector must NOT emit the Connection entity (the connection already
+        exists and must not be re-upserted)."""
+        result = reuse_result
 
         assert result.assertion_only_enabled is True
         assert result.connection_qualified_name == CONNECTION_QN
