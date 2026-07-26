@@ -97,16 +97,31 @@ class TestE2ETimeoutSeconds:
         """A non-harness class keeps whatever the global config gives it."""
         assert e2e_timeout_seconds(_NoBudgets) is None
 
-    def test_ignores_non_integer_budgets(self) -> None:
-        """A misdeclared budget is skipped rather than crashing collection."""
+    def test_partial_budgets_sum_what_is_declared(self) -> None:
+        """A suite that declares only some budgets gets those covered."""
+
+        class _PollOnly:
+            ae_poll_timeout_seconds = 600
+
+        assert e2e_timeout_seconds(_PollOnly) == (
+            600 + SETUP_AND_TEARDOWN_SLACK_SECONDS
+        )
+
+    def test_misdeclared_budget_fails_loudly(self) -> None:
+        """A non-numeric budget must raise, not yield a too-small bound.
+
+        Silently dropping it would produce a timeout below the poll it is
+        meant to cover — the exact bug this conftest exists to prevent.
+        pyright already rejects this via the SDK's ClassVar[int] types; this
+        guards the runtime behaviour if it ever slips through.
+        """
 
         class _Misdeclared:
             worker_health_timeout_seconds = 120
             ae_poll_timeout_seconds = "1800"
 
-        assert e2e_timeout_seconds(_Misdeclared) == (
-            120 + SETUP_AND_TEARDOWN_SLACK_SECONDS
-        )
+        with pytest.raises(TypeError):
+            e2e_timeout_seconds(_Misdeclared)
 
 
 # =============================================================================

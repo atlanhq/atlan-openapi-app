@@ -48,7 +48,7 @@ def e2e_timeout_seconds(cls: type) -> int | None:
     ``BaseE2ETest`` subclass and therefore does no tenant polling.
     """
     declared = [getattr(cls, name, None) for name in _BUDGET_ATTRS]
-    budgets = [value for value in declared if isinstance(value, int)]
+    budgets = [value for value in declared if value is not None]
     if not budgets:
         return None
     return sum(budgets) + SETUP_AND_TEARDOWN_SLACK_SECONDS
