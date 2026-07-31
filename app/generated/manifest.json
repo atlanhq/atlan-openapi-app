@@ -12,6 +12,7 @@
         "argo_workflow_slug": "",
         "task_queue": "atlan-openapi-{deployment_name}",
         "args": {
+          "app_name": "openapi",
           "credential": "{{credential}}",
           "agent_json": "{{agent-json}}",
           "connection": "{{connection}}",
@@ -49,7 +50,8 @@
           "connection_cache_via_app_enabled": true,
           "current_state_enabled": true,
           "current_state_via_app_enabled": true,
-          "assertion_only_enabled": "$.extract.outputs.assertion_only_enabled"
+          "assertion_only_enabled": "$.extract.outputs.assertion_only_enabled",
+          "app_name": "publish"
         }
       },
       "depends_on": {
