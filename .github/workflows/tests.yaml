@@ -70,7 +70,18 @@ on:
 
 jobs:
   tests:
-    uses: atlanhq/application-sdk/.github/workflows/tests-reusable.yaml@main
+    # TEMPORARY — DO NOT MERGE. Pinned at an application-sdk validation branch
+    # to exercise atlanhq/application-sdk#3018 (the build-app-image extraction)
+    # on real CI before it reaches the fleet.
+    #
+    # Needed because every consumer of the sdr-e2e composite pins `@main`, so an
+    # `e2e`-labelled run on the SDK PR itself resolves main's action and proves
+    # nothing. This ref is the only way to make a real connector run the change.
+    #
+    # Revert to `@main` and close this PR once the run is green. The SDK branch
+    # is deleted afterwards, at which point this ref stops resolving — so a
+    # forgotten revert fails loudly rather than silently pinning stale CI.
+    uses: atlanhq/application-sdk/.github/workflows/tests-reusable.yaml@ci/extract-build-app-image-validate
     with:
       app-name: "openapi"
       app-image-name: "atlan-openapi-app"
