@@ -19,6 +19,22 @@ metadata {
   ["app_id"] = "019d1f6b-6fea-7db3-96d8-e61e159d0351"
 }
 
+// The top-level `execution_mode: native` above is NOT enough on its own: it is
+// synced to the app catalog (/marketplace/apps) but is not part of the version
+// config. atlan-cli publishes only the `deploy:` block as the version config
+// (readDeployConfig in pkg/atlan/app_workflow.go serialises jsonData["deploy"]
+// and sends it as `config`), and canary reads execution mode from that config.
+// With no `deploy:` block at all, canary saw cfgExecutionMode: null and fell
+// back to argo — silently running this app on the legacy orchestrator.
+//
+// Setting `deploy` (DeployConfig? — null by default, "null = Heracles defaults")
+// is what makes the toolkit emit a `deploy:` block. An empty DeployConfig emits
+// exactly two keys, both ungated in renderDeployYaml: `execution_mode` (native)
+// and `splitDeploymentEnabled` (true). The latter is the toolkit default and
+// matches essentially every other native app in the fleet, so it encodes the
+// deployment shape this app already ran with rather than changing it.
+deploy = new DeployConfig {}
+
 // CONNECT-55: replace the auto-generated publish node to add assertion-only
 // mode. Defining a "publish" key here REPLACES the default node (it does not
 // merge with the auto-generation layer), so the four cache / current-state
