@@ -110,5 +110,5 @@ jobs:
       # it is the case the per-architecture image build (#3042) exists for. One
       # cloud rather than three keeps the first end-to-end run of this path
       # diagnosable; the fan-out comes back once it is green.
-      clouds: "azure"
+      e2e-clouds: "azure"
     secrets: inherit
