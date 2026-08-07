@@ -103,12 +103,4 @@ jobs:
       # tenants where openapi is absent entirely, every leg dies on a DNS lookup
       # for openapi.openapi-app.svc.cluster.local (FND-6's first cross-CSP run).
       install-app-to-tenant: true
-
-      # PILOT ONLY — REMOVE BEFORE MERGE.
-      # Azure because openapi is genuinely absent there, so this exercises the
-      # install rather than a no-op convergence, and because that tenant is ARM:
-      # it is the case the per-architecture image build (#3042) exists for. One
-      # cloud rather than three keeps the first end-to-end run of this path
-      # diagnosable; the fan-out comes back once it is green.
-      e2e-clouds: "azure"
     secrets: inherit
