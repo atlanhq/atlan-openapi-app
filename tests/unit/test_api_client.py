@@ -230,6 +230,53 @@ class TestFetchSpecZip:
 
     @pytest.mark.asyncio
     @respx.mock
+    async def test_zip_skips_unparseable_spec_file(self) -> None:
+        """A .json member that fails to parse is skipped (logged), not fatal,
+        as long as another member in the ZIP parses to a valid spec."""
+        zip_bytes = _make_zip_bytes(
+            {
+                "openapi.json": PETSTORE_JSON,
+                "corrupt.json": b"{not valid json!!!",
+            }
+        )
+        respx.get("https://example.com/bundle.zip").mock(
+            return_value=httpx.Response(
+                200, content=zip_bytes, headers={"content-type": "application/zip"}
+            )
+        )
+        client = OpenAPIApiClient()
+        result = await client.fetch_spec("https://example.com/bundle.zip")
+        await client.close()
+
+        assert len(result) == 1
+        assert result[0]["info"]["title"] == "Petstore"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_zip_rejects_json_file_without_openapi_or_swagger_key(self) -> None:
+        """A well-formed JSON file that isn't an OpenAPI/Swagger document
+        (no 'openapi' or 'swagger' key) must be excluded from the results,
+        even though it parses successfully and has a .json extension."""
+        zip_bytes = _make_zip_bytes(
+            {
+                "openapi.json": PETSTORE_JSON,
+                "config.json": orjson.dumps({"unrelated": "config", "version": 2}),
+            }
+        )
+        respx.get("https://example.com/bundle.zip").mock(
+            return_value=httpx.Response(
+                200, content=zip_bytes, headers={"content-type": "application/zip"}
+            )
+        )
+        client = OpenAPIApiClient()
+        result = await client.fetch_spec("https://example.com/bundle.zip")
+        await client.close()
+
+        assert len(result) == 1
+        assert result[0]["info"]["title"] == "Petstore"
+
+    @pytest.mark.asyncio
+    @respx.mock
     async def test_empty_zip_raises_value_error(self) -> None:
         """ZIP with no valid spec files raises ValueError."""
         zip_bytes = _make_zip_bytes({"README.txt": b"no specs here"})
