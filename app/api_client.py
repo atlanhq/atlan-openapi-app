@@ -9,6 +9,10 @@ the extract_spec @task method.
 
 from __future__ import annotations
 
+import ipaddress
+import socket
+from urllib.parse import urlparse
+
 import httpx
 from app.errors import ZipNoSpecFoundError
 from application_sdk.observability.logger_adaptor import get_logger
@@ -42,7 +46,7 @@ class OpenAPIApiClient:
         self._client = httpx.AsyncClient(
             headers=headers,
             timeout=60.0,
-            follow_redirects=True,
+            follow_redirects=False,
         )
 
     async def close(self) -> None:
@@ -68,6 +72,7 @@ class OpenAPIApiClient:
                 connection refused). Deliberately not swallowed here — the
                 caller distinguishes these from an HTTP-level response.
         """
+        self._validate_remote_url(url)
         response = await self._client.head(url)
         if response.status_code in (401, 403, 404, 405, 501):
             async with self._client.stream(
@@ -75,6 +80,23 @@ class OpenAPIApiClient:
             ) as stream_response:
                 return stream_response.status_code
         return response.status_code
+
+    @staticmethod
+    def _validate_remote_url(url: str) -> None:
+        """Reject non-HTTP URLs and destinations that resolve to private IPs."""
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("spec_url must be an HTTP(S) URL")
+
+        try:
+            addresses = socket.getaddrinfo(parsed.hostname, None, type=socket.SOCK_STREAM)
+        except socket.gaierror as exc:
+            raise ValueError("spec_url host could not be resolved") from exc
+
+        for address in {result[4][0] for result in addresses}:
+            ip = ipaddress.ip_address(address)
+            if not ip.is_global:
+                raise ValueError("spec_url must resolve to a public IP address")
 
     async def fetch_spec(self, spec_url: str) -> list[dict]:
         """Fetch and parse an OpenAPI spec document from a URL or local file path.
@@ -119,6 +141,7 @@ class OpenAPIApiClient:
             return [spec]
 
         # HTTP URL — fetch remotely
+        self._validate_remote_url(spec_url)
         logger.info("fetching OpenAPI spec url=%s", spec_url)
         response = await self._client.get(spec_url)
         response.raise_for_status()
