@@ -9,6 +9,11 @@ the extract_spec @task method.
 
 from __future__ import annotations
 
+import ipaddress
+import os
+import socket
+from urllib.parse import urlparse
+
 import httpx
 from app.errors import ZipNoSpecFoundError
 from application_sdk.observability.logger_adaptor import get_logger
@@ -42,8 +47,23 @@ class OpenAPIApiClient:
         self._client = httpx.AsyncClient(
             headers=headers,
             timeout=60.0,
-            follow_redirects=True,
+            follow_redirects=False,
         )
+
+    @staticmethod
+    def _validate_url(url: str) -> None:
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("spec_url must use an http or https URL")
+        try:
+            addresses = {
+                info[4][0]
+                for info in socket.getaddrinfo(parsed.hostname, parsed.port, type=socket.SOCK_STREAM)
+            }
+        except socket.gaierror as exc:
+            raise ValueError("spec_url hostname could not be resolved") from exc
+        if not addresses or any(not ipaddress.ip_address(address).is_global for address in addresses):
+            raise ValueError("spec_url must resolve to a public IP address")
 
     async def close(self) -> None:
         """Close the underlying HTTP client."""
@@ -68,12 +88,15 @@ class OpenAPIApiClient:
                 connection refused). Deliberately not swallowed here — the
                 caller distinguishes these from an HTTP-level response.
         """
+        self._validate_url(url)
         response = await self._client.head(url)
+        if response.is_redirect:
+            return 400
         if response.status_code in (401, 403, 404, 405, 501):
             async with self._client.stream(
                 "GET", url, headers={"Range": "bytes=0-0"}
             ) as stream_response:
-                return stream_response.status_code
+                return 400 if stream_response.is_redirect else stream_response.status_code
         return response.status_code
 
     async def fetch_spec(self, spec_url: str) -> list[dict]:
@@ -119,6 +142,7 @@ class OpenAPIApiClient:
             return [spec]
 
         # HTTP URL — fetch remotely
+        self._validate_url(spec_url)
         logger.info("fetching OpenAPI spec url=%s", spec_url)
         response = await self._client.get(spec_url)
         response.raise_for_status()
