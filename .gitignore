@@ -70,7 +70,7 @@ remediation/
 # Failure-triage / RCA write-ups. This repo is public and these routinely quote
 # tenant names, bucket names, credential GUIDs and customer identifiers, so they
 # must stay local. Never commit them.
-report/
+/report/
 
 # ─── Python ─────────────────────────────────────────────────────────────────
 __pycache__/
