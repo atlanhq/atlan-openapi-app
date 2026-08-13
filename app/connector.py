@@ -387,10 +387,20 @@ class OpenAPIConnector(App):
             )
         elif input.cloud_source:
             # Legacy fallback only: pre-migration CLOUD configs stored a
-            # csa-connectors-objectstore GUID in `cloud_source` and still
-            # resolve strictly by GUID. Agent (SDR) mode is handled upstream by
+            # csa-connectors-objectstore GUID in `cloud_source` and resolve
+            # strictly by GUID. Agent (SDR) mode is handled upstream by
             # CredentialRef.resolve(input); this GUID path is kept purely as a
             # fallback for those legacy configs.
+            #
+            # This is NOT backward-compatible on its own (CONNECT-800).
+            # Resolving by GUID reads
+            # persistent-artifacts/apps/openapi/credentials/<guid>/config.json
+            # from the app's object store, and only the platform writes that
+            # blob. A GUID that predates the app's own credential route has no
+            # such object, so this path fails. Worse, the absent object surfaces
+            # as "credential-config store unreachable" after a ~120s retry
+            # ladder rather than as a not-found, because Dapr maps S3 NoSuchKey
+            # to a 500 and the SDK reads any 5xx as a cold sidecar.
             ref = CredentialRef(credential_guid=input.cloud_source)
             credential_data = await self.context.resolve_credential_raw(ref)
             self.logger.info(
