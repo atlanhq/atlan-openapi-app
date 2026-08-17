@@ -39,10 +39,11 @@ from application_sdk.handler import (
 )
 from application_sdk.observability.logger_adaptor import get_logger
 
-from app.api_client import _classify_http_status
+from app.api_client import _classify_http_status, validate_spec_url
 from app.errors import (
     CloudSpecLocationRequiredError,
     SpecSourceUnavailableError,
+    SpecUrlInvalidError,
     SpecUrlRequiredError,
 )
 
@@ -202,11 +203,20 @@ class OpenAPIConnectorHandler(DefaultHandler):
             )
         headers = {"Accept": "application/json, application/yaml, text/yaml, */*"}
         try:
+            validate_spec_url(spec_url)
+        except SpecUrlInvalidError as exc:
+            return PreflightCheck(
+                name=check_name,
+                passed=False,
+                error=exc.to_failure_details(),
+                duration_ms=(time.monotonic() - started) * 1000.0,
+            )
+        try:
             async with (
                 httpx.AsyncClient(
                     headers=headers,
                     timeout=timeout_seconds,
-                    follow_redirects=True,
+                    follow_redirects=False,
                 ) as client,
                 client.stream("GET", spec_url) as response,
             ):

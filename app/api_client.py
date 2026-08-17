@@ -9,6 +9,10 @@ the extract_spec @task method.
 
 from __future__ import annotations
 
+import ipaddress
+import socket
+from urllib.parse import urlparse
+
 import httpx
 from application_sdk.errors.base import AppError
 from application_sdk.observability.logger_adaptor import get_logger
@@ -21,8 +25,45 @@ from app.errors import (
     SpecNotFoundError,
     SpecParseError,
     SpecSourceUnavailableError,
+    SpecUrlInvalidError,
     ZipNoSpecFoundError,
 )
+
+
+def validate_spec_url(spec_url: str) -> None:
+    """Reject non-HTTPS and private or local-network spec endpoints."""
+    parsed = urlparse(spec_url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise SpecUrlInvalidError(
+            message="spec_url must be an HTTPS URL with a hostname",
+            field="spec_url",
+            constraint="HTTPS URL with a public hostname",
+            value_summary="invalid URL",
+        )
+    try:
+        addresses = {
+            info[4][0]
+            for info in socket.getaddrinfo(parsed.hostname, parsed.port, type=socket.SOCK_STREAM)
+        }
+    except (OSError, ValueError) as exc:
+        raise SpecUrlInvalidError(
+            message="spec_url hostname could not be resolved",
+            field="spec_url",
+            constraint="HTTPS URL with a resolvable public hostname",
+            value_summary="unresolvable hostname",
+            cause=exc,
+        ) from exc
+    if any(ipaddress.ip_address(address).is_private or ipaddress.ip_address(address).is_loopback
+           or ipaddress.ip_address(address).is_link_local or ipaddress.ip_address(address).is_reserved
+           or ipaddress.ip_address(address).is_unspecified or ipaddress.ip_address(address).is_multicast
+           for address in addresses):
+        raise SpecUrlInvalidError(
+            message="spec_url must not resolve to a private or local network",
+            field="spec_url",
+            constraint="hostname must resolve only to public IP addresses",
+            value_summary="private or local address",
+        )
+
 
 logger = get_logger(__name__)
 
@@ -114,7 +155,7 @@ class OpenAPIApiClient:
         self._client = httpx.AsyncClient(
             headers=headers,
             timeout=60.0,
-            follow_redirects=True,
+            follow_redirects=False,
         )
 
     async def close(self) -> None:
@@ -168,6 +209,7 @@ class OpenAPIApiClient:
         # activity boundary has no FailureDetails and is unattributable.
         logger.info("fetching OpenAPI spec url=%s", spec_url)
         try:
+            validate_spec_url(spec_url)
             response = await self._client.get(spec_url)
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:

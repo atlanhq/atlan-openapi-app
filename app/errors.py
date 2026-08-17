@@ -42,6 +42,13 @@ class SpecUrlRequiredError(InvalidInputError):
 
 
 @dataclass(kw_only=True)
+class SpecUrlInvalidError(InvalidInputError):
+    """spec_url is not an allowed HTTPS URL."""
+
+    code: ClassVar[str] = "INVALID_INPUT_OPENAPI_SPEC_URL_INVALID"
+
+
+@dataclass(kw_only=True)
 class CloudSpecLocationRequiredError(InvalidInputError):
     """spec_prefix or spec_key must be provided for CLOUD import_type."""
 
