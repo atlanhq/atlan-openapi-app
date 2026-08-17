@@ -15,25 +15,19 @@ both APISpec and APIPath data; splitting would require downloading twice).
 
 from __future__ import annotations
 
-import orjson
 import tempfile
 from pathlib import Path
 from typing import Any, TypeVar
 
 import msgspec
+import orjson
 from application_sdk.app import App, task
 from application_sdk.contracts.storage import UploadInput
 from application_sdk.contracts.types import ConnectionRef, FileReference, StorageTier
 from application_sdk.credentials.errors import CredentialRoutingError
 from application_sdk.credentials.ref import CredentialRef
 from application_sdk.errors import InternalError
-from app.errors import (
-    CloudSpecLocationRequiredError,
-    ConnectionRequiredError,
-    SpecUrlRequiredError,
-    TenantObjectStoreUnavailableError,
-    UnknownImportTypeError,
-)
+from application_sdk.errors.base import AppError, sanitize_cause_repr
 from application_sdk.observability.logger_adaptor import AtlanLoggerAdapter as Logger
 from application_sdk.outputs import Metric, get_outputs
 
@@ -54,6 +48,22 @@ from app.contracts import (
     TransformInput,
     TransformOutput,
 )
+from app.errors import (
+    CloudSpecLocationRequiredError,
+    CloudSpecNotFoundError,
+    ConnectionRequiredError,
+    NoValidSpecsError,
+    ObjectStoreCredentialError,
+    SpecUrlRequiredError,
+    TenantObjectStoreUnavailableError,
+    UnknownImportTypeError,
+)
+
+# Re-exported so the SDK's convention-based handler discovery
+# ({AppClassName}Handler in the App class's module) finds the preflight
+# handler — the injected gate ran the no-op handler (READY, zero checks)
+# without it. See app/handler.py for the checks (CONNECT-812).
+from app.handler import OpenAPIConnectorHandler  # noqa: F401
 
 T = TypeVar("T")
 
@@ -75,11 +85,22 @@ def _has_valid_auth(credentials: dict[str, Any]) -> bool:
 
     Determines whether to use an external cloud store (Path A) or fall back
     to the tenant's own Dapr-configured store (Path B).
+
+    Must never raise: the resolved credential dict (plaintext password
+    included) is in this frame, and the SDK's loguru sinks format tracebacks
+    with ``diagnose`` enabled, which annotates frame variables — a raise here
+    would write the credential to the logs (CONNECT-812 PF-17 class). A
+    malformed ``extra`` therefore reads as "no role auth", not an error.
     """
     has_key_auth = bool(credentials.get("username") and credentials.get("password"))
     extra = credentials.get("extra") or credentials.get("extras") or {}
     if isinstance(extra, str):
-        extra = orjson.loads(extra) if extra else {}
+        try:
+            extra = orjson.loads(extra) if extra else {}
+        except orjson.JSONDecodeError:
+            extra = {}
+    if not isinstance(extra, dict):
+        extra = {}
     has_role_auth = bool(extra.get("aws_role_arn"))
     return has_key_auth or has_role_auth
 
@@ -92,7 +113,7 @@ def _enc_hook(obj: Any) -> Any:
 _encoder = msgspec.json.Encoder(enc_hook=_enc_hook)
 
 
-def _iter_jsonl(ref: FileReference | None, cls: type[T]) -> "Any":
+def _iter_jsonl(ref: FileReference | None, cls: type[T]) -> Any:
     """Yield typed objects from a JSONL file using msgspec for decoding."""
     if ref is None:
         return
@@ -255,6 +276,26 @@ async def _extract_spec_async(
                 path_f.write(_encoder.encode(path_record) + b"\n")
                 path_count += 1
 
+    if spec_count == 0:
+        # CONNECT-812 EP-03 class: every fetched document was skipped, so
+        # returning zero records would let the run finish green having
+        # extracted nothing — indistinguishable from an empty source on every
+        # surface. fetch_spec never returns an empty list (a spec-less ZIP
+        # already raises), so zero here always means "documents fetched, none
+        # usable".
+        raise NoValidSpecsError(
+            message=(
+                f"none of the {len(specs)} document(s) at {spec_url} is a "
+                "usable OpenAPI spec — each is missing the required "
+                "'info.title' field"
+            ),
+            field="spec_url",
+            constraint=(
+                "at least one document must carry info.title "
+                "(required by the OpenAPI specification)"
+            ),
+        )
+
     logger.info(
         "spec extracted api_spec_count=%d api_path_count=%d",
         spec_count,
@@ -405,7 +446,33 @@ class OpenAPIConnector(App):
                 or credential_data.get("auth_type")
                 or "unknown",
             )
-            store = CloudStore.from_credentials(credential_data)
+            try:
+                store = CloudStore.from_credentials(credential_data)
+            except AppError:
+                # Already typed and attributable — let the SDK's own error
+                # through. (The SDK-side diagnose fix is tracked on the
+                # CONNECT-812 registry; the app cannot re-wrap these without
+                # losing their retryable/audience semantics.)
+                raise
+            except Exception as exc:
+                # CONNECT-812 PF-17 class: sever the exception chain
+                # (`from None`). This frame's source line references the
+                # resolved credential dict, and the SDK's loguru sinks format
+                # tracebacks with ``diagnose`` enabled — a chained raw
+                # traceback would annotate ``credential_data`` and write the
+                # plaintext password to the logs. The cause survives as a
+                # redacted, length-capped summary instead.
+                raise ObjectStoreCredentialError(
+                    message=(
+                        "object-store credential was rejected while building "
+                        f"the cloud store client: {sanitize_cause_repr(exc)}"
+                    ),
+                    field="openapi_credential",
+                    constraint=(
+                        "must be a resolvable object-store credential "
+                        "(authType s3/gcs/adls)"
+                    ),
+                ) from None
         else:
             if credential_data is not None:
                 self.logger.info(
@@ -618,6 +685,24 @@ class OpenAPIConnector(App):
             spec_urls = [
                 ref.local_path for ref in cloud_result.spec_files if ref.local_path
             ]
+            if not spec_urls:
+                # CONNECT-812 EP-03 class: a prefix/key that matches nothing
+                # would otherwise skip extract, transform, and publish and
+                # finish green with zero assets — no signal on any surface.
+                raise CloudSpecNotFoundError(
+                    message=(
+                        "no spec files found in the object store at "
+                        f"prefix={input.spec_prefix!r} key={input.spec_key!r}"
+                    ),
+                    resource_type="openapi_spec_file",
+                    resource_identifier=(
+                        f"{input.spec_prefix}/{input.spec_key}".strip("/")
+                    ),
+                    suggested_action=(
+                        "Check the prefix and object key, and that the spec "
+                        "files end in .json/.yaml/.yml/.zip."
+                    ),
+                )
         elif input.import_type == "URL":
             if not input.spec_url:
                 raise SpecUrlRequiredError(

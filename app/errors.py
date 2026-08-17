@@ -9,7 +9,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import ClassVar
 
-from application_sdk.errors import DependencyUnavailableError, InvalidInputError
+from application_sdk.errors import (
+    AppPermissionDeniedError,
+    AuthError,
+    DependencyUnavailableError,
+    InvalidInputError,
+    NotFoundError,
+    RateLimitedError,
+    SourceUnavailableError,
+)
 
 
 @dataclass(kw_only=True)
@@ -54,3 +62,84 @@ class TenantObjectStoreUnavailableError(DependencyUnavailableError):
     code: ClassVar[str] = (
         "DEPENDENCY_UNAVAILABLE_OPENAPI_TENANT_OBJECTSTORE_UNAVAILABLE"
     )
+
+
+# ---------------------------------------------------------------------------
+# Spec-fetch classification (CONNECT-812, PF-20/EP-02 class).
+#
+# Every failure on the spec-fetch path must cross the activity boundary as a
+# typed AppError carrying FailureDetails — a raw httpx/yaml exception is
+# unattributable (no audience, no code) and reaches the customer as a stack
+# trace. One leaf per failure class so dashboard buckets stay meaningful.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(kw_only=True)
+class SpecFetchAuthError(AuthError):
+    """The spec endpoint rejected the request as unauthenticated (HTTP 401)."""
+
+    code: ClassVar[str] = "AUTH_OPENAPI_SPEC_FETCH"
+
+
+@dataclass(kw_only=True)
+class SpecFetchForbiddenError(AppPermissionDeniedError):
+    """The spec endpoint refused access to the document (HTTP 403)."""
+
+    code: ClassVar[str] = "PERMISSION_OPENAPI_SPEC_FETCH"
+
+
+@dataclass(kw_only=True)
+class SpecNotFoundError(NotFoundError):
+    """The spec URL does not resolve to a document (HTTP 404)."""
+
+    code: ClassVar[str] = "NOT_FOUND_OPENAPI_SPEC"
+
+
+@dataclass(kw_only=True)
+class SpecFetchRateLimitedError(RateLimitedError):
+    """The spec endpoint throttled the request (HTTP 429)."""
+
+    code: ClassVar[str] = "RATE_LIMITED_OPENAPI_SPEC_FETCH"
+
+
+@dataclass(kw_only=True)
+class SpecSourceUnavailableError(SourceUnavailableError):
+    """The spec endpoint is unreachable, erroring (5xx), or not answering."""
+
+    code: ClassVar[str] = "SOURCE_UNAVAILABLE_OPENAPI_SPEC"
+
+
+@dataclass(kw_only=True)
+class SpecFetchClientError(InvalidInputError):
+    """The spec endpoint rejected the request with an unclassified 4xx."""
+
+    code: ClassVar[str] = "INVALID_INPUT_OPENAPI_SPEC_FETCH"
+
+
+@dataclass(kw_only=True)
+class SpecParseError(InvalidInputError):
+    """The fetched document is not parseable as an OpenAPI JSON/YAML object."""
+
+    code: ClassVar[str] = "INVALID_INPUT_OPENAPI_SPEC_PARSE"
+
+
+@dataclass(kw_only=True)
+class NoValidSpecsError(InvalidInputError):
+    """Every fetched document was skipped — nothing extractable (EP-03 guard)."""
+
+    code: ClassVar[str] = "INVALID_INPUT_OPENAPI_NO_VALID_SPECS"
+
+
+@dataclass(kw_only=True)
+class CloudSpecNotFoundError(NotFoundError):
+    """The object-store prefix/key yielded no spec files (EP-03 guard)."""
+
+    code: ClassVar[str] = "NOT_FOUND_OPENAPI_CLOUD_SPEC"
+
+
+@dataclass(kw_only=True)
+class ObjectStoreCredentialError(InvalidInputError):
+    """The resolved object-store credential was rejected while building the
+    cloud store client (PF-17 boundary — raised with a severed cause chain)."""
+
+    code: ClassVar[str] = "INVALID_INPUT_OPENAPI_OBJECT_STORE_CREDENTIAL"

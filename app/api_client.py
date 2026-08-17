@@ -10,13 +10,85 @@ the extract_spec @task method.
 from __future__ import annotations
 
 import httpx
-from app.errors import ZipNoSpecFoundError
+from application_sdk.errors.base import AppError
 from application_sdk.observability.logger_adaptor import get_logger
+
+from app.errors import (
+    SpecFetchAuthError,
+    SpecFetchClientError,
+    SpecFetchForbiddenError,
+    SpecFetchRateLimitedError,
+    SpecNotFoundError,
+    SpecParseError,
+    SpecSourceUnavailableError,
+    ZipNoSpecFoundError,
+)
 
 logger = get_logger(__name__)
 
 # Methods we surface as available_operations (uppercase)
 _TRACKED_METHODS = {"get", "post", "put", "patch", "delete"}
+
+
+def _classify_http_status(status: int, spec_url: str, exc: Exception) -> AppError:
+    """Map an HTTP error status on the spec-fetch path to a typed AppError.
+
+    CONNECT-812 PF-20/EP-02 class: an untyped exception crossing the activity
+    boundary carries no FailureDetails, so the failure is unattributable and
+    lands on the customer as a raw stack trace. Messages carry the status and
+    exception type only — never the interpolated exception text (PF-18: the
+    ``message`` field is not redacted on the wire; detail travels via ``cause``,
+    which is sanitized into ``cause_repr``).
+    """
+    if status == 401:
+        return SpecFetchAuthError(
+            message=f"spec endpoint returned HTTP 401 (unauthorized) for {spec_url}",
+            failure_reason="HTTP 401",
+            suggested_action=(
+                "Verify the spec URL is publicly accessible, or that any "
+                "authorization the endpoint requires is configured."
+            ),
+            cause=exc,
+        )
+    if status == 403:
+        return SpecFetchForbiddenError(
+            message=f"spec endpoint returned HTTP 403 (forbidden) for {spec_url}",
+            resource=spec_url,
+            suggested_action=(
+                "Verify the requesting principal is allowed to read the spec "
+                "document at this URL."
+            ),
+            cause=exc,
+        )
+    if status == 404:
+        return SpecNotFoundError(
+            message=f"spec endpoint returned HTTP 404 (not found) for {spec_url}",
+            resource_type="openapi_spec",
+            resource_identifier=spec_url,
+            suggested_action="Verify the spec URL points at an existing document.",
+            cause=exc,
+        )
+    if status == 429:
+        return SpecFetchRateLimitedError(
+            message=f"spec endpoint returned HTTP 429 (rate limited) for {spec_url}",
+            suggested_action="Retry later, or reduce request frequency to the endpoint.",
+            cause=exc,
+        )
+    if status >= 500:
+        return SpecSourceUnavailableError(
+            message=f"spec endpoint returned HTTP {status} (server error) for {spec_url}",
+            endpoint=spec_url,
+            http_status=status,
+            suggested_action="The spec server is erroring; retry once it is healthy.",
+            cause=exc,
+        )
+    return SpecFetchClientError(
+        message=f"spec endpoint returned HTTP {status} for {spec_url}",
+        field="spec_url",
+        constraint="endpoint must serve the spec document to a plain GET",
+        value_summary=f"HTTP {status}",
+        cause=exc,
+    )
 
 
 class OpenAPIApiClient:
@@ -91,10 +163,59 @@ class OpenAPIApiClient:
             )
             return [spec]
 
-        # HTTP URL — fetch remotely
+        # HTTP URL — fetch remotely. Every network failure is re-raised typed
+        # (CONNECT-812 PF-20 class): a raw httpx exception crossing the
+        # activity boundary has no FailureDetails and is unattributable.
         logger.info("fetching OpenAPI spec url=%s", spec_url)
-        response = await self._client.get(spec_url)
-        response.raise_for_status()
+        try:
+            response = await self._client.get(spec_url)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise _classify_http_status(
+                exc.response.status_code, spec_url, exc
+            ) from exc
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            raise SpecSourceUnavailableError(
+                message=(
+                    f"could not connect to spec endpoint {spec_url} "
+                    f"({type(exc).__name__})"
+                ),
+                endpoint=spec_url,
+                network_error=type(exc).__name__,
+                suggested_action=(
+                    "Verify the URL host is reachable from Atlan and that "
+                    "DNS/firewall rules allow the connection."
+                ),
+                cause=exc,
+            ) from exc
+        except httpx.TimeoutException as exc:
+            # EP-02 (CONNECT-812): a read/pool timeout is NOT a connect
+            # failure — the endpoint was reached, it just didn't answer in
+            # time. Say so, and don't send the user to check network config
+            # that is provably working.
+            raise SpecSourceUnavailableError(
+                message=(
+                    f"connected to spec endpoint {spec_url} but timed out "
+                    f"waiting for the response ({type(exc).__name__})"
+                ),
+                endpoint=spec_url,
+                network_error=type(exc).__name__,
+                suggested_action=(
+                    "The endpoint is reachable but slow to answer; retry, or "
+                    "check the spec server's load and the document's size."
+                ),
+                cause=exc,
+            ) from exc
+        except httpx.RequestError as exc:
+            raise SpecSourceUnavailableError(
+                message=(
+                    f"network error fetching spec from {spec_url} "
+                    f"({type(exc).__name__})"
+                ),
+                endpoint=spec_url,
+                network_error=type(exc).__name__,
+                cause=exc,
+            ) from exc
 
         content_type = response.headers.get("content-type", "").lower()
 
@@ -116,15 +237,46 @@ class OpenAPIApiClient:
         return [spec]
 
     def _parse_body(self, content: bytes, content_type: str, url: str) -> dict:
-        """Parse JSON or YAML bytes into a dict."""
+        """Parse JSON or YAML bytes into a dict.
+
+        Raises:
+            SpecParseError: If the bytes cannot be parsed, or parse to
+                something other than a mapping (e.g. a YAML scalar) — a
+                non-dict here surfaces later as an opaque ``AttributeError``
+                deep in extraction otherwise.
+        """
         is_yaml = (
             "yaml" in content_type or url.endswith(".yaml") or url.endswith(".yml")
         )
-        if is_yaml:
-            import yaml
+        fmt = "YAML" if is_yaml else "JSON"
+        try:
+            if is_yaml:
+                import yaml
 
-            return yaml.safe_load(content.decode("utf-8"))
-        return httpx.Response(200, content=content).json()
+                parsed = yaml.safe_load(content.decode("utf-8"))
+            else:
+                parsed = httpx.Response(200, content=content).json()
+        except Exception as exc:
+            raise SpecParseError(
+                message=(
+                    f"could not parse spec document from {url} as {fmt} "
+                    f"({type(exc).__name__})"
+                ),
+                field="spec_url",
+                constraint="document must be valid OpenAPI JSON or YAML",
+                cause=exc,
+            ) from exc
+        if not isinstance(parsed, dict):
+            raise SpecParseError(
+                message=(
+                    f"spec document from {url} parsed to "
+                    f"{type(parsed).__name__}, expected a {fmt} object"
+                ),
+                field="spec_url",
+                constraint="document must be a single OpenAPI object",
+                value_summary=type(parsed).__name__,
+            )
+        return parsed
 
     def _parse_zip(self, content: bytes, source_url: str) -> list[dict]:
         """Extract and parse all JSON/YAML spec files from a ZIP archive."""

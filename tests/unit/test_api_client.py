@@ -8,16 +8,24 @@ No real network calls are made.
 from __future__ import annotations
 
 import io
-import orjson
 import zipfile
 
+import httpx
+import orjson
 import pytest
 import respx
-import httpx
 from application_sdk.errors import InvalidInputError
 
 from app.api_client import OpenAPIApiClient
-
+from app.errors import (
+    SpecFetchAuthError,
+    SpecFetchClientError,
+    SpecFetchForbiddenError,
+    SpecFetchRateLimitedError,
+    SpecNotFoundError,
+    SpecParseError,
+    SpecSourceUnavailableError,
+)
 
 # =============================================================================
 # Helpers
@@ -100,13 +108,14 @@ class TestFetchSpecJson:
 
     @pytest.mark.asyncio
     @respx.mock
-    async def test_raises_on_http_error(self) -> None:
-        """fetch_spec should propagate HTTP errors."""
+    async def test_raises_typed_on_http_error(self) -> None:
+        """fetch_spec re-raises HTTP errors as typed AppErrors (CONNECT-812
+        PF-20 class) — never a raw httpx.HTTPStatusError."""
         respx.get("https://example.com/missing.json").mock(
             return_value=httpx.Response(404, content=b"Not Found")
         )
         client = OpenAPIApiClient()
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(SpecNotFoundError):
             await client.fetch_spec("https://example.com/missing.json")
         await client.close()
 
@@ -323,3 +332,115 @@ class TestClose:
         """close() should be awaitable and not raise."""
         client = OpenAPIApiClient()
         await client.close()  # Should not raise
+
+
+# =============================================================================
+# TestFetchErrorClassification — CONNECT-812 PF-20/EP-02 class
+# =============================================================================
+
+
+class TestFetchErrorClassification:
+    """Every failure on the fetch path must cross the activity boundary as a
+    typed AppError with the right audience/retryable semantics — never a raw
+    httpx or parse exception (CONNECT-812 PF-20 class)."""
+
+    URL = "https://example.com/api.json"
+
+    async def _fetch_expecting(self, exc_type: type[Exception]):
+        client = OpenAPIApiClient()
+        try:
+            with pytest.raises(exc_type) as excinfo:
+                await client.fetch_spec(self.URL)
+        finally:
+            await client.close()
+        return excinfo.value
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_401_raises_auth_error(self) -> None:
+        respx.get(self.URL).mock(return_value=httpx.Response(401))
+        err = await self._fetch_expecting(SpecFetchAuthError)
+        assert "401" in err.message
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_403_raises_forbidden_error(self) -> None:
+        respx.get(self.URL).mock(return_value=httpx.Response(403))
+        await self._fetch_expecting(SpecFetchForbiddenError)
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_404_raises_not_found_error(self) -> None:
+        respx.get(self.URL).mock(return_value=httpx.Response(404))
+        err = await self._fetch_expecting(SpecNotFoundError)
+        assert err.resource_identifier == self.URL
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_429_raises_rate_limited_error(self) -> None:
+        respx.get(self.URL).mock(return_value=httpx.Response(429))
+        await self._fetch_expecting(SpecFetchRateLimitedError)
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_500_raises_source_unavailable_retryable(self) -> None:
+        respx.get(self.URL).mock(return_value=httpx.Response(503))
+        err = await self._fetch_expecting(SpecSourceUnavailableError)
+        assert err.http_status == 503
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_other_4xx_raises_client_error(self) -> None:
+        respx.get(self.URL).mock(return_value=httpx.Response(418))
+        err = await self._fetch_expecting(SpecFetchClientError)
+        assert err.value_summary == "HTTP 418"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_connect_error_says_could_not_connect(self) -> None:
+        respx.get(self.URL).mock(side_effect=httpx.ConnectError("boom"))
+        err = await self._fetch_expecting(SpecSourceUnavailableError)
+        assert "could not connect" in err.message
+        assert err.network_error == "ConnectError"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_read_timeout_is_not_reported_as_connect_failure(self) -> None:
+        """EP-02 (CONNECT-812): a read timeout means the endpoint WAS reached.
+        The message must say 'timed out', and must not send the user to check
+        network configuration that provably works."""
+        respx.get(self.URL).mock(side_effect=httpx.ReadTimeout("slow"))
+        err = await self._fetch_expecting(SpecSourceUnavailableError)
+        assert "timed out" in err.message
+        assert "could not connect" not in err.message
+        assert err.network_error == "ReadTimeout"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_invalid_json_body_raises_parse_error(self) -> None:
+        respx.get(self.URL).mock(
+            return_value=httpx.Response(
+                200,
+                content=b"{not json",
+                headers={"content-type": "application/json"},
+            )
+        )
+        await self._fetch_expecting(SpecParseError)
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_non_dict_yaml_scalar_raises_parse_error(self) -> None:
+        respx.get("https://example.com/api.yaml").mock(
+            return_value=httpx.Response(
+                200,
+                content=b"just a scalar string",
+                headers={"content-type": "application/yaml"},
+            )
+        )
+        client = OpenAPIApiClient()
+        try:
+            with pytest.raises(SpecParseError) as excinfo:
+                await client.fetch_spec("https://example.com/api.yaml")
+        finally:
+            await client.close()
+        assert "expected" in excinfo.value.message
