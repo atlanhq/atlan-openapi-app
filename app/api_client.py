@@ -49,6 +49,33 @@ class OpenAPIApiClient:
         """Close the underlying HTTP client."""
         await self._client.aclose()
 
+    async def check_reachable(self, url: str) -> int:
+        """Cheaply probe whether ``url`` is reachable, returning its HTTP status code.
+
+        Used by the preflight handler to verify a URL-mode ``spec_url`` before a
+        run starts, without downloading the full spec document. Tries HEAD
+        first; falls back to a 1-byte ranged GET when HEAD comes back
+        ambiguous (401/403/404/405/501) — some spec hosts (signed URLs, strict
+        method allowlists) reject HEAD even though GET works, and we would
+        otherwise misreport a reachable spec as broken.
+
+        Never raises on a non-2xx HTTP response — callers inspect the
+        returned status code themselves to distinguish auth (401/403) from
+        other failures.
+
+        Raises:
+            httpx.TransportError: On connection failures (DNS, timeout,
+                connection refused). Deliberately not swallowed here — the
+                caller distinguishes these from an HTTP-level response.
+        """
+        response = await self._client.head(url)
+        if response.status_code in (401, 403, 404, 405, 501):
+            async with self._client.stream(
+                "GET", url, headers={"Range": "bytes=0-0"}
+            ) as stream_response:
+                return stream_response.status_code
+        return response.status_code
+
     async def fetch_spec(self, spec_url: str) -> list[dict]:
         """Fetch and parse an OpenAPI spec document from a URL or local file path.
 

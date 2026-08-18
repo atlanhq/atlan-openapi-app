@@ -54,6 +54,9 @@ from app.contracts import (
     TransformInput,
     TransformOutput,
 )
+from app.handler import (
+    OpenAPIHandler as OpenAPIHandler,  # registers handler for SDK convention-based discovery
+)
 
 T = TypeVar("T")
 
