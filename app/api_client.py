@@ -9,9 +9,10 @@ the extract_spec @task method.
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import socket
-from urllib.parse import urlparse
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from application_sdk.errors.base import AppError
@@ -24,15 +25,129 @@ from app.errors import (
     SpecFetchRateLimitedError,
     SpecNotFoundError,
     SpecParseError,
+    SpecRedirectNotFollowedError,
     SpecSourceUnavailableError,
     SpecUrlInvalidError,
     ZipNoSpecFoundError,
 )
 
+logger = get_logger(__name__)
 
-def validate_spec_url(spec_url: str) -> None:
-    """Reject non-HTTPS and private or local-network spec endpoints."""
-    parsed = urlparse(spec_url)
+# Methods we surface as available_operations (uppercase)
+_TRACKED_METHODS = {"get", "post", "put", "patch", "delete"}
+
+
+def redact_url(url: str) -> str:
+    """Return ``url`` with everything credential-bearing removed.
+
+    A spec URL is routinely a pre-signed one — an Azure Blob SAS, an S3
+    presigned GET, a GitHub token in a query parameter — so the query string is
+    a secret, and so is any ``user:pass@`` userinfo. ``FailureDetails.message``
+    and its evidence fields are **not** redacted on the wire: whatever goes in
+    lands in Temporal history, the Automation Engine, and the connector-pulse
+    ``check_matrix``. Only ``cause_repr`` is sanitized by the SDK.
+
+    So every user-visible mention of a spec URL — messages, ``endpoint``,
+    ``resource``, ``resource_identifier``, log lines — goes through here first,
+    keeping enough to identify the endpoint (scheme, host, port, path) and
+    nothing that authenticates to it.
+
+    Non-URL inputs (the local file paths the CLOUD path produces) are returned
+    unchanged; they carry no credential.
+    """
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return "<unparseable url>"
+    if not parts.scheme or not parts.netloc:
+        return url
+    try:
+        netloc = parts.hostname or ""
+        if parts.port:
+            netloc = f"{netloc}:{parts.port}"
+    except ValueError:
+        # Malformed port — drop the whole authority rather than echo it back.
+        netloc = "<invalid host>"
+    redacted = urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+    if parts.query:
+        redacted = f"{redacted}?<redacted>"
+    return redacted
+
+
+class RedactedSpecFetchCause(Exception):
+    """Stand-in for an httpx exception whose own message embeds the spec URL.
+
+    ``AppError(cause=...)`` is the right place for diagnostic detail, and the
+    SDK sanitizes it into ``cause_repr`` — but that sanitizer looks for
+    credential-shaped *tokens*, not for a URL that is itself a credential.
+    httpx renders the full request URL into every ``HTTPStatusError`` and most
+    ``RequestError`` messages, so handing one straight to ``cause=`` puts a SAS
+    signature into ``cause_repr`` even when the message beside it was redacted.
+
+    This preserves the original exception's type name and detail with the URL
+    swapped for its redacted form.
+    """
+
+    def __init__(self, original_type: str, detail: str) -> None:
+        super().__init__(f"{original_type}: {detail}")
+        self.original_type = original_type
+
+
+def _redacted_cause(exc: Exception, spec_url: str) -> Exception:
+    """Wrap ``exc`` so its detail survives but the spec URL's query does not."""
+    detail = str(exc)
+    if spec_url and spec_url in detail:
+        detail = detail.replace(spec_url, redact_url(spec_url))
+    query = urlsplit(spec_url).query if spec_url else ""
+    if query and query in detail:
+        detail = detail.replace(query, "<redacted>")
+    return RedactedSpecFetchCause(type(exc).__name__, detail)
+
+
+async def _resolve_host(hostname: str, port: int | None) -> list[str]:
+    """Resolve ``hostname`` to addresses without blocking the event loop.
+
+    A seam as much as a helper: it is the one place tests stub so the suite
+    never touches a real resolver.
+    """
+    resolved = await asyncio.get_running_loop().getaddrinfo(
+        hostname, port, type=socket.SOCK_STREAM
+    )
+    return [info[4][0] for info in resolved]
+
+
+def _is_blocked_address(address: str) -> bool:
+    """Whether a resolved address is off-limits for an outbound spec fetch."""
+    ip = ipaddress.ip_address(address)
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_unspecified
+        or ip.is_multicast
+    )
+
+
+async def validate_spec_url(spec_url: str) -> None:
+    """Reject non-HTTPS and private or local-network spec endpoints.
+
+    Async on purpose. Name resolution is network I/O, and this runs inside both
+    a Temporal activity and the preflight gate's budgeted handler call. A
+    synchronous ``socket.getaddrinfo`` blocks the event loop, which means it
+    escapes the gate's cancellation entirely (cancellation lands at an
+    ``await``) and stalls every other activity sharing the worker; an overrun
+    then classifies as ``source_unverifiable``, which aborts the run once the
+    app opts into hard mode. Resolving through the loop's threaded resolver
+    keeps the call cancellable and the worker responsive.
+
+    Policy note: this is an SSRF control, and it is deliberately strict —
+    HTTPS-only, and the hostname must resolve exclusively to public addresses.
+    That also rejects spec endpoints hosted on a private network. Loosening it
+    (an allowlist, a per-connection opt-out) is a product decision, not a code
+    cleanup.
+    """
+    parsed = urlsplit(spec_url)
     if parsed.scheme != "https" or not parsed.hostname:
         raise SpecUrlInvalidError(
             message="spec_url must be an HTTPS URL with a hostname",
@@ -41,10 +156,7 @@ def validate_spec_url(spec_url: str) -> None:
             value_summary="invalid URL",
         )
     try:
-        addresses = {
-            info[4][0]
-            for info in socket.getaddrinfo(parsed.hostname, parsed.port, type=socket.SOCK_STREAM)
-        }
+        addresses = set(await _resolve_host(parsed.hostname, parsed.port))
     except (OSError, ValueError) as exc:
         raise SpecUrlInvalidError(
             message="spec_url hostname could not be resolved",
@@ -53,10 +165,7 @@ def validate_spec_url(spec_url: str) -> None:
             value_summary="unresolvable hostname",
             cause=exc,
         ) from exc
-    if any(ipaddress.ip_address(address).is_private or ipaddress.ip_address(address).is_loopback
-           or ipaddress.ip_address(address).is_link_local or ipaddress.ip_address(address).is_reserved
-           or ipaddress.ip_address(address).is_unspecified or ipaddress.ip_address(address).is_multicast
-           for address in addresses):
+    if any(_is_blocked_address(address) for address in addresses):
         raise SpecUrlInvalidError(
             message="spec_url must not resolve to a private or local network",
             field="spec_url",
@@ -65,70 +174,135 @@ def validate_spec_url(spec_url: str) -> None:
         )
 
 
-logger = get_logger(__name__)
-
-# Methods we surface as available_operations (uppercase)
-_TRACKED_METHODS = {"get", "post", "put", "patch", "delete"}
-
-
 def _classify_http_status(status: int, spec_url: str, exc: Exception) -> AppError:
     """Map an HTTP error status on the spec-fetch path to a typed AppError.
 
     CONNECT-812 PF-20/EP-02 class: an untyped exception crossing the activity
     boundary carries no FailureDetails, so the failure is unattributable and
     lands on the customer as a raw stack trace. Messages carry the status and
-    exception type only — never the interpolated exception text (PF-18: the
-    ``message`` field is not redacted on the wire; detail travels via ``cause``,
-    which is sanitized into ``cause_repr``).
+    exception type only — never the interpolated exception text, and never the
+    raw URL (PF-18: ``message`` and the evidence fields are not redacted on the
+    wire, so they get :func:`redact_url`; detail travels via ``cause``, which
+    the SDK sanitizes into ``cause_repr``).
     """
+    safe_url = redact_url(spec_url)
+    safe_cause = _redacted_cause(exc, spec_url)
+    if 300 <= status < 400:
+        # Redirects are not followed (see OpenAPIApiClient.__init__), so a 3xx
+        # is a terminal answer here rather than a hop. Without this branch it
+        # fell through to the generic 4xx leaf and read as "endpoint must serve
+        # the spec document to a plain GET", which is unactionable.
+        return SpecRedirectNotFollowedError(
+            message=f"spec endpoint returned HTTP {status} (redirect) for {safe_url}",
+            field="spec_url",
+            constraint="spec_url must serve the document directly, without a redirect",
+            value_summary=f"HTTP {status}",
+            suggested_action=(
+                "Point spec_url at the document's final location. Redirects are "
+                "not followed, because the redirect target is not covered by the "
+                "URL safety check applied to spec_url."
+            ),
+            cause=safe_cause,
+        )
     if status == 401:
         return SpecFetchAuthError(
-            message=f"spec endpoint returned HTTP 401 (unauthorized) for {spec_url}",
+            message=f"spec endpoint returned HTTP 401 (unauthorized) for {safe_url}",
             failure_reason="HTTP 401",
             suggested_action=(
                 "Verify the spec URL is publicly accessible, or that any "
-                "authorization the endpoint requires is configured."
+                "authorization the endpoint requires is configured. If the URL "
+                "is pre-signed, check that the signature has not expired."
             ),
-            cause=exc,
+            cause=safe_cause,
         )
     if status == 403:
         return SpecFetchForbiddenError(
-            message=f"spec endpoint returned HTTP 403 (forbidden) for {spec_url}",
-            resource=spec_url,
+            message=f"spec endpoint returned HTTP 403 (forbidden) for {safe_url}",
+            resource=safe_url,
             suggested_action=(
                 "Verify the requesting principal is allowed to read the spec "
-                "document at this URL."
+                "document at this URL. If the URL is pre-signed (S3 presigned, "
+                "Azure SAS), check that the signature has not expired."
             ),
-            cause=exc,
+            cause=safe_cause,
         )
     if status == 404:
         return SpecNotFoundError(
-            message=f"spec endpoint returned HTTP 404 (not found) for {spec_url}",
+            message=f"spec endpoint returned HTTP 404 (not found) for {safe_url}",
             resource_type="openapi_spec",
-            resource_identifier=spec_url,
+            resource_identifier=safe_url,
             suggested_action="Verify the spec URL points at an existing document.",
-            cause=exc,
+            cause=safe_cause,
         )
     if status == 429:
         return SpecFetchRateLimitedError(
-            message=f"spec endpoint returned HTTP 429 (rate limited) for {spec_url}",
+            message=f"spec endpoint returned HTTP 429 (rate limited) for {safe_url}",
             suggested_action="Retry later, or reduce request frequency to the endpoint.",
-            cause=exc,
+            cause=safe_cause,
         )
     if status >= 500:
         return SpecSourceUnavailableError(
-            message=f"spec endpoint returned HTTP {status} (server error) for {spec_url}",
-            endpoint=spec_url,
+            message=f"spec endpoint returned HTTP {status} (server error) for {safe_url}",
+            endpoint=safe_url,
             http_status=status,
             suggested_action="The spec server is erroring; retry once it is healthy.",
-            cause=exc,
+            cause=safe_cause,
         )
     return SpecFetchClientError(
-        message=f"spec endpoint returned HTTP {status} for {spec_url}",
+        message=f"spec endpoint returned HTTP {status} for {safe_url}",
         field="spec_url",
         constraint="endpoint must serve the spec document to a plain GET",
         value_summary=f"HTTP {status}",
-        cause=exc,
+        cause=safe_cause,
+    )
+
+
+def _classify_request_error(exc: Exception, spec_url: str) -> AppError:
+    """Map any httpx failure on the spec-fetch path to a typed AppError.
+
+    The single classifier for both surfaces: ``fetch_spec`` (extraction) and
+    ``probe_spec_url`` (preflight) route every httpx exception through here, so
+    the check and the run can never disagree about what a given failure means.
+    """
+    safe_url = redact_url(spec_url)
+    safe_cause = _redacted_cause(exc, spec_url)
+    if isinstance(exc, httpx.HTTPStatusError):
+        return _classify_http_status(exc.response.status_code, spec_url, exc)
+    if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)):
+        return SpecSourceUnavailableError(
+            message=(
+                f"could not connect to spec endpoint {safe_url} ({type(exc).__name__})"
+            ),
+            endpoint=safe_url,
+            network_error=type(exc).__name__,
+            suggested_action=(
+                "Verify the URL host is reachable from Atlan and that "
+                "DNS/firewall rules allow the connection."
+            ),
+            cause=safe_cause,
+        )
+    if isinstance(exc, httpx.TimeoutException):
+        # EP-02 (CONNECT-812): a read/pool timeout is NOT a connect failure —
+        # the endpoint was reached, it just didn't answer in time. Say so, and
+        # don't send the user to check network config that is provably working.
+        return SpecSourceUnavailableError(
+            message=(
+                f"connected to spec endpoint {safe_url} but timed out "
+                f"waiting for the response ({type(exc).__name__})"
+            ),
+            endpoint=safe_url,
+            network_error=type(exc).__name__,
+            suggested_action=(
+                "The endpoint is reachable but slow to answer; retry, or "
+                "check the spec server's load and the document's size."
+            ),
+            cause=safe_cause,
+        )
+    return SpecSourceUnavailableError(
+        message=(f"network error fetching spec from {safe_url} ({type(exc).__name__})"),
+        endpoint=safe_url,
+        network_error=type(exc).__name__,
+        cause=safe_cause,
     )
 
 
@@ -139,12 +313,19 @@ class OpenAPIApiClient:
     a dict. Supports JSON and YAML content types.
     """
 
-    def __init__(self, auth_header: str = "") -> None:
+    def __init__(self, auth_header: str = "", timeout: float = 60.0) -> None:
         """Create the client.
 
         Args:
             auth_header: Optional HTTP Authorization header value for private
                 spec endpoints (e.g. 'Bearer my-token'). Empty for public specs.
+            timeout: Per-request timeout in seconds. The preflight probe passes
+                its slice of the gate budget here; extraction keeps the default.
+
+        Redirects are deliberately **not** followed: a redirect target is not
+        covered by :func:`validate_spec_url`, so following one would let a
+        public hostname bounce the request onto a private address. A 3xx is
+        surfaced as :class:`~app.errors.SpecRedirectNotFollowedError`.
         """
         headers: dict[str, str] = {
             "Accept": "application/json, application/yaml, text/yaml, */*"
@@ -154,13 +335,41 @@ class OpenAPIApiClient:
 
         self._client = httpx.AsyncClient(
             headers=headers,
-            timeout=60.0,
+            timeout=timeout,
             follow_redirects=False,
         )
 
     async def close(self) -> None:
         """Close the underlying HTTP client."""
         await self._client.aclose()
+
+    async def probe_spec_url(self, spec_url: str) -> str:
+        """Ask the spec endpoint the same question ``fetch_spec`` asks, cheaply.
+
+        A streaming GET abandoned after the status line: the server sees the
+        identical request the extraction path sends — same client, same
+        ``Accept``, same redirect policy, same URL validation — so a 403 here is
+        the same 403 the run would die on, attributed before the run instead of
+        after it. The body is never downloaded, so a large spec cannot eat the
+        preflight budget.
+
+        Sharing the client with :meth:`fetch_spec` is the point: parity that
+        depends on two call sites being kept in step is parity that drifts.
+
+        Returns:
+            The response's ``content-type`` header, lower-cased (``""`` if the
+            endpoint sent none).
+
+        Raises:
+            AppError: The same typed errors :meth:`fetch_spec` raises.
+        """
+        await validate_spec_url(spec_url)
+        try:
+            async with self._client.stream("GET", spec_url) as response:
+                response.raise_for_status()
+                return response.headers.get("content-type", "").lower()
+        except (httpx.HTTPStatusError, httpx.RequestError) as exc:
+            raise _classify_request_error(exc, spec_url) from exc
 
     async def fetch_spec(self, spec_url: str) -> list[dict]:
         """Fetch and parse an OpenAPI spec document from a URL or local file path.
@@ -178,8 +387,9 @@ class OpenAPIApiClient:
             List of parsed spec documents. Typically one item; multiple for ZIP.
 
         Raises:
-            httpx.HTTPStatusError: If the HTTP response indicates an error.
-            ValueError: If the response cannot be parsed.
+            AppError: A typed leaf for every failure on this path — URL
+                validation, HTTP status, network, and parse. Nothing untyped
+                crosses the activity boundary (CONNECT-812 PF-20).
         """
         # Local file path (from CLOUD download) — read directly
         import os
@@ -207,57 +417,13 @@ class OpenAPIApiClient:
         # HTTP URL — fetch remotely. Every network failure is re-raised typed
         # (CONNECT-812 PF-20 class): a raw httpx exception crossing the
         # activity boundary has no FailureDetails and is unattributable.
-        logger.info("fetching OpenAPI spec url=%s", spec_url)
+        logger.info("fetching OpenAPI spec url=%s", redact_url(spec_url))
+        await validate_spec_url(spec_url)
         try:
-            validate_spec_url(spec_url)
             response = await self._client.get(spec_url)
             response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            raise _classify_http_status(
-                exc.response.status_code, spec_url, exc
-            ) from exc
-        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
-            raise SpecSourceUnavailableError(
-                message=(
-                    f"could not connect to spec endpoint {spec_url} "
-                    f"({type(exc).__name__})"
-                ),
-                endpoint=spec_url,
-                network_error=type(exc).__name__,
-                suggested_action=(
-                    "Verify the URL host is reachable from Atlan and that "
-                    "DNS/firewall rules allow the connection."
-                ),
-                cause=exc,
-            ) from exc
-        except httpx.TimeoutException as exc:
-            # EP-02 (CONNECT-812): a read/pool timeout is NOT a connect
-            # failure — the endpoint was reached, it just didn't answer in
-            # time. Say so, and don't send the user to check network config
-            # that is provably working.
-            raise SpecSourceUnavailableError(
-                message=(
-                    f"connected to spec endpoint {spec_url} but timed out "
-                    f"waiting for the response ({type(exc).__name__})"
-                ),
-                endpoint=spec_url,
-                network_error=type(exc).__name__,
-                suggested_action=(
-                    "The endpoint is reachable but slow to answer; retry, or "
-                    "check the spec server's load and the document's size."
-                ),
-                cause=exc,
-            ) from exc
-        except httpx.RequestError as exc:
-            raise SpecSourceUnavailableError(
-                message=(
-                    f"network error fetching spec from {spec_url} "
-                    f"({type(exc).__name__})"
-                ),
-                endpoint=spec_url,
-                network_error=type(exc).__name__,
-                cause=exc,
-            ) from exc
+        except (httpx.HTTPStatusError, httpx.RequestError) as exc:
+            raise _classify_request_error(exc, spec_url) from exc
 
         content_type = response.headers.get("content-type", "").lower()
 
@@ -291,6 +457,7 @@ class OpenAPIApiClient:
             "yaml" in content_type or url.endswith(".yaml") or url.endswith(".yml")
         )
         fmt = "YAML" if is_yaml else "JSON"
+        safe_url = redact_url(url)
         try:
             if is_yaml:
                 import yaml
@@ -301,7 +468,7 @@ class OpenAPIApiClient:
         except Exception as exc:
             raise SpecParseError(
                 message=(
-                    f"could not parse spec document from {url} as {fmt} "
+                    f"could not parse spec document from {safe_url} as {fmt} "
                     f"({type(exc).__name__})"
                 ),
                 field="spec_url",
@@ -311,7 +478,7 @@ class OpenAPIApiClient:
         if not isinstance(parsed, dict):
             raise SpecParseError(
                 message=(
-                    f"spec document from {url} parsed to "
+                    f"spec document from {safe_url} parsed to "
                     f"{type(parsed).__name__}, expected a {fmt} object"
                 ),
                 field="spec_url",
@@ -352,11 +519,15 @@ class OpenAPIApiClient:
                     logger.warning("skipping file in ZIP file=%s", name, exc_info=True)
         if not specs:
             raise ZipNoSpecFoundError(
-                message=f"No valid OpenAPI specs found in ZIP from {source_url}",
+                message=(
+                    f"No valid OpenAPI specs found in ZIP from {redact_url(source_url)}"
+                ),
                 field="spec_url",
                 constraint="ZIP must contain at least one valid OpenAPI JSON/YAML spec",
             )
         logger.info(
-            "extracted specs from ZIP count=%d source=%s", len(specs), source_url
+            "extracted specs from ZIP count=%d source=%s",
+            len(specs),
+            redact_url(source_url),
         )
         return specs

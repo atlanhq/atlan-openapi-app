@@ -16,7 +16,7 @@ import pytest
 import respx
 from application_sdk.errors import InvalidInputError
 
-from app.api_client import OpenAPIApiClient
+from app.api_client import OpenAPIApiClient, redact_url, validate_spec_url
 from app.errors import (
     SpecFetchAuthError,
     SpecFetchClientError,
@@ -24,7 +24,9 @@ from app.errors import (
     SpecFetchRateLimitedError,
     SpecNotFoundError,
     SpecParseError,
+    SpecRedirectNotFollowedError,
     SpecSourceUnavailableError,
+    SpecUrlInvalidError,
 )
 
 # =============================================================================
@@ -444,3 +446,221 @@ class TestFetchErrorClassification:
         finally:
             await client.close()
         assert "expected" in excinfo.value.message
+
+
+# =============================================================================
+# TestRedactUrl — a spec URL is routinely a credential
+# =============================================================================
+
+
+class TestRedactUrl:
+    """A pre-signed spec URL authenticates whoever holds it, so the query
+    string must never reach a log line or a FailureDetails field."""
+
+    def test_query_string_is_dropped(self) -> None:
+        redacted = redact_url(
+            "https://acct.blob.core.windows.net/c/openapi.json?sp=r&sig=SECRET"
+        )
+        assert redacted == (
+            "https://acct.blob.core.windows.net/c/openapi.json?<redacted>"
+        )
+
+    def test_userinfo_is_dropped(self) -> None:
+        assert redact_url("https://user:pw@host/spec.json") == "https://host/spec.json"
+
+    def test_fragment_is_dropped(self) -> None:
+        assert redact_url("https://host/spec.json#frag") == "https://host/spec.json"
+
+    def test_port_is_kept(self) -> None:
+        assert (
+            redact_url("https://host:8443/spec.json") == "https://host:8443/spec.json"
+        )
+
+    def test_url_without_query_is_unchanged(self) -> None:
+        url = "https://example.com/api.json"
+        assert redact_url(url) == url
+
+    def test_local_path_is_returned_as_is(self) -> None:
+        assert redact_url("/tmp/downloaded/spec.json") == "/tmp/downloaded/spec.json"
+
+
+# =============================================================================
+# TestValidateSpecUrl — SSRF control on the outbound fetch
+# =============================================================================
+
+
+class TestValidateSpecUrl:
+    URL = "https://example.com/api.json"
+
+    @pytest.mark.asyncio
+    async def test_public_https_url_passes(self) -> None:
+        await validate_spec_url(self.URL)  # stubbed resolver returns a public IP
+
+    @pytest.mark.asyncio
+    async def test_plain_http_is_rejected(self) -> None:
+        with pytest.raises(SpecUrlInvalidError):
+            await validate_spec_url("http://example.com/api.json")
+
+    @pytest.mark.asyncio
+    async def test_private_address_is_rejected(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def _private(_host: str, _port: int | None) -> list[str]:
+            return ["10.0.0.5"]
+
+        monkeypatch.setattr("app.api_client._resolve_host", _private)
+        with pytest.raises(SpecUrlInvalidError):
+            await validate_spec_url(self.URL)
+
+    @pytest.mark.asyncio
+    async def test_loopback_is_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        async def _loopback(_host: str, _port: int | None) -> list[str]:
+            return ["127.0.0.1"]
+
+        monkeypatch.setattr("app.api_client._resolve_host", _loopback)
+        with pytest.raises(SpecUrlInvalidError):
+            await validate_spec_url(self.URL)
+
+    @pytest.mark.asyncio
+    async def test_any_private_answer_rejects_a_split_horizon_name(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A name resolving to both a public and a private address must be
+        rejected — otherwise the private answer is reachable on a retry."""
+
+        async def _mixed(_host: str, _port: int | None) -> list[str]:
+            return ["93.184.216.34", "192.168.1.10"]
+
+        monkeypatch.setattr("app.api_client._resolve_host", _mixed)
+        with pytest.raises(SpecUrlInvalidError):
+            await validate_spec_url(self.URL)
+
+    @pytest.mark.asyncio
+    async def test_unresolvable_host_is_typed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def _boom(_host: str, _port: int | None) -> list[str]:
+            raise OSError("Name or service not known")
+
+        monkeypatch.setattr("app.api_client._resolve_host", _boom)
+        with pytest.raises(SpecUrlInvalidError) as excinfo:
+            await validate_spec_url(self.URL)
+        assert excinfo.value.value_summary == "unresolvable hostname"
+
+
+# =============================================================================
+# TestProbeSpecUrl — the preflight probe rides the extraction client
+# =============================================================================
+
+
+class TestProbeSpecUrl:
+    """Parity between the probe and the fetch is structural, not a convention
+    two call sites are expected to keep."""
+
+    URL = "https://example.com/api.json"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_returns_lowercased_content_type(self) -> None:
+        respx.get(self.URL).mock(
+            return_value=httpx.Response(
+                200, content=b"{}", headers={"content-type": "Application/JSON"}
+            )
+        )
+        client = OpenAPIApiClient()
+        try:
+            assert await client.probe_spec_url(self.URL) == "application/json"
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_raises_the_same_typed_error_as_fetch(self) -> None:
+        respx.get(self.URL).mock(return_value=httpx.Response(403))
+        client = OpenAPIApiClient()
+        try:
+            with pytest.raises(SpecFetchForbiddenError):
+                await client.probe_spec_url(self.URL)
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_sends_the_same_headers_as_fetch(self) -> None:
+        route = respx.get(self.URL).mock(
+            return_value=httpx.Response(200, content=b"{}")
+        )
+        client = OpenAPIApiClient(auth_header="Bearer t")
+        try:
+            await client.probe_spec_url(self.URL)
+        finally:
+            await client.close()
+        sent = route.calls.last.request.headers
+        assert sent["authorization"] == "Bearer t"
+        assert "application/json" in sent["accept"]
+
+
+# =============================================================================
+# TestRedirectHandling — redirects are terminal, not hops
+# =============================================================================
+
+
+class TestRedirectHandling:
+    URL = "https://example.com/api.json"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_redirect_is_not_followed_and_is_typed(self) -> None:
+        respx.get(self.URL).mock(
+            return_value=httpx.Response(
+                301, headers={"location": "https://elsewhere.example/api.json"}
+            )
+        )
+        client = OpenAPIApiClient()
+        try:
+            with pytest.raises(SpecRedirectNotFollowedError) as excinfo:
+                await client.fetch_spec(self.URL)
+        finally:
+            await client.close()
+        assert excinfo.value.value_summary == "HTTP 301"
+
+
+# =============================================================================
+# TestNoSecretLeakOnFetch — PF-18, both the message and the cause
+# =============================================================================
+
+
+class TestNoSecretLeakOnFetch:
+    SIGNED = "https://acct.blob.core.windows.net/c/openapi.json?sp=r&sig=SUPERSECRET"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_status_error_leaks_neither_in_message_nor_cause(self) -> None:
+        """httpx renders the full request URL into its own exception message, so
+        passing it straight to ``cause=`` would put the signature into
+        ``cause_repr`` even with a redacted ``message``."""
+        respx.get(self.SIGNED).mock(return_value=httpx.Response(403))
+        client = OpenAPIApiClient()
+        try:
+            with pytest.raises(SpecFetchForbiddenError) as excinfo:
+                await client.fetch_spec(self.SIGNED)
+        finally:
+            await client.close()
+        err = excinfo.value
+        rendered = err.to_failure_details().model_dump_json()
+        assert "SUPERSECRET" not in rendered
+        assert "sig=" not in rendered
+        assert "acct.blob.core.windows.net/c/openapi.json" in err.message
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_network_error_does_not_leak(self) -> None:
+        respx.get(self.SIGNED).mock(side_effect=httpx.ConnectError("boom"))
+        client = OpenAPIApiClient()
+        try:
+            with pytest.raises(SpecSourceUnavailableError) as excinfo:
+                await client.fetch_spec(self.SIGNED)
+        finally:
+            await client.close()
+        rendered = excinfo.value.to_failure_details().model_dump_json()
+        assert "SUPERSECRET" not in rendered

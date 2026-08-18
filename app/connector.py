@@ -31,6 +31,7 @@ from application_sdk.errors.base import AppError, sanitize_cause_repr
 from application_sdk.observability.logger_adaptor import AtlanLoggerAdapter as Logger
 from application_sdk.outputs import Metric, get_outputs
 
+from app.api_client import redact_url
 from app.api_types import OpenAPIPathRecord, OpenAPISpecRecord
 from app.asset_mapper import (
     build_api_spec_qn,
@@ -285,8 +286,8 @@ async def _extract_spec_async(
         # usable".
         raise NoValidSpecsError(
             message=(
-                f"none of the {len(specs)} document(s) at {spec_url} is a "
-                "usable OpenAPI spec — each is missing the required "
+                f"none of the {len(specs)} document(s) at {redact_url(spec_url)} "
+                "is a usable OpenAPI spec — each is missing the required "
                 "'info.title' field"
             ),
             field="spec_url",
@@ -521,7 +522,11 @@ class OpenAPIConnector(App):
     )
     async def extract_spec(self, input: ExtractSpecInput) -> ExtractSpecOutput:
         """Fetch the OpenAPI spec URL and extract APISpec + APIPath records."""
-        self.logger.info("extract_spec task starting spec_url=%s", input.spec_url)
+        # Redacted: a spec URL is routinely pre-signed (Azure SAS, S3 presigned),
+        # so the query string is a credential and logs are not a secret store.
+        self.logger.info(
+            "extract_spec task starting spec_url=%s", redact_url(input.spec_url)
+        )
 
         if not input.spec_url:
             raise SpecUrlRequiredError(
@@ -722,7 +727,7 @@ class OpenAPIConnector(App):
         self.logger.info(
             "openapi connector starting connection_qualified_name=%s spec_urls=%s load_to_atlan=%s connection_usage=%s assertion_only_enabled=%s",
             conn_qn,
-            spec_urls,
+            [redact_url(u) for u in spec_urls],
             input.load_to_atlan,
             input.connection_usage,
             assertion_only_enabled,

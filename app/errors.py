@@ -124,6 +124,37 @@ class SpecFetchClientError(InvalidInputError):
 
 
 @dataclass(kw_only=True)
+class SpecRedirectNotFollowedError(InvalidInputError):
+    """The spec endpoint answered with a redirect, which we deliberately do not
+    follow.
+
+    Redirects are disabled on the fetch client because a redirect target is
+    outside the reach of :func:`app.api_client.validate_spec_url` — following one
+    would let a public hostname bounce the request onto a private address. The
+    distinct code exists so this reads as "point spec_url at the final document"
+    rather than as a generic 4xx.
+    """
+
+    code: ClassVar[str] = "INVALID_INPUT_OPENAPI_SPEC_REDIRECT"
+
+
+@dataclass(kw_only=True)
+class SpecSourceTransientError(DependencyUnavailableError):
+    """The spec endpoint could not be evaluated *this time* — 5xx, or reached
+    but not answering.
+
+    Deliberately a ``DEPENDENCY_UNAVAILABLE`` leaf and deliberately distinct from
+    :class:`SpecSourceUnavailableError`. Raised (never returned as a verdict) from
+    the preflight probe: the gate routes this category to fail-open, so a blip at
+    the spec host can never abort a healthy run once the app opts into hard mode.
+    The extraction path keeps the USER-audience ``SpecSourceUnavailableError`` for
+    the same conditions, because there the run really did fail.
+    """
+
+    code: ClassVar[str] = "DEPENDENCY_UNAVAILABLE_OPENAPI_SPEC_SOURCE"
+
+
+@dataclass(kw_only=True)
 class SpecParseError(InvalidInputError):
     """The fetched document is not parseable as an OpenAPI JSON/YAML object."""
 
