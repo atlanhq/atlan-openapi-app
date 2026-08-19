@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.6.1 (August 19, 2026)
+
+Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.6.0...v0.6.1
+
+### Bug Fixes
+
+- route cloud-spec credential through agent-aware resolver (P037) (#271) (by @cmgrote in [073f2c3](https://github.com/atlanhq/atlan-openapi-app/commit/073f2c3))
+- derive per-test timeout from each suite's declared poll budgets (#284) (by @fyzanshaik-atlan in [78693e0](https://github.com/atlanhq/atlan-openapi-app/commit/78693e0))
+- emit deploy.execution_mode so canary stops falling back to argo (#324) (by @vaibhavatlan in [a95f744](https://github.com/atlanhq/atlan-openapi-app/commit/a95f744))
+- close CONNECT-812 pattern classes found in this app (#368) (by @praveenkmr in [d3eb389](https://github.com/atlanhq/atlan-openapi-app/commit/d3eb389))
+
+
 ## v0.6.0 (July 21, 2026)
 
 Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.5.3...v0.6.0
