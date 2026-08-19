@@ -33,6 +33,7 @@ make hard mode abort a healthy run whenever the spec host hiccups.
 
 from __future__ import annotations
 
+import os
 import time
 
 from application_sdk.errors import RateLimitedError
@@ -53,6 +54,7 @@ from app.errors import (
     SpecFetchClientError,
     SpecSourceTransientError,
     SpecSourceUnavailableError,
+    SpecUrlInvalidError,
     SpecUrlRequiredError,
 )
 
@@ -256,15 +258,48 @@ class OpenAPIConnectorHandler(DefaultHandler):
         """
         started = time.monotonic()
         check_name = "spec_source_reachable"
-        # Local-file spec "URLs" (CLOUD-downloaded artifacts) never reach this
-        # check — it runs only in URL mode — but guard anyway rather than probe
-        # a non-URL string.
+        # A scheme-less spec_url is a local file — the shape CLOUD mode leaves
+        # behind after download_cloud_spec, which fetch_spec reads directly. In
+        # URL mode it is almost always a misconfiguration, and whether the file
+        # exists is what decides: fetch_spec reads it only when os.path.isfile
+        # holds, and otherwise falls through to the HTTP path where
+        # validate_spec_url rejects the non-HTTPS string. So a non-existent
+        # path fails the run deterministically, and reporting it "reachable" is
+        # exactly the false green this handler exists to remove. The leaf
+        # matches the one extraction raises for the same input, so one root
+        # cause keeps one code on both surfaces. A stat is bounded local I/O,
+        # not a network call, so it does not need the budget's thread hop.
         if "://" not in spec_url:
+            if os.path.isfile(spec_url):
+                return [
+                    PreflightCheck(
+                        name=check_name,
+                        passed=True,
+                        message=(
+                            "spec_url is an existing local path; reachability "
+                            "probe skipped"
+                        ),
+                        duration_ms=(time.monotonic() - started) * 1000.0,
+                    )
+                ]
             return [
                 PreflightCheck(
                     name=check_name,
-                    passed=True,
-                    message="spec_url is a local path; reachability probe skipped",
+                    passed=False,
+                    error=SpecUrlInvalidError(
+                        message=(
+                            "spec_url is neither an HTTPS URL nor an existing "
+                            "local file"
+                        ),
+                        field="spec_url",
+                        constraint="HTTPS URL, or a path to a file that exists",
+                        value_summary="local path that does not exist",
+                        suggested_action=(
+                            "Provide the full HTTPS URL of the spec document. A "
+                            "local filesystem path only works for a spec already "
+                            "downloaded by a CLOUD import."
+                        ),
+                    ).to_failure_details(),
                     duration_ms=(time.monotonic() - started) * 1000.0,
                 )
             ]

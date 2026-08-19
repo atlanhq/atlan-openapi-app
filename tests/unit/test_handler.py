@@ -18,6 +18,8 @@ Plus the two gate-semantics rules the handler must not get wrong:
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import httpx
 import pytest
 import respx
@@ -142,14 +144,43 @@ class TestUrlMode:
         assert out.checks[0].error is not None
 
     @pytest.mark.asyncio
-    async def test_local_path_spec_url_skips_probe(self) -> None:
+    async def test_existing_local_path_spec_url_skips_probe(
+        self, tmp_path: Path
+    ) -> None:
+        """A scheme-less spec_url that exists is the CLOUD-downloaded artifact
+        shape — fetch_spec reads it directly, so there is nothing to probe."""
+        spec = tmp_path / "spec.json"
+        spec.write_bytes(b"{}")
         out = await OpenAPIConnectorHandler().preflight_check(
-            _input(import_type="URL", spec_url="/tmp/downloaded/spec.json")
+            _input(import_type="URL", spec_url=str(spec))
         )
         assert out.status == PreflightStatus.READY
         reach = [c for c in out.checks if c.name == "spec_source_reachable"][0]
         assert reach.passed is True
         assert "skipped" in reach.message
+
+    @pytest.mark.asyncio
+    async def test_missing_local_path_spec_url_is_not_ready(
+        self, tmp_path: Path
+    ) -> None:
+        """A scheme-less spec_url that does not exist fails the run
+        deterministically: fetch_spec stats it, misses, falls through to the
+        HTTP path, and validate_spec_url rejects the non-HTTPS string. Green
+        here would be the false green the handler exists to remove — and the
+        leaf must match the one extraction raises for the same input."""
+        out = await OpenAPIConnectorHandler().preflight_check(
+            _input(import_type="URL", spec_url=str(tmp_path / "nope.json"))
+        )
+        assert out.status == PreflightStatus.NOT_READY
+        reach = [c for c in out.checks if c.name == "spec_source_reachable"][0]
+        assert reach.passed is False
+        assert reach.error is not None
+        assert reach.error.code == "INVALID_INPUT_OPENAPI_SPEC_URL_INVALID"
+        assert reach.error.suggested_action
+        # PF-18: the raw path never reaches the wire-visible message.
+        assert str(tmp_path) not in reach.error.message
+        # The advisory content-type row cannot run without a response.
+        assert not [c for c in out.checks if c.name == "spec_content_type_plausible"]
 
 
 class TestTransientsAreRaisedNotVoted:
