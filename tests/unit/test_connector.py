@@ -15,11 +15,17 @@ from unittest.mock import AsyncMock
 
 import orjson
 import pytest
+from application_sdk.contracts.storage import UploadOutput
+from application_sdk.contracts.types import ConnectionRef, FileReference
+from application_sdk.credentials.ref import CredentialRef
+from application_sdk.errors import InternalError
+from application_sdk.observability.logger_adaptor import get_logger
 
 from app.connector import (
     OpenAPIConnector,
     _enc_hook,
     _extract_spec_async,
+    _has_valid_auth,
     _iter_jsonl,
     _transform_blocking,
 )
@@ -34,16 +40,14 @@ from app.contracts import (
 )
 from app.errors import (
     CloudSpecLocationRequiredError,
+    CloudSpecNotFoundError,
     ConnectionRequiredError,
+    NoValidSpecsError,
+    ObjectStoreCredentialError,
     SpecUrlRequiredError,
     TenantObjectStoreUnavailableError,
     UnknownImportTypeError,
 )
-from application_sdk.contracts.storage import UploadOutput
-from application_sdk.contracts.types import ConnectionRef, FileReference
-from application_sdk.credentials.ref import CredentialRef
-from application_sdk.errors import InternalError
-from application_sdk.observability.logger_adaptor import get_logger
 
 CONN_QN = "default/api/test-conn"
 _LOGGER = get_logger("test_connector")
@@ -207,8 +211,8 @@ class TestWebhooks:
 class TestAvailableOperationsSorted:
     async def test_operations_are_alphabetically_sorted(self, tmp_path: Path) -> None:
         """available_operations must be sorted per SPEC.md hashable content."""
-        from app.connector import _iter_jsonl
         from app.api_types import OpenAPIPathRecord
+        from app.connector import _iter_jsonl
 
         spec = {
             "openapi": "3.0.4",
@@ -320,18 +324,41 @@ class TestEncHook:
 
 
 class TestExtractSpecMissingTitle:
-    async def test_spec_with_missing_title_is_skipped(self, tmp_path: Path) -> None:
-        """A spec whose info.title is missing/empty is skipped entirely, not
-        just partially written."""
+    async def test_all_specs_skipped_raises_typed_error(self, tmp_path: Path) -> None:
+        """CONNECT-812 EP-03: when every fetched document is skipped (missing
+        info.title), extraction raises a typed error instead of returning zero
+        records and letting the run finish green with nothing extracted."""
         spec = {
             "openapi": "3.0.4",
             "info": {"version": "1.0"},
             "paths": {"/a": {"get": {}}},
         }
         url = _write_spec(tmp_path, spec)
-        _, _, spec_count, path_count = await _run(url, tmp_path)
-        assert spec_count == 0
-        assert path_count == 0
+        with pytest.raises(NoValidSpecsError):
+            await _run(url, tmp_path)
+
+    async def test_partial_skip_keeps_valid_sibling(self, tmp_path: Path) -> None:
+        """A title-less spec inside a ZIP is skipped, but a valid sibling still
+        extracts — the EP-03 guard fires only when nothing at all is usable."""
+        import zipfile
+
+        good = {
+            "openapi": "3.0.4",
+            "info": {"title": "Good", "version": "1.0"},
+            "paths": {"/a": {"get": {}}},
+        }
+        bad = {
+            "openapi": "3.0.4",
+            "info": {"version": "1.0"},
+            "paths": {"/b": {"get": {}}},
+        }
+        zip_path = tmp_path / "specs.zip"
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("good.json", orjson.dumps(good))
+            zf.writestr("bad.json", orjson.dumps(bad))
+        _, _, spec_count, path_count = await _run(str(zip_path), tmp_path)
+        assert spec_count == 1
+        assert path_count == 1
 
 
 class TestExtractSpecMalformedPathItem:
@@ -358,8 +385,8 @@ class TestExtractSpecDescriptions:
     ) -> None:
         """Path-item level description and per-operation descriptions are both
         folded into the markdown description."""
-        from app.connector import _iter_jsonl
         from app.api_types import OpenAPIPathRecord
+        from app.connector import _iter_jsonl
 
         spec = {
             "openapi": "3.0.4",
@@ -515,6 +542,43 @@ class TestDownloadCloudSpec:
         assert out.spec_files[0].local_path == "/tmp/x/openapi.json"
         fake_instance.download.assert_awaited_once()
         assert fake_instance.download.call_args.kwargs["key"] == "specs/openapi.json"
+
+    async def test_rejected_credential_raises_typed_with_severed_chain(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """CONNECT-812 PF-17: a credential CloudStore rejects surfaces as a
+        typed error with the exception chain severed (``from None``) so
+        loguru's ``diagnose`` traceback can never annotate the frame holding
+        the plaintext credential dict. The cause survives only as a redacted
+        summary."""
+
+        def _boom(creds: dict) -> None:
+            raise ValueError("bad creds: password=super-secret-value")
+
+        fake_cls = SimpleNamespace(from_credentials=_boom)
+        monkeypatch.setattr("application_sdk.storage.cloud.CloudStore", fake_cls)
+
+        connector = self._connector_with_context(
+            storage=None,
+            resolve_credential_raw=AsyncMock(
+                return_value={
+                    "authType": "s3",
+                    "username": "AKIA",
+                    "password": "super-secret-value",
+                    "extra": {},
+                }
+            ),
+        )
+        with pytest.raises(ObjectStoreCredentialError) as excinfo:
+            await connector.download_cloud_spec(
+                DownloadCloudSpecInput(
+                    openapi_credential=CredentialRef(credential_guid="g1"),
+                    spec_prefix="specs",
+                )
+            )
+        assert excinfo.value.__cause__ is None
+        assert excinfo.value.__suppress_context__ is True
+        assert "super-secret-value" not in str(excinfo.value)
 
     async def test_no_valid_auth_and_no_tenant_store_raises(self) -> None:
         connector = self._connector_with_context(
@@ -785,6 +849,52 @@ class TestRunCloudPath:
         assert call_input.openapi_credential == cred_ref
         assert connector.extract_spec.await_count == 2
         assert result.total_scanned == 4
+
+
+class TestRunCloudNoFiles:
+    async def test_zero_downloaded_files_raises_typed_error(self) -> None:
+        """CONNECT-812 EP-03: a CLOUD import whose prefix/key matches nothing
+        raises instead of finishing green with zero assets."""
+        connector = _make_connector_for_run()
+        connector.download_cloud_spec = AsyncMock(  # type: ignore[method-assign]
+            return_value=DownloadCloudSpecOutput(spec_files=[])
+        )
+        input = _base_input(
+            import_type="CLOUD",
+            spec_prefix="specs",
+            load_to_atlan=False,
+        )
+        with pytest.raises(CloudSpecNotFoundError):
+            await connector.run(input)
+
+
+class TestHasValidAuth:
+    """CONNECT-812 PF-17: _has_valid_auth must never raise — its frame holds
+    the plaintext credential dict, and a traceback through it would be
+    diagnose-annotated into the logs."""
+
+    def test_malformed_extra_json_reads_as_no_role_auth(self) -> None:
+        assert (
+            _has_valid_auth({"username": "", "password": "", "extra": "{not json"})
+            is False
+        )
+
+    def test_non_dict_extra_reads_as_no_role_auth(self) -> None:
+        assert _has_valid_auth({"username": "", "password": "", "extra": "42"}) is False
+
+    def test_key_auth_still_detected_with_malformed_extra(self) -> None:
+        assert (
+            _has_valid_auth({"username": "u", "password": "p", "extra": "{not json"})
+            is True
+        )
+
+    def test_role_auth_detected(self) -> None:
+        assert (
+            _has_valid_auth(
+                {"username": "", "password": "", "extra": {"aws_role_arn": "arn:x"}}
+            )
+            is True
+        )
 
 
 class TestRunCloudCredentialResolution:
