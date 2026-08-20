@@ -67,6 +67,11 @@ scalene-profile.json
 scalene-profile.html
 remediation/
 
+# Failure-triage / RCA write-ups. This repo is public and these routinely quote
+# tenant names, bucket names, credential GUIDs and customer identifiers, so they
+# must stay local. Never commit them.
+/report/
+
 # ─── Python ─────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]

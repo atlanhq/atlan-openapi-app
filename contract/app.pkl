@@ -272,8 +272,12 @@ uiConfig = new UIConfig {
         // `atlan-connectors-openapi` configmap (from credentialAuthOptions
         // above) instead of the platform-shared `csa-connectors-objectstore`.
         // The provider radio (S3 / GCS / ADLS) + fields are rendered from that
-        // configmap. Backward-compatible: pre-migration configs stored a
-        // credential GUID here and still resolve by GUID at runtime.
+        // configmap. Pre-migration configs stored a bare credential GUID here
+        // and resolve by GUID at runtime, but that is NOT backward-compatible
+        // (CONNECT-800): GUID resolution reads a per-app blob the platform
+        // normally writes, so a GUID predating this credential route has
+        // nothing to read and the run fails. See app/connector.py's
+        // cloud_source fallback for the backfill route.
         ["cloud_source"] = new CredentialInput {
           title = "Object store"
           credType = "atlan-connectors-openapi"
