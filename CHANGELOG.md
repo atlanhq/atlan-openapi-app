@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.6.2 (August 20, 2026)
+
+Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.6.1...v0.6.2
+
+### Features
+
+- correct cloud_source GUID backward-compatibility claims (#353) (by @fyzanshaik-atlan in [cae3d22](https://github.com/atlanhq/atlan-openapi-app/commit/cae3d22))
+
+### Bug Fixes
+
+- unpin the yanked pytest-timeout 2.5.0 (FND-379) (#378) (by @cmgrote in [46154e0](https://github.com/atlanhq/atlan-openapi-app/commit/46154e0))
+- allowlist emulator fixtures so the credential-leak gate can pass (#381) (by @sachi-atlan in [be27335](https://github.com/atlanhq/atlan-openapi-app/commit/be27335))
+
+
 ## v0.6.1 (August 19, 2026)
 
 Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.6.0...v0.6.1
