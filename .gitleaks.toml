@@ -1,0 +1,33 @@
+# gitleaks configuration for atlan-openapi-app.
+#
+# The credential-leak gate in application-sdk's build-and-publish workflow runs
+# gitleaks as a BLOCKING step: a finding fails the job, which trips prepare's
+# `!failure()` and skips build, push, deploy and publish. It honors this file.
+#
+# Every finding this app produces is a false positive on a test fixture. Both
+# allowlists below are scoped by regex rather than by path, so a real secret
+# added to any of these files in future is still caught.
+
+[extend]
+useDefault = true
+
+# The Azure Storage Emulator (Azurite) development connection string. This is a
+# fixed, publicly documented constant — identical in every Azurite install —
+# and its endpoint is 127.0.0.1, so it grants access to nothing. Used to create
+# the local blob container that the Azure download tests read from.
+#   .github/test/setup-services.sh, Makefile, tests/integration/test_azure_download.py
+# Matched on the whole line via the well-known account name so the allowlist
+# cannot accidentally cover an unrelated high-entropy value on another line.
+[[allowlists]]
+description = "Azurite local emulator connection string (public constant, 127.0.0.1)"
+regexTarget = "line"
+regexes = ['''AccountName=devstoreaccount1''']
+
+# Placeholder credential GUIDs in unit tests, e.g.
+#   assert resolved_ref.credential_guid == "legacy-guid-123"
+# Scoped to the literal placeholder shape, not to the file, so a real GUID
+# committed to the same test file would still be flagged.
+[[allowlists]]
+description = "Dummy credential GUID literals in unit tests"
+regexTarget = "line"
+regexes = ['''legacy-guid-\d+''']
