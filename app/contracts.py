@@ -5,7 +5,7 @@ backwards compatibility. Each App and @task method uses single-dataclass
 inputs and outputs to ensure Temporal serialization works correctly.
 """
 
-from typing import Annotated
+from typing import Annotated, ClassVar
 
 from application_sdk.app import Input, Output
 from application_sdk.contracts.base import PublishInputMixin
@@ -36,7 +36,23 @@ class PublishInput(Input):
     connection_entity: ConnectionRef | None = None
 
 
-OpenAPIConnectorInput = AppInputContract
+class OpenAPIConnectorInput(AppInputContract):
+    """Extraction input, plus the object-store credential the gate must resolve.
+
+    ``cloud_source`` is the CLOUD path's credential widget (``contract/app.pkl``
+    declares it as a ``CredentialInput``, and the manifest forwards it as
+    ``{{cloud_source}}``), so AE delivers the object-store credential guid there
+    as a flat string. Naming it here is what lets the injected preflight gate
+    resolve that credential before extraction runs — the gate resolves only the
+    top-level triple otherwise, which this path never populates.
+
+    Must stay a ``ClassVar``: declared as a pydantic field the gate reads ``{}``
+    and silently falls back to single-credential resolution.
+    """
+
+    preflight_credential_refs: ClassVar[dict[str, str]] = {
+        "object_store": "cloud_source"
+    }
 
 
 class OpenAPIConnectorOutput(PublishInputMixin, Output):
