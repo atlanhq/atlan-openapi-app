@@ -122,6 +122,16 @@ async def _run(spec_url: str, tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
+# preflight gate posture
+# ---------------------------------------------------------------------------
+
+
+def test_preflight_gate_is_hard() -> None:
+    """A NOT_READY preflight verdict must abort the run, not just be reported."""
+    assert OpenAPIConnector.preflight_gate_mode == "hard"
+
+
+# ---------------------------------------------------------------------------
 # paths: null should not raise AttributeError
 # ---------------------------------------------------------------------------
 

@@ -398,6 +398,7 @@ class OpenAPIConnector(App):
     """
 
     name = "openapi"
+    preflight_gate_mode = "hard"
 
     passthrough_modules = {"app.asset_mapper"}  # noqa: RUF012
 
