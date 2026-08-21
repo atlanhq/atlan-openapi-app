@@ -600,6 +600,10 @@ class OpenAPIConnector(App):
         )
         return result
 
+    # The MRO really is OpenAPIConnectorInput -> AppInputContract ->
+    # ExtractionInput -> Input; the base is declared in the generated module,
+    # which the static check does not follow.
+    # conformance: ignore[P013] subclasses Input via the generated base, pinned by test_run_input_subclasses_the_sdk_input
     async def run(self, input: OpenAPIConnectorInput) -> OpenAPIConnectorOutput:  # type: ignore[override]
         """Execute the OpenAPI Spec Loader connector workflow.
 

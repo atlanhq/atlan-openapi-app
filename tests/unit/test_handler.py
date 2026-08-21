@@ -522,6 +522,9 @@ class TestNamedCredentialRef:
         """``cloud_source`` is the CLOUD path's credential widget, so the guid
         arrives there and never on the top-level triple. Without the declared
         ref the gate resolves nothing and the probe can never run."""
+        # Asserting on what the gate actually builds is the only way to prove the
+        # named ref is read. Raised with the SDK team; drop once it is public.
+        # conformance: ignore[P005] the gate envelope has no public re-export, absent from application_sdk.execution / .app / .handler
         from application_sdk.execution._temporal.preflight_gate import (
             PreflightGateInput,
         )
@@ -541,6 +544,19 @@ class TestNamedCredentialRef:
         )
         assert gate_input.credential_ref_fields == {"object_store": "cloud_source"}
         assert gate_input.extraction_snapshot["cloud_source"] == "some-guid"
+
+    def test_run_input_subclasses_the_sdk_input(self) -> None:
+        """Backs the P013 suppression in app/connector.py: the static check
+        cannot follow the base through the generated module, so the guarantee it
+        would have given is asserted here instead."""
+        import typing
+
+        from application_sdk.contracts import Input
+
+        from app.connector import OpenAPIConnector
+
+        resolved = typing.get_type_hints(OpenAPIConnector.run)["input"]
+        assert issubclass(resolved, Input)
 
     def test_ref_map_is_a_classvar_not_a_field(self) -> None:
         """Declared as a pydantic field the gate reads {} and silently falls
