@@ -134,9 +134,10 @@ def _credentials_to_raw(credentials: list[HandlerCredential]) -> dict[str, Any]:
 async def _read_object_store(raw: dict[str, Any], prefix: str, key: str) -> None:
     """Make the cheapest authenticated call that proves the spec is readable.
 
-    Mirrors what ``download_cloud_spec`` does: a single HEAD when the exact
-    object key is configured, and a prefix listing when it is not. Both
-    authenticate first, so a rejected credential fails before any transfer.
+    A single HEAD when the exact object key is configured — the same call
+    ``download_cloud_spec`` makes — and one delimited listing when only a prefix
+    is. Both authenticate before transferring anything, so a rejected credential
+    fails on the first request.
     """
     import obstore  # noqa: PLC0415 — heavy native import, kept off module load
 
@@ -148,7 +149,11 @@ async def _read_object_store(raw: dict[str, Any], prefix: str, key: str) -> None
     if key:
         await obstore.head_async(store.store, f"{prefix}/{key}" if prefix else key)
     else:
-        await store.list(prefix=prefix)
+        # Delimited, so it is one round trip. A recursive listing would page
+        # through the whole prefix, and on a large bucket that overruns the
+        # probe budget and reports a transient on every run. Authentication is
+        # what this proves, and the first request already proves it.
+        await obstore.list_with_delimiter_async(store.store, prefix or None)
 
 
 def _classify_store_failure(exc: BaseException) -> AppError | None:
@@ -208,7 +213,15 @@ def _classify_store_failure(exc: BaseException) -> AppError | None:
                 message="the resolved object-store credential is not usable",
                 cause=current,
             )
-        current = current.__cause__ or current.__context__
+        # Honour __suppress_context__: a `raise ... from None` upstream (the
+        # PF-17 severing this app does itself) means that context is not this
+        # failure's cause, and walking it misattributes an unrelated error.
+        if current.__cause__ is not None:
+            current = current.__cause__
+        elif current.__suppress_context__:
+            current = None
+        else:
+            current = current.__context__
     return None
 
 

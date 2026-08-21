@@ -495,6 +495,22 @@ class TestCloudCredentialProbe:
             "extra": {"aws_role_arn": "arn", "region": "ap-southeast-2"},
         }
 
+    def test_severed_context_is_not_walked(self) -> None:
+        """A `raise ... from None` upstream means that context is not the cause.
+        Walking it anyway would attribute an unrelated earlier failure to the
+        credential."""
+        from obstore.exceptions import UnauthenticatedError
+
+        try:
+            raise UnauthenticatedError("an unrelated earlier failure")
+        except UnauthenticatedError:
+            severed = RuntimeError("the actual failure")
+            try:
+                raise severed from None
+            except RuntimeError as exc:
+                assert exc.__context__ is not None
+                assert _classify_store_failure(exc) is None
+
     def test_unknown_failure_stays_unattributed(self) -> None:
         """None is what routes to fail-open. Guessing here would make the gate
         fail closed on an object-store outage."""
