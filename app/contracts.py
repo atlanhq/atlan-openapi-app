@@ -39,19 +39,18 @@ class PublishInput(Input):
 class OpenAPIConnectorInput(AppInputContract):
     """Extraction input, plus the object-store credential the gate must resolve.
 
-    ``cloud_source`` is the CLOUD path's credential widget (``contract/app.pkl``
-    declares it as a ``CredentialInput``, and the manifest forwards it as
-    ``{{cloud_source}}``), so AE delivers the object-store credential guid there
-    as a flat string. Naming it here is what lets the injected preflight gate
-    resolve that credential before extraction runs — the gate resolves only the
-    top-level triple otherwise, which this path never populates.
+    ``openapi_credential`` is the canonical CLOUD path credential and is also
+    the first credential extraction resolves. Naming it here makes the injected
+    preflight gate resolve the same credential before extraction runs, rather
+    than validating the legacy ``cloud_source`` fallback while extraction uses
+    the preferred field.
 
     Must stay a ``ClassVar``: declared as a pydantic field the gate reads ``{}``
     and silently falls back to single-credential resolution.
     """
 
     preflight_credential_refs: ClassVar[dict[str, str]] = {
-        "object_store": "cloud_source"
+        "object_store": "openapi_credential"
     }
 
 
