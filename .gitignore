@@ -122,3 +122,5 @@ sdr/config.yaml
 *.rar
 *.7z
 
+
+.mothership/.cache/
