@@ -1,4 +1,12 @@
-# atlanhq/atlan-openapi-app — PR reviewer. security auto-reviews once on open; standard tag-only.
-trigger: pr-open
-review_mode: both
-branches: [main]
+schema: 2
+trigger: manual-label
+review_mode: standard
+ruleset: connector-app
+check_app_id: 15368
+l1_check: suite / Conformance Gate
+required_checks:
+  - suite / Conformance Gate
+branches:
+  - main
+skip_drafts: false
+security_gate: false
