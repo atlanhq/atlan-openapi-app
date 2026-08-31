@@ -1,8 +1,12 @@
 """Fixtures for integration tests.
 
 Tests run entirely in-process: Temporal starts as an embedded dev server via
-the SDK's ``embedded_runtime()``, and secret/state/storage infrastructure is
-mocked — no external services required.
+the SDK's shared integration fixture kit
+(``application_sdk.testing.integration.fixtures``), and secret/state/storage
+infrastructure is mocked — no external services required. This conftest
+star-imports that kit and overrides only what the OpenAPI connector needs;
+see ``docs/guides/integration-fixtures.md`` in application-sdk for the full
+override contract.
 
 Environment variables:
     OPENAPI_AUTH_HEADER: Optional auth header for private spec endpoints.
@@ -12,159 +16,52 @@ Run tests with: uv run pytest tests/integration/ -v
 
 from __future__ import annotations
 
-import orjson
 import os
+
+os.environ.setdefault("ATLAN_APPLICATION_NAME", "openapi")
+os.environ.setdefault("ATLAN_DEPLOYMENT_NAME", "ci")
+
 from pathlib import Path
-from typing import Any
 
+import orjson
 import pytest
-import pytest_asyncio
-from application_sdk.dev import embedded_runtime
-from application_sdk.execution import (
-    TemporalClient,
-    TemporalExecutorBackend,
-    create_temporal_client,
-    create_worker,
-)
-from application_sdk.infrastructure.context import (
-    InfrastructureContext,
-    set_infrastructure,
-)
-from application_sdk.observability.observability import AtlanObservability
-from application_sdk.storage import create_local_store, create_memory_store
-from application_sdk.testing.mocks import MockSecretStore, MockStateStore
+from application_sdk.testing.integration.fixtures import *  # noqa: F403
+from application_sdk.testing.integration.fixtures import AppExecutor
 
-# Trigger OpenAPIConnector app registration before create_worker is called.
-from app.connector import OpenAPIConnector  # noqa: F401
-
-# Pre-wire a memory store as the deployment objectstore so the periodic
-# observability flush does not keep retrying and spamming warnings in tests.
-AtlanObservability._deployment_store = create_memory_store()
-
-_TASK_QUEUE = "openapi-queue"
-
-
-class AppExecutor:
-    """Compatibility shim wrapping TemporalExecutorBackend for integration tests."""
-
-    def __init__(self, backend: TemporalExecutorBackend) -> None:
-        self._backend = backend
-
-    async def execute_app(
-        self,
-        app_cls: Any,
-        input_data: Any,
-        *,
-        execution_id_prefix: str = "",
-    ) -> Any:
-        from application_sdk.app.context import AppContext
-        from application_sdk.execution.retry import RetryPolicy
-
-        app_name = getattr(app_cls, "_app_name", execution_id_prefix or "app")
-        context = AppContext(
-            app_name=app_name,
-            app_version="0.0.0",
-            run_id=execution_id_prefix or app_name,
-        )
-        return await self._backend.execute(
-            app_cls,
-            input_data,
-            context=context,
-            retry_policy=RetryPolicy(),
-        )
-
-
-# ---------------------------------------------------------------------------
-# Infrastructure fixture — wires mock secret/state/storage (no Dapr)
-# ---------------------------------------------------------------------------
+from app.connector import OpenAPIConnector
 
 
 @pytest.fixture(scope="session")
-def store_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Root directory for the session-scoped LocalStore.
+def integration_app_cls() -> type[OpenAPIConnector]:
+    return OpenAPIConnector
 
-    RETAINED-tier files survive here after cleanup_storage runs, because
-    cleanup_storage skips RETAINED refs.  Tests can resolve a durable
-    FileReference to a local path via ``store_root / ref.storage_path``.
+
+@pytest.fixture(scope="session")
+def integration_source() -> str:
+    """The OpenAPI auth header, read straight from the environment.
+
+    Not a container or an HTTP fake — the connector under test consumes a
+    spec URL passed inline in each test's workflow input, so there is nothing
+    for this fixture to bring up. It exists only to hand the header through
+    to ``integration_secrets``.
     """
-    return tmp_path_factory.mktemp("sdk-store")
+    return os.environ.get("OPENAPI_AUTH_HEADER", "")
 
 
 @pytest.fixture(scope="session")
-def infrastructure(store_root: Path) -> InfrastructureContext:
-    """Wire mock infrastructure for the session using a LocalStore."""
-    openapi_auth_header = os.environ.get("OPENAPI_AUTH_HEADER", "")
-    secrets: dict[str, str] = {}
-    if openapi_auth_header:
-        secrets["openapi"] = orjson.dumps(
-            {"type": "openapi", "auth_header": openapi_auth_header}
+def integration_secrets(integration_source: str) -> dict[str, str]:
+    if not integration_source:
+        return {}
+    return {
+        "openapi": orjson.dumps(
+            {"type": "openapi", "auth_header": integration_source}
         ).decode()
-
-    ctx = InfrastructureContext(
-        state_store=MockStateStore(),
-        secret_store=MockSecretStore(secrets),
-        storage=create_local_store(store_root),
-    )
-    set_infrastructure(ctx)
-    return ctx
-
-
-# ---------------------------------------------------------------------------
-# Embedded Temporal runtime
-# ---------------------------------------------------------------------------
-
-
-@pytest_asyncio.fixture(scope="session")
-async def embedded_temporal():
-    """Boot an in-process Temporal dev server for the test session."""
-    async with embedded_runtime(log_level="error") as rt:
-        yield rt
-
-
-# ---------------------------------------------------------------------------
-# Temporal client and in-process worker fixtures
-# ---------------------------------------------------------------------------
-
-
-@pytest_asyncio.fixture(scope="session")
-async def temporal_client(embedded_temporal) -> TemporalClient:
-    """Connect to the embedded Temporal dev server.
-
-    ``enable_prometheus=False``: the Temporal Rust-core runtime otherwise binds a
-    *fixed* Prometheus port (``TEMPORAL_PROMETHEUS_BIND_ADDRESS``) once per
-    process, and the CI integration job runs pytest under ``-n auto
-    --dist=loadfile`` — one worker process per test file. With three integration
-    files that is three processes racing to bind the same port, so all but one
-    fail with ``Failed starting Prometheus exporter: Address already in use`` and
-    the run wedges. A dev/test client needs no metrics endpoint, so disable it.
-    """
-    return await create_temporal_client(
-        host=embedded_temporal.host, enable_prometheus=False
-    )
-
-
-@pytest_asyncio.fixture(scope="session")
-async def openapi_worker(
-    temporal_client: TemporalClient,
-    infrastructure: InfrastructureContext,  # noqa: ARG001 — ensures infra is wired first
-) -> Any:
-    """Start the OpenAPI connector worker in-process."""
-    w = create_worker(temporal_client, task_queue=_TASK_QUEUE)
-    async with w:
-        yield
+    }
 
 
 @pytest.fixture(scope="session")
-def openapi_executor(
-    temporal_client: TemporalClient,
-    openapi_worker: Any,  # noqa: ARG001 — ensures worker is running
-) -> AppExecutor:
-    """Executor for OpenAPI connector integration tests."""
-    backend = TemporalExecutorBackend(
-        client=temporal_client,
-        task_queue=_TASK_QUEUE,
-    )
-    return AppExecutor(backend=backend)
+def openapi_executor(executor: AppExecutor) -> AppExecutor:
+    return executor
 
 
 # Target size for the large-spec fixture below (≥100 MiB; override for stress runs).

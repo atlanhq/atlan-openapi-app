@@ -16,6 +16,13 @@ dependencies = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.uv.sources]
+# Temporary: pins to the SDK's merged-but-unreleased integration fixtures kit
+# (application_sdk.testing.integration.fixtures). Drop this override, and
+# restore atlan-application-sdk to a released version bound, once that lands
+# in a tagged release.
+atlan-application-sdk = { git = "https://github.com/atlanhq/application-sdk", rev = "41bc051f04912f50c6f7737e3454c5e9d8df06d2" }
+
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
 
