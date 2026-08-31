@@ -2009,7 +2009,7 @@ requires-dist = [{ name = "atlan-application-sdk", git = "https://github.com/atl
 [package.metadata.requires-dev]
 dev = [
     { name = "atlan-application-sdk", extras = ["tests"], git = "https://github.com/atlanhq/application-sdk?rev=41bc051f04912f50c6f7737e3454c5e9d8df06d2" },
-    { name = "atlan-application-sdk-conformance", specifier = "<=1.0.0" },
+    { name = "atlan-application-sdk-conformance", specifier = ">=0.17.0,<1.0.0" },
     { name = "coverage", extras = ["toml"], specifier = ">=7.13.5,<8" },
     { name = "poethepoet", specifier = ">=0.34.0" },
     { name = "pre-commit", specifier = ">=4.2.0,<5" },
