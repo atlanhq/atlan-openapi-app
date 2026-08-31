@@ -6,8 +6,8 @@ Validates extraction, change detection, transform, and output file content.
 The OpenAPI connector works with public spec URLs — no API credentials needed
 for public specs (e.g. the Swagger Petstore).
 
-Requires:
-    - temporal server start-dev
+No external services required — Temporal runs embedded via the SDK's shared
+integration fixture kit (see conftest.py).
 
 Run with:
     uv run pytest tests/integration/ -v
@@ -30,7 +30,6 @@ from app.contracts import (
 )
 
 if TYPE_CHECKING:
-    # TODO(v3-migration): AppExecutor is now a local compatibility shim in conftest.py
     from tests.integration.conftest import AppExecutor
 
 # Bundled Petstore v3 spec — avoids depending on petstore3.swagger.io which
