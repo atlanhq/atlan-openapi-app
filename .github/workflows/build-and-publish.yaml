@@ -38,12 +38,5 @@ jobs:
       tenants: ${{ inputs.tenants || '' }}
       release_tag: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
       unit_tests_workflow_file: "tests.yaml"
-      # Canary for the GHCR base-image redirect (application-sdk#3035).
-      # Resolves app-runtime-base:3 from ghcr.io instead of Harbor. Both
-      # registries carry the same digest, so the built image is identical --
-      # only where the base layers are fetched from changes. Revert by
-      # deleting these lines. This file is always-overwrite, so `bootstrap`
-      # eradicates this opt-in every run -- reapply until the SDK default
-      # flips to true.
       use_ghcr_base: true
     secrets: inherit
