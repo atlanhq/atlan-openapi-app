@@ -313,6 +313,7 @@ class OpenAPIConnectorHandler(DefaultHandler):
                 # Not a verdict — the source could not be evaluated this time.
                 # The gate fails open on these categories in both postures.
                 raise transient from exc
+            # conformance: ignore[E007] Not hidden — the error is the return value, carried structurally to the preflight gate as PreflightCheck.error.
             return [
                 PreflightCheck(
                     name=check_name,

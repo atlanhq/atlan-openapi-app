@@ -58,6 +58,7 @@ def redact_url(url: str) -> str:
     try:
         parts = urlsplit(url)
     except ValueError:
+        # conformance: ignore[E007] urlsplit's ValueError text embeds the offending URL, which is the credential here; logging it defeats this function.
         return "<unparseable url>"
     if not parts.scheme or not parts.netloc:
         return url
@@ -65,6 +66,7 @@ def redact_url(url: str) -> str:
         netloc = parts.hostname or ""
         if parts.port:
             netloc = f"{netloc}:{parts.port}"
+    # conformance: ignore[E009] Same redaction boundary: the ValueError text embeds the credential-bearing spec URL, so it must not reach a log sink.
     except ValueError:
         # Malformed port — drop the whole authority rather than echo it back.
         netloc = "<invalid host>"

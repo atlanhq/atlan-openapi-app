@@ -98,6 +98,7 @@ def _has_valid_auth(credentials: dict[str, Any]) -> bool:
     if isinstance(extra, str):
         try:
             extra = orjson.loads(extra) if extra else {}
+        # conformance: ignore[E009] Docstring above: this frame holds the plaintext credential and loguru's diagnose annotates frame vars (CONNECT-812 PF-17).
         except orjson.JSONDecodeError:
             extra = {}
     if not isinstance(extra, dict):
@@ -469,6 +470,7 @@ class OpenAPIConnector(App):
                 # CONNECT-812 registry; the app cannot re-wrap these without
                 # losing their retryable/audience semantics.)
                 raise
+            # conformance: ignore[E004] Breadth is deliberate; exc_info here would annotate credential_data via loguru diagnose, the exact leak `from None` below prevents.
             except Exception as exc:
                 # CONNECT-812 PF-17 class: sever the exception chain
                 # (`from None`). This frame's source line references the

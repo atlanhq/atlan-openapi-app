@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "schemas": {
+    "output_file": {
+      "format": "ndjson",
+      "description": "Atlas entities emitted by transform: one Connection (unless connection_usage=REUSE), then APISpec, then APIPath records.",
+      "fields": [
+        {
+          "name": "typeName",
+          "type": "string",
+          "required": true,
+          "description": "Atlas type of the entity on this line — Connection, APISpec or APIPath. Mandatory on every Atlas asset."
+        },
+        {
+          "name": "attributes",
+          "type": "struct",
+          "required": true,
+          "description": "Atlas nested-format attribute bag; every asset field other than the Atlas envelope lives in here."
+        },
+        {
+          "name": "attributes.qualifiedName",
+          "type": "string",
+          "required": true,
+          "description": "Atlan qualified name; the identity publish-app upserts on. Formats are documented in app/asset_mapper.py."
+        },
+        {
+          "name": "attributes.name",
+          "type": "string",
+          "required": true,
+          "description": "Human-readable asset name shown in the Atlan UI. Mandatory on every Atlas asset."
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": false,
+          "description": "Atlas entity status, stamped ACTIVE by apply_sync_metadata. Absent on Connection lines, which do not go through it."
+        },
+        {
+          "name": "attributes.tenantId",
+          "type": "string",
+          "required": false,
+          "description": "Owning tenant, stamped by apply_sync_metadata. Absent on Connection lines."
+        },
+        {
+          "name": "attributes.lastSyncRun",
+          "type": "string",
+          "required": false,
+          "description": "Temporal workflow ID of the run that produced this asset; how downstream diffing scopes a run. Absent on Connection lines."
+        },
+        {
+          "name": "attributes.lastSyncRunAt",
+          "type": "int",
+          "required": false,
+          "description": "Run start time as a millisecond UNIX timestamp. Integer, not a string date. Absent on Connection lines."
+        },
+        {
+          "name": "attributes.lastSyncWorkflowName",
+          "type": "string",
+          "required": false,
+          "description": "Workflow type that produced this asset. Absent on Connection lines."
+        }
+      ]
+    }
+  }
+}

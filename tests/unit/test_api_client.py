@@ -348,7 +348,7 @@ class TestFetchErrorClassification:
 
     URL = "https://example.com/api.json"
 
-    async def _fetch_expecting(self, exc_type: type[Exception]):
+    async def _assert_fetch_raises(self, exc_type: type[Exception]):
         client = OpenAPIApiClient()
         try:
             with pytest.raises(exc_type) as excinfo:
@@ -361,47 +361,47 @@ class TestFetchErrorClassification:
     @respx.mock
     async def test_401_raises_auth_error(self) -> None:
         respx.get(self.URL).mock(return_value=httpx.Response(401))
-        err = await self._fetch_expecting(SpecFetchAuthError)
+        err = await self._assert_fetch_raises(SpecFetchAuthError)
         assert "401" in err.message
 
     @pytest.mark.asyncio
     @respx.mock
     async def test_403_raises_forbidden_error(self) -> None:
         respx.get(self.URL).mock(return_value=httpx.Response(403))
-        await self._fetch_expecting(SpecFetchForbiddenError)
+        await self._assert_fetch_raises(SpecFetchForbiddenError)
 
     @pytest.mark.asyncio
     @respx.mock
     async def test_404_raises_not_found_error(self) -> None:
         respx.get(self.URL).mock(return_value=httpx.Response(404))
-        err = await self._fetch_expecting(SpecNotFoundError)
+        err = await self._assert_fetch_raises(SpecNotFoundError)
         assert err.resource_identifier == self.URL
 
     @pytest.mark.asyncio
     @respx.mock
     async def test_429_raises_rate_limited_error(self) -> None:
         respx.get(self.URL).mock(return_value=httpx.Response(429))
-        await self._fetch_expecting(SpecFetchRateLimitedError)
+        await self._assert_fetch_raises(SpecFetchRateLimitedError)
 
     @pytest.mark.asyncio
     @respx.mock
     async def test_500_raises_source_unavailable_retryable(self) -> None:
         respx.get(self.URL).mock(return_value=httpx.Response(503))
-        err = await self._fetch_expecting(SpecSourceUnavailableError)
+        err = await self._assert_fetch_raises(SpecSourceUnavailableError)
         assert err.http_status == 503
 
     @pytest.mark.asyncio
     @respx.mock
     async def test_other_4xx_raises_client_error(self) -> None:
         respx.get(self.URL).mock(return_value=httpx.Response(418))
-        err = await self._fetch_expecting(SpecFetchClientError)
+        err = await self._assert_fetch_raises(SpecFetchClientError)
         assert err.value_summary == "HTTP 418"
 
     @pytest.mark.asyncio
     @respx.mock
     async def test_connect_error_says_could_not_connect(self) -> None:
         respx.get(self.URL).mock(side_effect=httpx.ConnectError("boom"))
-        err = await self._fetch_expecting(SpecSourceUnavailableError)
+        err = await self._assert_fetch_raises(SpecSourceUnavailableError)
         assert "could not connect" in err.message
         assert err.network_error == "ConnectError"
 
@@ -412,7 +412,7 @@ class TestFetchErrorClassification:
         The message must say 'timed out', and must not send the user to check
         network configuration that provably works."""
         respx.get(self.URL).mock(side_effect=httpx.ReadTimeout("slow"))
-        err = await self._fetch_expecting(SpecSourceUnavailableError)
+        err = await self._assert_fetch_raises(SpecSourceUnavailableError)
         assert "timed out" in err.message
         assert "could not connect" not in err.message
         assert err.network_error == "ReadTimeout"
@@ -427,7 +427,7 @@ class TestFetchErrorClassification:
                 headers={"content-type": "application/json"},
             )
         )
-        await self._fetch_expecting(SpecParseError)
+        await self._assert_fetch_raises(SpecParseError)
 
     @pytest.mark.asyncio
     @respx.mock
@@ -494,6 +494,8 @@ class TestValidateSpecUrl:
 
     @pytest.mark.asyncio
     async def test_public_https_url_passes(self) -> None:
+        # Should not raise — passing the SSRF gate is the assertion. The
+        # rejection paths are covered by the sibling tests below.
         await validate_spec_url(self.URL)  # stubbed resolver returns a public IP
 
     @pytest.mark.asyncio
