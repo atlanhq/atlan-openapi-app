@@ -4,7 +4,7 @@
   "logo": "http://assets.atlan.com/assets/apispec.png",
   "config": {
     "properties": {
-      "extraction_method": {
+      "extraction-method": {
         "type": "string",
         "required": false,
         "ui": {
@@ -183,7 +183,7 @@
         "description": "OpenAPI spec configuration",
         "id": "configuration",
         "properties": [
-          "extraction_method",
+          "extraction-method",
           "import_type",
           "spec_url",
           "spec_prefix",

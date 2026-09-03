@@ -9,7 +9,7 @@ from pydantic import Field
 
 
 class OpenapiMustacheSubstitutions(MustacheSubstitutions):
-    extraction_method: str = Field(default="direct", alias="{{extraction_method}}")
+    extraction_method: str = Field(default="direct", alias="{{extraction-method}}")
     import_type: Literal["URL", "CLOUD"] = Field(default="URL", alias="{{import_type}}")
     spec_url: str = Field(default="", alias="{{spec_url}}")
     spec_prefix: str = Field(default="", alias="{{spec_prefix}}")
