@@ -234,7 +234,12 @@ uiConfig = new UIConfig {
         // agent-vs-direct credential routing from `extraction_method` at
         // dispatch. This app has one fixed extraction path (task-based, no
         // agent-mode toggle), so the value is a constant, not a user choice.
-        ["extraction_method"] = new TextInput {
+        //
+        // Keyed `extraction-method` (kebab), the fleet convention every other
+        // connector uses (mysql, metabase, …). The toolkit derives the manifest
+        // arg `extraction_method` from it via toPyName, and its default-emit
+        // guard recognises the field by this spelling (FND-1437).
+        ["extraction-method"] = new TextInput {
           title = "Extraction method"
           hide = true
           default = "direct"
