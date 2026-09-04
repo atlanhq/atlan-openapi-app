@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.7.0 (September 04, 2026)
+
+Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.6.2...v0.7.0
+
+### Features
+
+- onboard ai-connector-review + local review kit (#401) (by @chetanchoudhary-atlan in [3939f04](https://github.com/atlanhq/atlan-openapi-app/commit/3939f04))
+
+### Bug Fixes
+
+- report Release Gate on merge-queue branches (FND-851) (#394) (by @cmgrote in [2c97880](https://github.com/atlanhq/atlan-openapi-app/commit/2c97880))
+- resync bootstrap scaffolding and clear all conformance findings (#449) (by @cmgrote in [555e7e2](https://github.com/atlanhq/atlan-openapi-app/commit/555e7e2))
+- key the hidden extraction-method field like the rest of the fleet (#458) (by @vaibhavatlan in [4eb217a](https://github.com/atlanhq/atlan-openapi-app/commit/4eb217a))
+
+
 ## v0.6.2 (August 20, 2026)
 
 Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.6.1...v0.6.2
