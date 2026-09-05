@@ -10,11 +10,11 @@ resolution-markers = [
 
 [[package]]
 name = "agent-detector"
-version = "1.1.0"
+version = "1.1.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/0a/51/2d6a4580f8a1ad26eca1f3849207e08d65a0df318188fe1a5b56cd868a1e/agent_detector-1.1.0.tar.gz", hash = "sha256:3428dc45713f93a115bd0b05c9dbbfdc72af70246064c07bd837a9a95cf016bc", size = 53720, upload-time = "2026-08-19T10:24:41.338Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/77/78/519763aba8d8ec63d564e01410fc7b6b6bfe38f5eadbc9a5a1ac8ca23a1a/agent_detector-1.1.1.tar.gz", hash = "sha256:fe1c96a3868a07541763e12eff70df41920ab41668f3b4f15a0e880e7984d035", size = 53955, upload-time = "2026-09-02T12:03:47.803Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c4/26/43b02c1cf72b12597dd7a3b49023918bded80edd733e00222f5a3ce42d85/agent_detector-1.1.0-py3-none-any.whl", hash = "sha256:c605af97afb894737dd798721b117d9bbc7aa491e02a676cd5916c79dc39a46d", size = 7966, upload-time = "2026-08-19T10:24:40.276Z" },
+    { url = "https://files.pythonhosted.org/packages/3a/2c/ff2826a85fedfaee10ef0768fd63ccfd6191f2a47a770f63c6de616be0cd/agent_detector-1.1.1-py3-none-any.whl", hash = "sha256:18d706d088962f85eca0cda5aa363b751efdd76acff2efcd7f2408d4cd38b163", size = 8137, upload-time = "2026-09-02T12:03:46.944Z" },
 ]
 
 [[package]]
