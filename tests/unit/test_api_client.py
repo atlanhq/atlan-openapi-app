@@ -396,6 +396,10 @@ class TestFetchErrorClassification:
         respx.get(self.URL).mock(return_value=httpx.Response(418))
         err = await self._assert_fetch_raises(SpecFetchClientError)
         assert err.value_summary == "HTTP 418"
+        assert err.suggested_action == (
+            "Verify the spec URL serves the document to a plain GET request "
+            "with no special headers, authentication, or query parameters."
+        )
 
     @pytest.mark.asyncio
     @respx.mock
@@ -416,6 +420,21 @@ class TestFetchErrorClassification:
         assert "timed out" in err.message
         assert "could not connect" not in err.message
         assert err.network_error == "ReadTimeout"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_other_network_error_raises_source_unavailable_guided(self) -> None:
+        """A transport failure that is neither a connect nor a timeout error
+        (e.g. a malformed response) still falls to the generic classifier
+        branch, and that branch must not leave the customer without a next
+        step."""
+        respx.get(self.URL).mock(side_effect=httpx.RemoteProtocolError("boom"))
+        err = await self._assert_fetch_raises(SpecSourceUnavailableError)
+        assert err.network_error == "RemoteProtocolError"
+        assert err.suggested_action == (
+            "Verify the spec endpoint returns a complete, well-formed HTTP "
+            "response, then re-run the workflow."
+        )
 
     @pytest.mark.asyncio
     @respx.mock

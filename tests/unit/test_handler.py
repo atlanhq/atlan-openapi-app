@@ -142,7 +142,10 @@ class TestUrlMode:
         assert out.status == PreflightStatus.NOT_READY
         assert [c.name for c in out.checks] == ["spec_url_configured"]
         assert out.checks[0].error is not None
-        assert out.checks[0].error.suggested_action
+        assert out.checks[0].error.code == "INVALID_INPUT_OPENAPI_SPEC_URL_REQUIRED"
+        assert out.checks[0].error.suggested_action == (
+            "Set spec_url to the OpenAPI spec's HTTPS URL when import_type is 'URL'."
+        )
 
     @pytest.mark.asyncio
     async def test_existing_local_path_spec_url_skips_probe(
@@ -291,7 +294,10 @@ class TestCloudMode:
         assert out.checks[0].error.code == (
             "INVALID_INPUT_OPENAPI_CLOUD_SPEC_LOCATION_REQUIRED"
         )
-        assert out.checks[0].error.suggested_action
+        assert out.checks[0].error.suggested_action == (
+            "Set spec_prefix or spec_key in the connection configuration "
+            "when import_type is 'CLOUD'."
+        )
 
 
 class TestProbeTimeout:
