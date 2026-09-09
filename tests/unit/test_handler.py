@@ -142,6 +142,7 @@ class TestUrlMode:
         assert out.status == PreflightStatus.NOT_READY
         assert [c.name for c in out.checks] == ["spec_url_configured"]
         assert out.checks[0].error is not None
+        assert out.checks[0].error.suggested_action
 
     @pytest.mark.asyncio
     async def test_existing_local_path_spec_url_skips_probe(
@@ -290,6 +291,7 @@ class TestCloudMode:
         assert out.checks[0].error.code == (
             "INVALID_INPUT_OPENAPI_CLOUD_SPEC_LOCATION_REQUIRED"
         )
+        assert out.checks[0].error.suggested_action
 
 
 class TestProbeTimeout:
