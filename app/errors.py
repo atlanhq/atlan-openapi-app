@@ -181,3 +181,39 @@ class ObjectStoreCredentialError(InvalidInputError):
     cloud store client (PF-17 boundary — raised with a severed cause chain)."""
 
     code: ClassVar[str] = "INVALID_INPUT_OPENAPI_OBJECT_STORE_CREDENTIAL"
+
+
+# ---------------------------------------------------------------------------
+# Object-store readiness for the CLOUD import path (CONNECT-812).
+#
+# The SDK wraps a failed object-store call in ``StorageError``, whose leaf is
+# DEPENDENCY_UNAVAILABLE/PLATFORM — correct for an outage, wrong for a customer
+# credential the store rejected. The preflight probe re-types the cases it can
+# attribute to the connection owner, so a bad role token is not filed against
+# the platform. Anything it cannot attribute stays a transient and fails open.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(kw_only=True)
+class CloudSpecCredentialRejectedError(AuthError):
+    """The object store rejected the configured credential (e.g. AssumeRole)."""
+
+    code: ClassVar[str] = "AUTH_OPENAPI_CLOUD_SPEC_CREDENTIAL"
+
+
+@dataclass(kw_only=True)
+class CloudSpecAccessDeniedError(AppPermissionDeniedError):
+    """The credential authenticated but may not read the configured location."""
+
+    code: ClassVar[str] = "PERMISSION_OPENAPI_CLOUD_SPEC"
+
+
+@dataclass(kw_only=True)
+class CloudSpecStoreTransientError(DependencyUnavailableError):
+    """The object store could not be evaluated during preflight.
+
+    Raised, never returned as ``NOT_READY``: the gate routes this category to
+    fail-open, so an object-store blip cannot block a run in either posture.
+    """
+
+    code: ClassVar[str] = "DEPENDENCY_UNAVAILABLE_OPENAPI_CLOUD_SPEC_STORE"

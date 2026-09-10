@@ -33,12 +33,15 @@ make hard mode abort a healthy run whenever the spec host hiccups.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import time
+from typing import Any
 
 from application_sdk.errors import RateLimitedError
 from application_sdk.errors.base import AppError
 from application_sdk.handler import (
+    HandlerCredential,
     BaseConnectionConfig,
     DefaultHandler,
     PreflightCheck,
@@ -50,7 +53,12 @@ from application_sdk.observability.logger_adaptor import get_logger
 
 from app.api_client import OpenAPIApiClient, redact_url
 from app.errors import (
+    CloudSpecAccessDeniedError,
+    CloudSpecCredentialRejectedError,
     CloudSpecLocationRequiredError,
+    CloudSpecNotFoundError,
+    CloudSpecStoreTransientError,
+    ObjectStoreCredentialError,
     SpecFetchClientError,
     SpecSourceTransientError,
     SpecSourceUnavailableError,
@@ -67,6 +75,7 @@ _MANDATORY_CHECKS = frozenset(
         "spec_url_configured",
         "spec_source_reachable",
         "cloud_spec_location_configured",
+        "cloud_spec_credential_valid",
     }
 )
 
@@ -100,6 +109,120 @@ _TRANSIENT_NETWORK_ERRORS = frozenset(
         "RemoteProtocolError",
     }
 )
+
+
+def _credentials_to_raw(credentials: list[HandlerCredential]) -> dict[str, Any]:
+    """Rebuild the nested credential dict ``CloudStore.from_credentials`` wants.
+
+    Inverse of the SDK's ``flatten_credentials_to_pairs``, which hoists nested
+    ``extra`` to ``extra.<k>`` pairs — the only credential view a gate-side
+    handler is given. Reconstructing it here keeps the probe on exactly the
+    credential extraction will use, rather than a narrower reading of it.
+    """
+    raw: dict[str, Any] = {}
+    extra: dict[str, Any] = {}
+    for pair in credentials:
+        if pair.key.startswith("extra."):
+            extra[pair.key.removeprefix("extra.")] = pair.value
+        else:
+            raw[pair.key] = pair.value
+    if extra:
+        raw["extra"] = extra
+    return raw
+
+
+async def _read_object_store(raw: dict[str, Any], prefix: str, key: str) -> None:
+    """Make the cheapest authenticated call that proves the spec is readable.
+
+    A single HEAD when the exact object key is configured — the same call
+    ``download_cloud_spec`` makes — and one delimited listing when only a prefix
+    is. Both authenticate before transferring anything, so a rejected credential
+    fails on the first request.
+    """
+    import obstore  # noqa: PLC0415 — heavy native import, kept off module load
+
+    from application_sdk.storage.cloud import (  # noqa: PLC0415
+        CloudStore,
+    )
+
+    store = CloudStore.from_credentials(raw)
+    if key:
+        await obstore.head_async(store.store, f"{prefix}/{key}" if prefix else key)
+    else:
+        # Delimited, so it is one round trip. A recursive listing would page
+        # through the whole prefix, and on a large bucket that overruns the
+        # probe budget and reports a transient on every run. Authentication is
+        # what this proves, and the first request already proves it.
+        await obstore.list_with_delimiter_async(store.store, prefix or None)
+
+
+def _classify_store_failure(exc: BaseException) -> AppError | None:
+    """Type an object-store failure, or ``None`` when it is not attributable.
+
+    The SDK wraps every object-store failure in ``StorageError``, whose leaf is
+    DEPENDENCY_UNAVAILABLE/PLATFORM. That is right for an outage and wrong for a
+    credential the store rejected, so classification reads the obstore cause
+    rather than the SDK wrapper — otherwise a bad role token is filed against the
+    platform and the probe fails open on the one case it exists to catch.
+
+    ``None`` means "could not attribute", which the caller turns into a
+    fail-open transient. Guessing here would make the gate fail closed on an
+    outage.
+    """
+    from obstore.exceptions import (  # noqa: PLC0415 — native module, lazy
+        NotFoundError as ObstoreNotFoundError,
+        PermissionDeniedError as ObstorePermissionDeniedError,
+        UnauthenticatedError as ObstoreUnauthenticatedError,
+    )
+
+    from application_sdk.storage.errors import (  # noqa: PLC0415
+        StorageConfigError,
+    )
+
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, ObstoreUnauthenticatedError):
+            return CloudSpecCredentialRejectedError(
+                message="the object store rejected the configured credential",
+                suggested_action=(
+                    "Check the object-store credential on this connection: for a "
+                    "role-based setup confirm the role ARN is correct and its "
+                    "trust policy still permits Atlan to assume it."
+                ),
+                cause=current,
+            )
+        if isinstance(current, ObstorePermissionDeniedError):
+            return CloudSpecAccessDeniedError(
+                message="the credential authenticated but cannot read the spec location",
+                suggested_action=(
+                    "Grant the credential read access to the configured prefix "
+                    "and object key."
+                ),
+                cause=current,
+            )
+        if isinstance(current, ObstoreNotFoundError | FileNotFoundError):
+            return CloudSpecNotFoundError(
+                message="the configured spec location does not exist in the object store",
+                suggested_action="Check the prefix and object key on this connection.",
+                cause=current,
+            )
+        if isinstance(current, StorageConfigError):
+            return ObjectStoreCredentialError(
+                message="the resolved object-store credential is not usable",
+                cause=current,
+            )
+        # Honour __suppress_context__: a `raise ... from None` upstream (the
+        # PF-17 severing this app does itself) means that context is not this
+        # failure's cause, and walking it misattributes an unrelated error.
+        if current.__cause__ is not None:
+            current = current.__cause__
+        elif current.__suppress_context__:
+            current = None
+        else:
+            current = current.__context__
+    return None
 
 
 def _as_gate_transient(error: AppError) -> AppError | None:
@@ -151,7 +274,22 @@ class OpenAPIConnectorHandler(DefaultHandler):
 
         checks: list[PreflightCheck] = []
         if import_type == "CLOUD":
-            checks.append(self._check_cloud_location(cfg))
+            location = self._check_cloud_location(cfg)
+            checks.append(location)
+            if location.passed:
+                checks.append(
+                    await self._check_cloud_spec_credential(
+                        cfg,
+                        # The gate resolves the named ref; Test-Connection sends
+                        # the same object-store credential inline instead. This
+                        # app declares one credential, so the fallback cannot
+                        # pick up an unrelated one — and it is what makes the
+                        # probe run on both surfaces rather than only the gate.
+                        input.credentials_by_name.get("object_store")
+                        or input.credentials,
+                        _probe_timeout(input.timeout_seconds),
+                    )
+                )
         else:
             spec_url = str(cfg.get("spec_url") or "")
             configured = self._check_spec_url_configured(spec_url)
@@ -236,6 +374,84 @@ class OpenAPIConnectorHandler(DefaultHandler):
                 field="spec_prefix|spec_key",
                 constraint="at least one is required when import_type='CLOUD'",
             ).to_failure_details(),
+        )
+
+    async def _check_cloud_spec_credential(
+        self,
+        cfg: BaseConnectionConfig,
+        credentials: list[HandlerCredential],
+        timeout_seconds: float,
+    ) -> PreflightCheck:
+        """CLOUD mode: prove the object-store credential can read the spec.
+
+        The gate resolves this credential from the ``object_store`` ref declared
+        on :class:`~app.contracts.OpenAPIConnectorInput`. An unresolvable
+        credential is reported as unprobed rather than failed — the gate hands
+        back an empty group both for a genuinely absent credential and for a
+        trigger that carries no metadata, and failing on that would block runs
+        whose credential extraction resolves perfectly well.
+
+        Raises:
+            AppError: For a transient (store not answering, or a failure this
+                cannot attribute to the credential). Raising rather than
+                returning ``NOT_READY`` is deliberate; see the module docstring.
+        """
+        started = time.monotonic()
+        check_name = "cloud_spec_credential_valid"
+
+        if not credentials:
+            return PreflightCheck(
+                name=check_name,
+                passed=True,
+                message=(
+                    "object-store credential did not resolve on the gate path; "
+                    "store reachability not probed"
+                ),
+                duration_ms=(time.monotonic() - started) * 1000.0,
+            )
+
+        prefix = str(cfg.get("spec_prefix") or "").strip("/")
+        key = str(cfg.get("spec_key") or "").strip("/")
+
+        try:
+            await asyncio.wait_for(
+                _read_object_store(_credentials_to_raw(credentials), prefix, key),
+                timeout_seconds,
+            )
+        except (TimeoutError, asyncio.TimeoutError):
+            # PF-17: this frame holds the resolved credential, and the SDK's
+            # loguru sinks annotate frame variables when formatting a chained
+            # traceback. Sever the chain on every path out of here.
+            raise CloudSpecStoreTransientError(
+                message=(
+                    "object store did not answer within the preflight budget; "
+                    "treating as a transient rather than a verdict"
+                ),
+                service="openapi_object_store",
+            ) from None
+        except Exception as exc:
+            failure = _classify_store_failure(exc)
+            if failure is None:
+                raise CloudSpecStoreTransientError(
+                    message=(
+                        "object store could not be evaluated during preflight; "
+                        "treating as a transient rather than a verdict"
+                    ),
+                    service="openapi_object_store",
+                    cause=exc,
+                ) from None
+            return PreflightCheck(
+                name=check_name,
+                passed=False,
+                error=failure.to_failure_details(),
+                duration_ms=(time.monotonic() - started) * 1000.0,
+            )
+
+        return PreflightCheck(
+            name=check_name,
+            passed=True,
+            message="object-store credential authenticated and spec location readable",
+            duration_ms=(time.monotonic() - started) * 1000.0,
         )
 
     async def _check_spec_source(
