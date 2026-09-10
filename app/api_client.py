@@ -255,6 +255,10 @@ def _classify_http_status(status: int, spec_url: str, exc: Exception) -> AppErro
         field="spec_url",
         constraint="endpoint must serve the spec document to a plain GET",
         value_summary=f"HTTP {status}",
+        suggested_action=(
+            "Verify the spec URL serves the document to a plain GET request "
+            "with no special headers, authentication, or query parameters."
+        ),
         cause=safe_cause,
     )
 
@@ -304,6 +308,10 @@ def _classify_request_error(exc: Exception, spec_url: str) -> AppError:
         message=(f"network error fetching spec from {safe_url} ({type(exc).__name__})"),
         endpoint=safe_url,
         network_error=type(exc).__name__,
+        suggested_action=(
+            "Verify the spec endpoint returns a complete, well-formed HTTP "
+            "response, then re-run the workflow."
+        ),
         cause=safe_cause,
     )
 

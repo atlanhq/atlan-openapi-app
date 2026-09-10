@@ -206,6 +206,10 @@ class OpenAPIConnectorHandler(DefaultHandler):
                 message="spec_url is required when import_type='URL'",
                 field="spec_url",
                 constraint="required when import_type='URL'",
+                suggested_action=(
+                    "Set spec_url to the OpenAPI spec's HTTPS URL when "
+                    "import_type is 'URL'."
+                ),
             ).to_failure_details(),
         )
 
@@ -235,6 +239,10 @@ class OpenAPIConnectorHandler(DefaultHandler):
                 message="spec_prefix or spec_key required when import_type='CLOUD'",
                 field="spec_prefix|spec_key",
                 constraint="at least one is required when import_type='CLOUD'",
+                suggested_action=(
+                    "Set spec_prefix or spec_key in the connection configuration "
+                    "when import_type is 'CLOUD'."
+                ),
             ).to_failure_details(),
         )
 
