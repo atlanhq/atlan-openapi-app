@@ -19,7 +19,7 @@ Requires:
 Run locally:
     docker run -d --rm -p 9000:9000 --name minio \\
         -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \\
-        minio/minio server /data
+        quay.io/minio/minio server /data
     temporal server start-dev &
     AWS_ENDPOINT_URL=http://localhost:9000 \\
         uv run pytest tests/integration/test_s3_download.py -v
