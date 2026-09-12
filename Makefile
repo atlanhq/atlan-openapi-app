@@ -14,7 +14,7 @@ test-cloud-integration:
 	docker run -d --rm --name minio-test -p 9000:9000 \
 		-e MINIO_ROOT_USER=minioadmin \
 		-e MINIO_ROOT_PASSWORD=minioadmin \
-		minio/minio server /data
+		quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
 	@echo "Waiting for MinIO..." && until curl -sf http://localhost:9000/minio/health/live; do sleep 1; done
 	@echo "Creating test bucket..."
 	AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin \
