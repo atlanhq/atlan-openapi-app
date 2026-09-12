@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.7.1 (September 12, 2026)
+
+Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.7.0...v0.7.1
+
+
 ## v0.7.0 (September 10, 2026)
 
 Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.6.2...v0.7.0
