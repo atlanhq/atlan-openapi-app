@@ -217,6 +217,78 @@
       "type": "bool"
     },
     {
+      "contract": "OpenAPIConnectorInput",
+      "field": "checkpoint_dir",
+      "status": "active",
+      "type": "str"
+    },
+    {
+      "contract": "OpenAPIConnectorInput",
+      "field": "cloud_source",
+      "status": "active",
+      "type": "str"
+    },
+    {
+      "contract": "OpenAPIConnectorInput",
+      "field": "connection_qualified_name",
+      "status": "active",
+      "type": "str"
+    },
+    {
+      "contract": "OpenAPIConnectorInput",
+      "field": "connection_usage",
+      "status": "active",
+      "type": "str"
+    },
+    {
+      "contract": "OpenAPIConnectorInput",
+      "field": "import_type",
+      "status": "active",
+      "type": "str"
+    },
+    {
+      "contract": "OpenAPIConnectorInput",
+      "field": "load_to_atlan",
+      "status": "active",
+      "type": "bool"
+    },
+    {
+      "contract": "OpenAPIConnectorInput",
+      "field": "openapi_credential",
+      "status": "active",
+      "type": "CredentialRef | None"
+    },
+    {
+      "contract": "OpenAPIConnectorInput",
+      "field": "output_dir",
+      "status": "active",
+      "type": "str"
+    },
+    {
+      "contract": "OpenAPIConnectorInput",
+      "field": "publish_dry_run",
+      "status": "active",
+      "type": "bool"
+    },
+    {
+      "contract": "OpenAPIConnectorInput",
+      "field": "spec_key",
+      "status": "active",
+      "type": "str"
+    },
+    {
+      "contract": "OpenAPIConnectorInput",
+      "field": "spec_prefix",
+      "status": "active",
+      "type": "str"
+    },
+    {
+      "contract": "OpenAPIConnectorInput",
+      "field": "spec_url",
+      "status": "active",
+      "type": "str"
+    },
+    {
       "contract": "OpenAPIConnectorOutput",
       "field": "api_path_count",
       "status": "active",
