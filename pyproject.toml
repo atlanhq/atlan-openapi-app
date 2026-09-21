@@ -4,12 +4,20 @@ version = "0.7.0"
 description = "OpenAPI Spec Loader connector"
 requires-python = ">=3.11"
 dependencies = [
-    # Floor is the preflight-gate floor, not the app's oldest working SDK.
-    # app/handler.py reads PreflightInput.timeout_seconds as the *enforced*
-    # remaining gate budget and sizes its probe to it; that contract, and the
-    # App-level budget knobs, land in 3.24.1. Resolving anything older would
-    # silently give the handler an advisory number and no gate to run it.
-    "atlan-application-sdk>=3.24.1,<4.0.0",
+    # Floor is a security floor, above the preflight-gate floor it used to sit
+    # at. Two constraints, the higher one wins:
+    #
+    #  - 3.24.1 — app/handler.py reads PreflightInput.timeout_seconds as the
+    #    *enforced* remaining gate budget and sizes its probe to it; that
+    #    contract, and the App-level budget knobs, land here. Older resolves
+    #    silently give the handler an advisory number and no gate to run it.
+    #  - 3.29.0 — ENABLE_LOG_DIAGNOSE lands, defaulting loguru's `diagnose` to
+    #    False. Below this the SDK takes loguru's own default of True, and a
+    #    traceback through a frame holding a resolved credential renders that
+    #    credential's value onto the console. app/connector.py relies on the
+    #    3.29.0 behaviour to chain its object-store credential failure
+    #    (`from exc`) instead of severing it.
+    "atlan-application-sdk>=3.29.0,<4.0.0",
 ]
 
 [build-system]

@@ -484,36 +484,52 @@ class OpenAPIConnector(App):
                 store = CloudStore.from_credentials(credential_data)
             except AppError:
                 # Already typed and attributable — let the SDK's own error
-                # through. (The SDK-side diagnose fix is tracked on the
-                # CONNECT-812 registry; the app cannot re-wrap these without
-                # losing their retryable/audience semantics.)
+                # through; the app cannot re-wrap these without losing their
+                # retryable/audience semantics. This branch takes every
+                # StorageConfigError from_credentials documents, so the broad
+                # catch below only ever sees an *undocumented* escape.
                 raise
             except Exception as exc:
                 # Breadth is deliberate: CloudStore.from_credentials reaches
                 # three cloud SDKs, and anything they raise that is not already
                 # an AppError still has to become one typed error rather than
-                # escape untyped.
+                # escape untyped. Narrowing this to a named set would let the
+                # unnamed ones propagate untyped, which is strictly worse.
                 #
-                # CONNECT-812 PF-17 class: sever the exception chain
-                # (`from None`). This frame's source line references the
-                # resolved credential dict, and the SDK's loguru sinks format
-                # tracebacks with ``diagnose`` enabled — a chained raw
-                # traceback would annotate ``credential_data`` and write the
-                # plaintext password to the logs. The cause survives as a
-                # redacted, length-capped summary on the typed error below,
-                # which is the single record of this failure — the caller
-                # logs it once (L009).
+                # CONNECT-812 PF-17: the chain is SEVERED (`from None`), and
+                # tests/unit/test_connector.py::
+                # test_rejected_credential_raises_typed_with_severed_chain
+                # pins it. Do not "simplify" this to `from exc` to clear E004.
                 #
-                # This is why E004 still fires here and cannot be cleared
-                # locally: every rule-clean alternative is a security
-                # regression. `from exc` takes E004's unconditional-re-raise
-                # exemption but restores the chained traceback. Narrowing the
-                # catch lets an unnamed escape propagate with its traceback,
-                # which is the same leak by another route. A log through a
-                # redaction helper takes E004's other exemption but must be at
-                # warning/error to count, which is L009. The real fix is
-                # SDK-side (loguru `diagnose` on credential-bearing frames),
-                # tracked on the CONNECT-812 registry.
+                # The frame-variable axis is no longer the reason. Before SDK
+                # 3.29.0 the sinks took loguru's own `diagnose` default of
+                # True, which annotates each traceback frame with the *values*
+                # of the names on its source line — a chained traceback then
+                # rendered this frame's credential dict. From 3.29.0 the SDK
+                # passes `diagnose=ENABLE_LOG_DIAGNOSE`, default False, and
+                # pyproject floors the SDK there, so that axis is closed. It
+                # was console-only in any case: the OTLP sink builds its own
+                # traceback and never carried frame values.
+                #
+                # What still justifies severing is the axis `diagnose` does
+                # NOT govern — the cause's own *message*.
+                # `traceback.format_exception` follows `__cause__`, so a
+                # chained cause's message reaches the OTLP sink whatever
+                # `diagnose` says, and this catch is for *undocumented*
+                # escapes from three third-party cloud SDKs whose message text
+                # is not ours to constrain. Surveying today's shapes (they are
+                # clean) would not bind tomorrow's.
+                #
+                # The cause survives as a redacted, length-capped summary on
+                # the typed error below, which is the single record of this
+                # failure (the caller logs it once — L009).
+                #
+                # This is why E004 still fires here. Every rule-clean
+                # alternative costs more than the warning: `from exc` breaks
+                # the contract above; narrowing the catch lets an unnamed
+                # escape propagate untyped; a redaction-helper log takes
+                # E004's other exemption but must be WARNING/ERROR to count,
+                # which is L009.
                 raise ObjectStoreCredentialError(
                     message=(
                         "object-store credential was rejected while building "
