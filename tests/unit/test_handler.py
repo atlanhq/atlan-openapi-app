@@ -242,9 +242,12 @@ class TestAdvisoryCheck:
 
     @pytest.mark.asyncio
     @respx.mock
-    async def test_html_response_is_partial_not_blocking(self) -> None:
-        """PF-12: an advisory failure downgrades to PARTIAL and the run
-        proceeds — it must never produce NOT_READY."""
+    async def test_html_response_is_advisory_not_blocking(self) -> None:
+        """PF-12: an advisory failure leaves the verdict READY and the run
+        proceeds — it must never produce NOT_READY. The failure is not lost:
+        it stays visible in the check rows and in the summary message, which
+        is where it lives now that PreflightStatus.PARTIAL is deprecated
+        (removed in SDK v3.40.0)."""
         respx.get(self.URL).mock(
             return_value=httpx.Response(
                 200,
@@ -255,10 +258,11 @@ class TestAdvisoryCheck:
         out = await OpenAPIConnectorHandler().preflight_check(
             _input(import_type="URL", spec_url=self.URL)
         )
-        assert out.status == PreflightStatus.PARTIAL
+        assert out.status == PreflightStatus.READY
         advisory = [c for c in out.checks if c.name == "spec_content_type_plausible"][0]
         assert advisory.passed is False
         assert advisory.error is not None
+        assert "spec_content_type_plausible" in out.message
         reachable = [c for c in out.checks if c.name == "spec_source_reachable"][0]
         assert reachable.passed is True
 

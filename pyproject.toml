@@ -4,12 +4,20 @@ version = "0.7.0"
 description = "OpenAPI Spec Loader connector"
 requires-python = ">=3.11"
 dependencies = [
-    # Floor is the preflight-gate floor, not the app's oldest working SDK.
-    # app/handler.py reads PreflightInput.timeout_seconds as the *enforced*
-    # remaining gate budget and sizes its probe to it; that contract, and the
-    # App-level budget knobs, land in 3.24.1. Resolving anything older would
-    # silently give the handler an advisory number and no gate to run it.
-    "atlan-application-sdk>=3.24.1,<4.0.0",
+    # Floor is a security floor, above the preflight-gate floor it used to sit
+    # at. Two constraints, the higher one wins:
+    #
+    #  - 3.24.1 — app/handler.py reads PreflightInput.timeout_seconds as the
+    #    *enforced* remaining gate budget and sizes its probe to it; that
+    #    contract, and the App-level budget knobs, land here. Older resolves
+    #    silently give the handler an advisory number and no gate to run it.
+    #  - 3.29.0 — ENABLE_LOG_DIAGNOSE lands, defaulting loguru's `diagnose` to
+    #    False. Below this the SDK takes loguru's own default of True, and a
+    #    traceback through a frame holding a resolved credential renders that
+    #    credential's value onto the console. app/connector.py relies on the
+    #    3.29.0 behaviour to chain its object-store credential failure
+    #    (`from exc`) instead of severing it.
+    "atlan-application-sdk>=3.29.0,<4.0.0",
 ]
 
 [build-system]
@@ -37,6 +45,17 @@ dev = [
     "poethepoet>=0.34.0",
     "atlan-application-sdk-conformance<=1.0.0",
 ]
+
+# Pin PyPI as uv's default index so the resolver does not inherit whatever
+# default index the machine supplies (on an Atlan laptop, the Endor Labs
+# package firewall in ~/.config/uv/uv.toml), which silently rewrites every
+# package URL in uv.lock to a credentialed proxy CI holds no credential for.
+# Declared here rather than in a project-level uv.toml: a uv.toml suppresses
+# [tool.uv] in this file entirely. See conformance D012 / D013.
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"
+default = true
 
 [tool.pyright]
 venvPath = "."
@@ -74,6 +93,11 @@ filterwarnings = [
 markers = [
     "integration: requires external services (MinIO/Azurite emulators); deselect locally with '-m \"not integration\"'",
     "e2e: tenant-hitting end-to-end test (requires ATLAN_BASE_URL + ATLAN_API_KEY)",
+    # Registered here only so an ordinary `pytest` run does not warn on it. The
+    # marker is consumed by conformance's own plugin, which `detect --with-tests`
+    # loads (`-p conformance.preflight_testing`) and which registers it again in
+    # that subprocess. Under a plain run these tests are just unit tests.
+    "preflight_conformance(rule, scenario, entrypoint): registered F016 behaviour scenario",
 ]
 # Per-test hang guard (pytest-timeout) — NOT a `-m` deselection, so the
 # directory-scoped integration tier still collects every test (see the note

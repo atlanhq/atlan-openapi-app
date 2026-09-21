@@ -502,6 +502,33 @@ class TestRedactUrl:
     def test_local_path_is_returned_as_is(self) -> None:
         assert redact_url("/tmp/downloaded/spec.json") == "/tmp/downloaded/spec.json"
 
+    @pytest.mark.parametrize(
+        "spec_url",
+        [
+            "https:///openapi.json?sp=r&sig=SECRET",  # scheme, no authority
+            "https://?sp=r&sig=SECRET",  # scheme, no authority, query only
+            "acct.blob.core.windows.net/c/x.json?sig=SECRET",  # no scheme
+            "user:pw@host/spec.json",  # userinfo, no scheme
+        ],
+    )
+    def test_authority_less_url_with_a_secret_fails_closed(self, spec_url: str) -> None:
+        """A string urlsplit cannot give an authority is NOT automatically the
+        CLOUD path's local file. These shapes reach the preflight handler's
+        failure log via SpecUrlInvalidError, so passing them through unchanged
+        would put the pre-signed query in a log sink."""
+        redacted = redact_url(spec_url)
+        assert redacted == "<unredactable url>"
+        assert "SECRET" not in redacted
+        assert "pw" not in redacted
+
+    def test_local_path_containing_an_at_sign_is_still_returned_as_is(self) -> None:
+        """The fail-closed branch above keys on userinfo in the FIRST path
+        segment, so a CLOUD-path filename with an '@' in it stays readable in
+        the log instead of being blanked for no security gain."""
+        assert redact_url("/tmp/downloaded/spec@v2.json") == (
+            "/tmp/downloaded/spec@v2.json"
+        )
+
 
 # =============================================================================
 # TestValidateSpecUrl — SSRF control on the outbound fetch

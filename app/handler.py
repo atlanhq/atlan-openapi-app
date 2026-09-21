@@ -14,8 +14,10 @@ Design rules applied from the CONNECT-812 pattern registry:
   ``checks`` list), so ``check_matrix``, the typed reason code, and the
   activity pane stay populated.
 * **PF-12** — the verdict is computed from mandatory checks only, never
-  ``all(c.passed)``, so an advisory failure can downgrade to PARTIAL but can
-  never block a run.
+  ``all(c.passed)``, so an advisory failure can never block a run. It is
+  surfaced in the check rows and the summary message and leaves the verdict
+  READY, because extraction can still proceed
+  (``PreflightStatus.PARTIAL`` is deprecated; removed in SDK v3.40.0).
 * **PF-15 / PF-19** — the probe requests the same document over the same
   client configuration the extraction path uses; what it cannot see (object
   store contents on the CLOUD path) is stated, not implied.
@@ -37,7 +39,7 @@ import os
 import time
 
 from application_sdk.errors import RateLimitedError
-from application_sdk.errors.base import AppError
+from application_sdk.errors.base import AppError, sanitize_cause_repr
 from application_sdk.handler import (
     BaseConnectionConfig,
     DefaultHandler,
@@ -61,7 +63,7 @@ from app.errors import (
 logger = get_logger(__name__)
 
 # Checks whose failure means the run is deterministically going to fail.
-# Everything else is advisory and can only downgrade the verdict to PARTIAL.
+# Everything else is advisory: it is reported but never changes the verdict.
 _MANDATORY_CHECKS = frozenset(
     {
         "spec_url_configured",
@@ -163,18 +165,16 @@ class OpenAPIConnectorHandler(DefaultHandler):
                     )
                 )
 
-        # PF-12: mandatory checks decide the verdict; advisory failures only
-        # downgrade READY to PARTIAL.
+        # PF-12: mandatory checks alone decide the verdict. An advisory failure
+        # is reported in the check rows and the summary message below but does
+        # not change it — extraction can still proceed, so the verdict stays
+        # READY. (PreflightStatus.PARTIAL is deprecated and is removed in SDK
+        # v3.40.0; READY / NOT_READY are the only two verdicts.)
         mandatory_failed = any(
             not c.passed for c in checks if c.name in _MANDATORY_CHECKS
         )
-        advisory_failed = any(
-            not c.passed for c in checks if c.name not in _MANDATORY_CHECKS
-        )
         if mandatory_failed:
             status = PreflightStatus.NOT_READY
-        elif advisory_failed:
-            status = PreflightStatus.PARTIAL
         else:
             status = PreflightStatus.READY
 
@@ -321,7 +321,19 @@ class OpenAPIConnectorHandler(DefaultHandler):
                 # Not a verdict — the source could not be evaluated this time.
                 # The gate fails open on these categories in both postures.
                 raise transient from exc
-            # conformance: ignore[E007] Not hidden — the error is the return value, carried structurally to the preflight gate as PreflightCheck.error.
+            # The error is the return value, carried structurally to the gate
+            # as PreflightCheck.error — but a NOT_READY verdict should also be
+            # greppable in the run's own logs, not only in the check matrix.
+            # PF-18: the URL goes through redact_url (it is routinely
+            # pre-signed) and the cause through sanitize_cause_repr; no
+            # ``exc_info``, since the traceback would carry the raw URL past
+            # both via loguru's frame-variable ``diagnose``.
+            logger.debug(
+                "preflight check %s failed for url=%s: %s",
+                check_name,
+                redact_url(spec_url),
+                sanitize_cause_repr(exc),
+            )
             return [
                 PreflightCheck(
                     name=check_name,

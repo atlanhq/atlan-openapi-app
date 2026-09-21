@@ -18,8 +18,12 @@ from __future__ import annotations
 
 import os
 
-os.environ.setdefault("ATLAN_APPLICATION_NAME", "openapi")
-os.environ.setdefault("ATLAN_DEPLOYMENT_NAME", "ci")
+# ATLAN_APPLICATION_NAME / ATLAN_DEPLOYMENT_NAME are set in tests/conftest.py,
+# not here. Setting them at this level is too late for a whole-tree run: the
+# unit conftest imports application_sdk first, so constants snapshots the
+# default name and the star-import below fails with
+# IntegrationEnvOrderingError. The root conftest loads before this one in
+# every invocation, including `pytest tests/integration`.
 
 from pathlib import Path
 
