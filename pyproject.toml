@@ -85,6 +85,11 @@ filterwarnings = [
 markers = [
     "integration: requires external services (MinIO/Azurite emulators); deselect locally with '-m \"not integration\"'",
     "e2e: tenant-hitting end-to-end test (requires ATLAN_BASE_URL + ATLAN_API_KEY)",
+    # Registered here only so an ordinary `pytest` run does not warn on it. The
+    # marker is consumed by conformance's own plugin, which `detect --with-tests`
+    # loads (`-p conformance.preflight_testing`) and which registers it again in
+    # that subprocess. Under a plain run these tests are just unit tests.
+    "preflight_conformance(rule, scenario, entrypoint): registered F016 behaviour scenario",
 ]
 # Per-test hang guard (pytest-timeout) — NOT a `-m` deselection, so the
 # directory-scoped integration tier still collects every test (see the note
