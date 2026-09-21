@@ -38,6 +38,17 @@ dev = [
     "atlan-application-sdk-conformance<=1.0.0",
 ]
 
+# Pin PyPI as uv's default index so the resolver does not inherit whatever
+# default index the machine supplies (on an Atlan laptop, the Endor Labs
+# package firewall in ~/.config/uv/uv.toml), which silently rewrites every
+# package URL in uv.lock to a credentialed proxy CI holds no credential for.
+# Declared here rather than in a project-level uv.toml: a uv.toml suppresses
+# [tool.uv] in this file entirely. See conformance D012 / D013.
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"
+default = true
+
 [tool.pyright]
 venvPath = "."
 venv = ".venv"

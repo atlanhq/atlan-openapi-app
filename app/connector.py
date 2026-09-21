@@ -29,6 +29,7 @@ from application_sdk.credentials.ref import CredentialRef
 from application_sdk.errors import InternalError
 from application_sdk.errors.base import AppError, sanitize_cause_repr
 from application_sdk.observability.logger_adaptor import AtlanLoggerAdapter as Logger
+from application_sdk.observability.logger_adaptor import get_logger
 from application_sdk.outputs import Metric, get_outputs
 
 from app.api_client import redact_url
@@ -72,6 +73,11 @@ T = TypeVar("T")
 # Module-level constants
 # =============================================================================
 
+# Module-level sink for the handful of module-level helpers below. Every
+# method on the App class logs through its own ``self.logger``; this exists
+# only so a free function is not forced to swallow an event silently.
+_logger = get_logger(__name__)
+
 
 def _is_unsubstituted_placeholder(value: str) -> bool:
     """True if a value still carries mustache braces from an unresolved manifest
@@ -98,8 +104,20 @@ def _has_valid_auth(credentials: dict[str, Any]) -> bool:
     if isinstance(extra, str):
         try:
             extra = orjson.loads(extra) if extra else {}
-        # conformance: ignore[E009] Docstring above: this frame holds the plaintext credential and loguru's diagnose annotates frame vars (CONNECT-812 PF-17).
-        except orjson.JSONDecodeError:
+        except orjson.JSONDecodeError as exc:
+            # Falling back to "no role auth" is the contract (see the docstring
+            # — this must never raise), but the fallback is no longer silent: a
+            # malformed ``extra`` is why an operator would otherwise see Path B
+            # chosen with no explanation. The cause goes through
+            # sanitize_cause_repr and ``exc_info`` stays off, because this
+            # frame holds the plaintext credential and loguru's ``diagnose``
+            # annotates frame variables into tracebacks (CONNECT-812 PF-17).
+            # orjson's message carries only a line/column position, never the
+            # payload.
+            _logger.warning(
+                "credential 'extra' is not valid JSON; treating as no role auth: %s",
+                sanitize_cause_repr(exc),
+            )
             extra = {}
     if not isinstance(extra, dict):
         extra = {}
@@ -470,15 +488,32 @@ class OpenAPIConnector(App):
                 # CONNECT-812 registry; the app cannot re-wrap these without
                 # losing their retryable/audience semantics.)
                 raise
-            # conformance: ignore[E004] Breadth is deliberate; exc_info here would annotate credential_data via loguru diagnose, the exact leak `from None` below prevents.
             except Exception as exc:
+                # Breadth is deliberate: CloudStore.from_credentials reaches
+                # three cloud SDKs, and anything they raise that is not already
+                # an AppError still has to become one typed error rather than
+                # escape untyped.
+                #
                 # CONNECT-812 PF-17 class: sever the exception chain
                 # (`from None`). This frame's source line references the
                 # resolved credential dict, and the SDK's loguru sinks format
                 # tracebacks with ``diagnose`` enabled — a chained raw
                 # traceback would annotate ``credential_data`` and write the
                 # plaintext password to the logs. The cause survives as a
-                # redacted, length-capped summary instead.
+                # redacted, length-capped summary on the typed error below,
+                # which is the single record of this failure — the caller
+                # logs it once (L009).
+                #
+                # This is why E004 still fires here and cannot be cleared
+                # locally: every rule-clean alternative is a security
+                # regression. `from exc` takes E004's unconditional-re-raise
+                # exemption but restores the chained traceback. Narrowing the
+                # catch lets an unnamed escape propagate with its traceback,
+                # which is the same leak by another route. A log through a
+                # redaction helper takes E004's other exemption but must be at
+                # warning/error to count, which is L009. The real fix is
+                # SDK-side (loguru `diagnose` on credential-bearing frames),
+                # tracked on the CONNECT-812 registry.
                 raise ObjectStoreCredentialError(
                     message=(
                         "object-store credential was rejected while building "

@@ -15,7 +15,7 @@ import socket
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
-from application_sdk.errors.base import AppError
+from application_sdk.errors.base import AppError, sanitize_cause_repr
 from application_sdk.observability.logger_adaptor import get_logger
 
 from app.errors import (
@@ -53,22 +53,59 @@ def redact_url(url: str) -> str:
     nothing that authenticates to it.
 
     Non-URL inputs (the local file paths the CLOUD path produces) are returned
-    unchanged; they carry no credential.
+    unchanged; they carry no credential. "Did not parse as a URL" is **not**
+    the same claim as "carries no credential", though — see the fail-closed
+    branch below.
     """
     try:
         parts = urlsplit(url)
-    except ValueError:
-        # conformance: ignore[E007] urlsplit's ValueError text embeds the offending URL, which is the credential here; logging it defeats this function.
+    except ValueError as exc:
+        # The sentinel IS the contract here — this function's whole job is to
+        # always hand back something safe to print — but the event is no longer
+        # silent. Same boundary as the port branch below: sanitized cause, no
+        # ``exc_info``, because ``url`` is a local of this frame and loguru's
+        # ``diagnose`` would annotate it into the traceback.
+        logger.debug(
+            "spec URL could not be parsed; redacting to a sentinel: %s",
+            sanitize_cause_repr(exc),
+        )
         return "<unparseable url>"
     if not parts.scheme or not parts.netloc:
+        # Fail closed before the passthrough. A string with no authority is
+        # normally the CLOUD path's local file, which is safe to echo — but
+        # "https:///p?sig=..." and "host/p?sig=..." also land here, and
+        # returning those unchanged hands the pre-signed query straight to a
+        # log sink. The reachable case is a misconfigured spec_url: the URL
+        # validator rejects it with SpecUrlInvalidError, which the preflight
+        # handler catches and logs through this function.
+        #
+        # The userinfo test is scoped to the first path segment on purpose:
+        # "user:pw@host/spec.json" puts the credential there, while a local
+        # file may legitimately contain an '@' further along
+        # ("/tmp/spec@v2.json"), and blanking that would cost a readable log
+        # line for no security gain.
+        first_segment = parts.path.split("/", 1)[0]
+        if parts.query or "@" in first_segment:
+            return "<unredactable url>"
         return url
     try:
         netloc = parts.hostname or ""
         if parts.port:
             netloc = f"{netloc}:{parts.port}"
-    # conformance: ignore[E009] Same redaction boundary: the ValueError text embeds the credential-bearing spec URL, so it must not reach a log sink.
-    except ValueError:
+    except ValueError as exc:
         # Malformed port — drop the whole authority rather than echo it back.
+        #
+        # The event is logged, but the exception travels through
+        # sanitize_cause_repr and `exc_info` stays off. Both are deliberate:
+        # ``url`` is a local of this frame and the SDK's loguru sinks format
+        # tracebacks with ``diagnose`` enabled, so a traceback here would
+        # annotate the frame and write the pre-signed URL — the exact leak
+        # this function exists to prevent (CONNECT-812 PF-17 class).
+        logger.debug(
+            "spec URL authority has an unparseable port; dropping the "
+            "authority from the redacted form: %s",
+            sanitize_cause_repr(exc),
+        )
         netloc = "<invalid host>"
     redacted = urlunsplit((parts.scheme, netloc, parts.path, "", ""))
     if parts.query:
