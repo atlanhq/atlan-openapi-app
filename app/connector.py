@@ -22,6 +22,8 @@ from typing import Any, TypeVar
 import msgspec
 import orjson
 from application_sdk.app import App, task
+from application_sdk.common.asset_serialization import entity_bytes
+from application_sdk.common.entity_envelope import EntityEnvelopePolicy, EnvelopeShape
 from application_sdk.contracts.storage import UploadInput
 from application_sdk.contracts.types import ConnectionRef, FileReference, StorageTier
 from application_sdk.credentials.errors import CredentialRoutingError
@@ -77,6 +79,12 @@ T = TypeVar("T")
 # method on the App class logs through its own ``self.logger``; this exists
 # only so a free function is not forced to swallow an event silently.
 _logger = get_logger(__name__)
+
+# How every transformed JSONL line is shaped (FND-2724). FLATTENED puts
+# relationship refs (APIPath.apiSpec) under ``attributes``, which is what
+# atlan-publish-app's relationship diffing reads; it is also the SDK default,
+# pinned explicitly so an SDK default change cannot flip the wire format.
+ENTITY_ENVELOPE = EntityEnvelopePolicy(shape=EnvelopeShape.FLATTENED)
 
 
 def _is_unsubstituted_placeholder(value: str) -> bool:
@@ -357,18 +365,30 @@ def _transform_blocking(
     api_spec_count = 0
     api_path_count = 0
 
+    # Every record goes through the SDK's entity_bytes seam (FND-2724): it owns
+    # the envelope, the unmappable-result check and placeholder-guid stripping.
     with output_file.open("wb") as out_f:
         # CONNECT-55: on REUSE (emit_connection=False) the connection already
         # exists and must not be re-upserted — emit only its child assets.
         if input.emit_connection:
-            out_f.write(map_connection(connection).to_nested_bytes() + b"\n")
+            out_f.write(
+                entity_bytes(
+                    map_connection(connection),
+                    entity_type="connection",
+                    envelope=ENTITY_ENVELOPE,
+                )
+                + b"\n"
+            )
 
         # Emit APISpec records
         for record in _iter_jsonl(input.api_spec_file, OpenAPISpecRecord):
             asset = map_api_spec(
                 record, conn_qn, workflow_id, workflow_type, workflow_run_at_ms
             )
-            out_f.write(asset.to_nested_bytes() + b"\n")
+            out_f.write(
+                entity_bytes(asset, entity_type="api_spec", envelope=ENTITY_ENVELOPE)
+                + b"\n"
+            )
             api_spec_count += 1
 
         # Emit APIPath records
@@ -376,7 +396,10 @@ def _transform_blocking(
             asset = map_api_path(
                 record, conn_qn, workflow_id, workflow_type, workflow_run_at_ms
             )
-            out_f.write(asset.to_nested_bytes() + b"\n")
+            out_f.write(
+                entity_bytes(asset, entity_type="api_path", envelope=ENTITY_ENVELOPE)
+                + b"\n"
+            )
             api_path_count += 1
 
     total = api_spec_count + api_path_count
