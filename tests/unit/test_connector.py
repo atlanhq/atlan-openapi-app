@@ -490,6 +490,43 @@ class TestTransformBlocking:
         # No connection row: 1 spec + 2 paths = 3 NDJSON rows
         assert len(lines) == 3
 
+    async def test_output_uses_flattened_envelope_without_placeholder_guid(
+        self, tmp_path: Path
+    ) -> None:
+        # FND-2724: records go through the SDK's entity_bytes seam with the
+        # FLATTENED envelope — relationship refs live under ``attributes``
+        # (what atlan-publish-app diffs) and pyatlan's random placeholder guid
+        # is stripped so re-runs hash identically.
+        spec_file, path_file = await self._extracted_files(tmp_path)
+        result = _transform_blocking(
+            TransformInput(
+                api_spec_file=spec_file,
+                api_path_file=path_file,
+                connection=_conn_ref(),
+                connection_qualified_name=CONN_QN,
+                emit_connection=True,
+                workflow_id="wf-1",
+                workflow_type="openapi",
+                workflow_run_at_ms=1234,
+            ),
+            _LOGGER,
+        )
+        entities = [
+            orjson.loads(line)
+            for line in Path(result.output_file.local_path).read_bytes().splitlines()
+        ]
+        for entity in entities:
+            assert "guid" not in entity
+            assert "relationshipAttributes" not in entity
+
+        paths = [e for e in entities if e["typeName"] == "APIPath"]
+        assert len(paths) == 2
+        for path in paths:
+            assert path["attributes"]["apiSpec"] == {
+                "typeName": "APISpec",
+                "uniqueAttributes": {"qualifiedName": f"{CONN_QN}/TransformAPI"},
+            }
+
 
 # ---------------------------------------------------------------------------
 # download_cloud_spec task
