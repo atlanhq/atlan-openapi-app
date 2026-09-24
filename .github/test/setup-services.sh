@@ -23,11 +23,16 @@ set -euo pipefail
 # Start MinIO (S3-compatible, port 9000) and Azurite (Azure Blob, port 10000)
 # ---------------------------------------------------------------------------
 
+# MinIO comes from Atlan's private GHCR mirror of Chainguard's image, never
+# from a vendor registry: MinIO's own images vanished from Docker Hub and
+# then quay.io, pinned digest and all. The SDK's integration job logs in to
+# ghcr.io for this pull. To adopt a newer MinIO, see "CI test images (MinIO
+# mirror)" in application-sdk's docs/standards/build-security.md.
 docker run -d --name minio \
   -p 9000:9000 \
   -e MINIO_ROOT_USER=minioadmin \
   -e MINIO_ROOT_PASSWORD=minioadmin \
-  "quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e" server /data
+  "ghcr.io/atlanhq/ci-mirror/minio:RELEASE.2026-09-22T19-25-18Z@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1" server /data
 
 docker run -d --name azurite \
   -p 10000:10000 \
