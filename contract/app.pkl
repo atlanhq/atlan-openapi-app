@@ -336,10 +336,11 @@ uiConfig = new UIConfig {
 // contract field name.
 //
 // The artifact is NDJSON despite its `.json` suffix: _transform_blocking writes
-// one `to_nested_bytes()` record per line (app/connector.py). Each record is a
-// pyatlan_v9 Atlas nested-format entity — a msgspec Struct with `rename="camel"`
-// and `omit_defaults=True` (pyatlan_v9/model/assets/referenceable.py), so only
-// the envelope below is guaranteed on every line.
+// one SDK `entity_bytes()` record per line (app/connector.py). Each record is a
+// pyatlan_v9 asset in the SDK's FLATTENED envelope (`ENTITY_ENVELOPE`): Atlas
+// format via `to_atlas_format`, relationship refs merged into `attributes`.
+// Fields at their defaults are omitted, so only the envelope below is
+// guaranteed on every line.
 //
 // The declaration is the STANDARD ATLAS MODEL, not an app-specific shape — so
 // it is quoted from the model, not inferred from this connector. The required
