@@ -16,10 +16,11 @@ Requires:
     - MinIO at ``AWS_ENDPOINT_URL`` (default: http://localhost:9000)
     - Temporal server at ``TEMPORAL_HOST`` (default: localhost:7233)
 
-Run locally:
+Run locally (after ``docker login ghcr.io``; the image is Atlan's private
+mirror):
     docker run -d --rm -p 9000:9000 --name minio \\
         -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \\
-        quay.io/minio/minio server /data
+        ghcr.io/atlanhq/ci-mirror/minio:RELEASE.2026-09-22T19-25-18Z server /data
     temporal server start-dev &
     AWS_ENDPOINT_URL=http://localhost:9000 \\
         uv run pytest tests/integration/test_s3_download.py -v

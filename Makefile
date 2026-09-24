@@ -9,12 +9,13 @@ check-generate: generate
 	@git diff --exit-code app/generated/ atlan.yaml app.yaml \
 		|| (echo "ERROR: Generated files are stale. Run 'make generate' and commit." && exit 1)
 
+# The MinIO image is Atlan's private GHCR mirror: run `docker login ghcr.io` first.
 test-cloud-integration:
 	@echo "Starting MinIO..."
 	docker run -d --rm --name minio-test -p 9000:9000 \
 		-e MINIO_ROOT_USER=minioadmin \
 		-e MINIO_ROOT_PASSWORD=minioadmin \
-		quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+		ghcr.io/atlanhq/ci-mirror/minio:RELEASE.2026-09-22T19-25-18Z@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1 server /data
 	@echo "Waiting for MinIO..." && until curl -sf http://localhost:9000/minio/health/live; do sleep 1; done
 	@echo "Creating test bucket..."
 	AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin \
