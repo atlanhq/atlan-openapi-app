@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.7.1 (September 26, 2026)
+
+Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.7.0...v0.7.1
+
+### Features
+
+- update output_file comment for entity_bytes serialization (#611) (by @cmgrote in [f62e154](https://github.com/atlanhq/atlan-openapi-app/commit/f62e154))
+
+### Bug Fixes
+
+- close spec-URL redaction gap; clear all conformance suppressions (#574) (by @cmgrote in [023828c](https://github.com/atlanhq/atlan-openapi-app/commit/023828c))
+- serialize through SDK entity_bytes, not to_nested_bytes (FND-2724) (#607) (by @cmgrote in [3df6c75](https://github.com/atlanhq/atlan-openapi-app/commit/3df6c75))
+
+
 ## v0.7.0 (September 10, 2026)
 
 Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.6.2...v0.7.0
