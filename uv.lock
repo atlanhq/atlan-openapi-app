@@ -237,7 +237,7 @@ tests = [
 
 [[package]]
 name = "atlan-application-sdk-conformance"
-version = "0.39.0"
+version = "0.39.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jinja2" },
@@ -245,9 +245,9 @@ dependencies = [
     { name = "packaging" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/13/c8/aea77c8b80b345a68ff35a5863611df4bc0e3d1659de0d574f1856311a45/atlan_application_sdk_conformance-0.39.0.tar.gz", hash = "sha256:a840f8ad022e93d77c0dc7c91953206417efa8e8b952151d982900f8a3fa5533", size = 2017592, upload-time = "2026-09-24T23:15:42.459Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a9/1f/c8fffe6c55dfd320395eedb303ab5f1ef501d9a1005a3b1a27ed6dac6855/atlan_application_sdk_conformance-0.39.1.tar.gz", hash = "sha256:2ca31a6cc7ea00b4b7939eafa15236199cf493893b8616d4974c0bf3b827b165", size = 2041271, upload-time = "2026-09-27T23:35:38.605Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2b/49/067cb68bd54d72a152c339e01808b127d4d55e5cff8bbb564b6abd545c22/atlan_application_sdk_conformance-0.39.0-py3-none-any.whl", hash = "sha256:4d69b684f2e0588abd3491649a0393f9cd83e93e9314dcb7901af5f48d211f82", size = 1735378, upload-time = "2026-09-24T23:15:40.974Z" },
+    { url = "https://files.pythonhosted.org/packages/1c/a4/58fc61ae2adafa29a83edad674e47da7ed93fbe97555781875c80136f29d/atlan_application_sdk_conformance-0.39.1-py3-none-any.whl", hash = "sha256:6efc0cdf20148b8a4221c2225a226bed99da8225c8d24c6b1f67b89f458eae93", size = 1751829, upload-time = "2026-09-27T23:35:36.88Z" },
 ]
 
 [[package]]
@@ -1153,27 +1153,27 @@ wheels = [
 
 [[package]]
 name = "google-auth"
-version = "2.58.0"
+version = "2.58.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
     { name = "pyasn1-modules" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ac/ca/f398a483ce5aad18ca2f735646e45ccee2439bd94a41a4ad0cfa646bd495/google_auth-2.58.0.tar.gz", hash = "sha256:55e30cf15e737de92c5323d78cda8a83fcd57e7ffbaf900c4600039fd60a80fd", size = 380018, upload-time = "2026-09-09T20:49:38.043Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/52/aa/8055c583f8eb69dd4544f0d6a83e22d2f01ab38bd2ce848ea599c259a2d2/google_auth-2.58.1.tar.gz", hash = "sha256:1480461d8b2347e679af758f4003700ea79a59b603c9134e18bfa95e8004ee70", size = 380459, upload-time = "2026-09-24T21:52:00.171Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/59/13/477d90d09591b3938b45c4e11f4d8a51291682112cb5efcac961e815d562/google_auth-2.58.0-py3-none-any.whl", hash = "sha256:8a9c4645bb4c8e91668fb1934b95ae6a8687084232753639220ba9bf04a1610d", size = 262404, upload-time = "2026-09-09T20:49:33.951Z" },
+    { url = "https://files.pythonhosted.org/packages/7a/f0/cba0ac98e98e01849b19f7504eb3aeede741e72dfc31612e46d5f0dd981c/google_auth-2.58.1-py3-none-any.whl", hash = "sha256:66a63572d0ab629554768544df04018d79178c0bd7439ba31683ac576b79024d", size = 262483, upload-time = "2026-09-24T21:51:58.297Z" },
 ]
 
 [[package]]
 name = "googleapis-common-protos"
-version = "1.75.3"
+version = "1.75.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "protobuf" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8a/c5/4353a188e2c335aee33269e8b654af228278cca8e5f0b4b5f11e5d0e9adb/googleapis_common_protos-1.75.3.tar.gz", hash = "sha256:57c435ac2c68b108999b6db075d9053e4d7a936ba57b4a3d45667b1346f1738a", size = 153905, upload-time = "2026-09-03T22:31:21.869Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4b/13/f83676de1dce4f8106bcba91725b3f3f4baf6ca1977685102b008b8e0097/googleapis_common_protos-1.75.4.tar.gz", hash = "sha256:4587babdc82a8d7e5a3d4f5a6697e064bf44a598b4d08341c212b68185eadbcd", size = 154248, upload-time = "2026-09-24T23:20:21.759Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1a/7a/7d79170c6ce6f12e109df2b3879d6b934010cf4f99aea8de8b7e5408c174/googleapis_common_protos-1.75.3-py3-none-any.whl", hash = "sha256:a018d2bf098ca9fb6faa08d5bb780e2a2c2f73c566f069761331386c9596d3f2", size = 306984, upload-time = "2026-09-03T22:30:45.133Z" },
+    { url = "https://files.pythonhosted.org/packages/11/59/6474c44460037b8474d85c1a82311ec7244f3aabd53197be5b06a4db778e/googleapis_common_protos-1.75.4-py3-none-any.whl", hash = "sha256:e8eb9cffa9a9f3423090cc7a086012004196abab388a0561690e81887fd79cc1", size = 307743, upload-time = "2026-09-24T23:19:57.136Z" },
 ]
 
 [[package]]
