@@ -745,16 +745,15 @@ class OpenAPIConnector(App):
                 )
             # Resolve the object-store credential ONCE, agent-aware, and thread
             # the ref into the download task. route_credentials is the SDK's one
-            # router: an explicit openapi_credential slot (PKL/direct) wins, then
-            # agent_json / credential_guid go through CredentialRef.resolve — in
-            # SDR (agent) mode the platform forwards agent_json rather than a
-            # pre-built ref or GUID. An input with no routable source yields no
-            # ref, and the task falls back to the legacy cloud_source GUID. A
-            # misrouted input (agent mode with an empty agent_json) raises here
-            # and names the cause instead of silently using cloud_source.
-            cloud_credential_ref, _ = route_credentials(
-                input, ref_field="openapi_credential"
-            )
+            # router, and the preflight gate finds the same ref: a pre-built ref
+            # (the openapi_credential slot, PKL/direct) wins, then agent_json /
+            # credential_guid go through CredentialRef.resolve — in SDR (agent)
+            # mode the platform forwards agent_json rather than a pre-built ref
+            # or GUID. An input with no routable source yields no ref, and the
+            # task falls back to the legacy cloud_source GUID. A misrouted input
+            # (agent mode with an empty agent_json) raises here and names the
+            # cause instead of silently using cloud_source.
+            cloud_credential_ref, _ = route_credentials(input)
             # Download spec from cloud storage via task (credential resolution
             # and cloud I/O must run in an activity, not workflow code).
             cloud_result = await self.download_cloud_spec(
