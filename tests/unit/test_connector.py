@@ -17,6 +17,7 @@ import orjson
 import pytest
 from application_sdk.contracts.storage import UploadOutput
 from application_sdk.contracts.types import ConnectionRef, FileReference
+from application_sdk.credentials.errors import CredentialRoutingError
 from application_sdk.credentials.ref import CredentialRef
 from application_sdk.errors import InternalError
 from application_sdk.observability.logger_adaptor import get_logger
@@ -980,6 +981,50 @@ class TestRunCloudCredentialResolution:
         call_input = connector.download_cloud_spec.call_args.args[0]
         assert call_input.openapi_credential is not None
         assert call_input.openapi_credential.credential_guid == "guid-abc"
+
+    async def test_openapi_credential_slot_wins_over_credential_guid(self) -> None:
+        connector = _make_connector_for_run()
+        connector.download_cloud_spec = AsyncMock(  # type: ignore[method-assign]
+            return_value=DownloadCloudSpecOutput(
+                spec_files=[FileReference(local_path="/tmp/a.json")]
+            )
+        )
+        connector.extract_spec = AsyncMock(  # type: ignore[method-assign]
+            return_value=ExtractSpecOutput(api_spec_count=0, api_path_count=0)
+        )
+        slot = CredentialRef(name="store", credential_guid="slot-guid")
+
+        input = _base_input(
+            import_type="CLOUD",
+            spec_prefix="specs",
+            openapi_credential=slot,
+            credential_guid="guid-abc",
+            load_to_atlan=False,
+        )
+        await connector.run(input)
+
+        call_input = connector.download_cloud_spec.call_args.args[0]
+        assert call_input.openapi_credential == slot
+
+    async def test_misrouted_agent_run_raises_instead_of_using_cloud_source(
+        self,
+    ) -> None:
+        # extraction_method=agent with no agent_json: route_credentials names
+        # the misroute rather than sending the run to the cloud_source GUID.
+        connector = _make_connector_for_run()
+        connector.download_cloud_spec = AsyncMock()  # type: ignore[method-assign]
+
+        input = _base_input(
+            import_type="CLOUD",
+            spec_prefix="specs",
+            extraction_method="agent",
+            credential_guid="guid-abc",
+            cloud_source="legacy-guid",
+            load_to_atlan=False,
+        )
+        with pytest.raises(CredentialRoutingError):
+            await connector.run(input)
+        connector.download_cloud_spec.assert_not_awaited()
 
 
 class TestRunZeroScanned:
