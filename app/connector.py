@@ -26,7 +26,7 @@ from application_sdk.common.asset_serialization import entity_bytes
 from application_sdk.common.entity_envelope import EntityEnvelopePolicy, EnvelopeShape
 from application_sdk.contracts.storage import UploadInput
 from application_sdk.contracts.types import ConnectionRef, FileReference, StorageTier
-from application_sdk.credentials.errors import CredentialRoutingError
+from application_sdk.credentials import route_credentials
 from application_sdk.credentials.ref import CredentialRef
 from application_sdk.errors import InternalError
 from application_sdk.errors.base import AppError, sanitize_cause_repr
@@ -744,29 +744,16 @@ class OpenAPIConnector(App):
                     constraint="at least one is required when import_type='CLOUD'",
                 )
             # Resolve the object-store credential ONCE, agent-aware, and thread
-            # the ref into the download task. In SDR (agent) mode the platform
-            # forwards `agent_json` on the workflow input rather than a pre-built
-            # ref or GUID; CredentialRef.resolve consumes it and selects the
-            # agent route (falling back to the direct credential_guid route).
-            # Precedence: an explicit openapi_credential slot (PKL/direct) →
-            # agent/direct routing via resolve() → the legacy cloud_source GUID
-            # (handled inside the task). CredentialRoutingError means no routable
-            # source is set, so we leave the ref unset and let the task fall back
-            # to cloud_source.
-            cloud_credential_ref = input.openapi_credential
-            if cloud_credential_ref is None:
-                try:
-                    cloud_credential_ref = CredentialRef.resolve(input)
-                except CredentialRoutingError:
-                    # Benign: no agent_json/credential_guid on the input, so
-                    # there is no routable object-store credential here. Fall
-                    # back to the legacy cloud_source GUID inside the task.
-                    self.logger.debug(
-                        "no routable object-store credential on input; "
-                        "falling back to cloud_source GUID",
-                        exc_info=True,
-                    )
-                    cloud_credential_ref = None
+            # the ref into the download task. route_credentials is the SDK's one
+            # router, and the preflight gate finds the same ref: a pre-built ref
+            # (the openapi_credential slot, PKL/direct) wins, then agent_json /
+            # credential_guid go through CredentialRef.resolve — in SDR (agent)
+            # mode the platform forwards agent_json rather than a pre-built ref
+            # or GUID. An input with no routable source yields no ref, and the
+            # task falls back to the legacy cloud_source GUID. A misrouted input
+            # (agent mode with an empty agent_json) raises here and names the
+            # cause instead of silently using cloud_source.
+            cloud_credential_ref, _ = route_credentials(input)
             # Download spec from cloud storage via task (credential resolution
             # and cloud I/O must run in an activity, not workflow code).
             cloud_result = await self.download_cloud_spec(
