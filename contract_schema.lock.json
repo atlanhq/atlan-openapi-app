@@ -68,6 +68,12 @@
     },
     {
       "contract": "AppInputContract",
+      "field": "exclude_table_regex",
+      "status": "active",
+      "type": "str"
+    },
+    {
+      "contract": "AppInputContract",
       "field": "extraction_method",
       "status": "active",
       "type": "str"
