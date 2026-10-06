@@ -121,6 +121,9 @@ generate = { shell = "pkl eval --project-dir contract -m . contract/app.pkl && u
 
 [tool.ruff.lint]
 extend-select = ["G001", "G003", "G004", "T201", "LOG009"]
+# G201 asks for .exception(...) over .error(..., exc_info=True), the inverse of
+# conformance L017 (errors carry exc_info; .exception is not sanctioned).
+extend-ignore = ["G201"]
 
 [tool.ruff.lint.per-file-ignores]
 ".github/**" = ["T201"]
