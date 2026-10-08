@@ -63,8 +63,8 @@ URL_OBSERVED = {
     "spec_source_reachable",
     "spec_content_type_plausible",
 }
-CLOUD_MANDATORY = ("cloud_spec_location_configured",)
-CLOUD_OBSERVED = {"cloud_spec_location_configured"}
+CLOUD_MANDATORY = ("cloud_spec_location_configured", "cloud_spec_credential_valid")
+CLOUD_OBSERVED = set(CLOUD_MANDATORY)
 
 
 def _input(budget: int = 60, **config: Any) -> PreflightInput:
@@ -311,8 +311,9 @@ async def test_cloud_and_url_resources_are_judged_independently() -> None:
         expected_status="ready",
         mandatory_order=CLOUD_MANDATORY,
     )
-    # PF-15: CLOUD deliberately does not claim object-store reachability, so
-    # the URL path's probes must not appear here.
+    # No credential resolves here, so the store probe reports itself unprobed
+    # (PF-15) rather than claiming reachability; the URL path's probes must not
+    # appear.
     assert {c.name for c in cloud.checks} == CLOUD_OBSERVED
 
     respx.get(SPEC_URL).mock(

@@ -26,10 +26,10 @@ from app.connector import (
     OpenAPIConnector,
     _enc_hook,
     _extract_spec_async,
-    _has_valid_auth,
     _iter_jsonl,
     _transform_blocking,
 )
+from app.cloud_store import has_valid_auth
 from app.contracts import (
     DownloadCloudSpecInput,
     DownloadCloudSpecOutput,
@@ -907,28 +907,28 @@ class TestRunCloudNoFiles:
 
 
 class TestHasValidAuth:
-    """CONNECT-812 PF-17: _has_valid_auth must never raise — its frame holds
+    """CONNECT-812 PF-17: has_valid_auth must never raise — its frame holds
     the plaintext credential dict, and a traceback through it would be
     diagnose-annotated into the logs."""
 
     def test_malformed_extra_json_reads_as_no_role_auth(self) -> None:
         assert (
-            _has_valid_auth({"username": "", "password": "", "extra": "{not json"})
+            has_valid_auth({"username": "", "password": "", "extra": "{not json"})
             is False
         )
 
     def test_non_dict_extra_reads_as_no_role_auth(self) -> None:
-        assert _has_valid_auth({"username": "", "password": "", "extra": "42"}) is False
+        assert has_valid_auth({"username": "", "password": "", "extra": "42"}) is False
 
     def test_key_auth_still_detected_with_malformed_extra(self) -> None:
         assert (
-            _has_valid_auth({"username": "u", "password": "p", "extra": "{not json"})
+            has_valid_auth({"username": "u", "password": "p", "extra": "{not json"})
             is True
         )
 
     def test_role_auth_detected(self) -> None:
         assert (
-            _has_valid_auth(
+            has_valid_auth(
                 {"username": "", "password": "", "extra": {"aws_role_arn": "arn:x"}}
             )
             is True
