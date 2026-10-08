@@ -35,7 +35,6 @@ from application_sdk.handler import (
 from app.handler import (
     OpenAPIConnectorHandler,
     _classify_store_failure,
-    _credentials_to_raw,
     _probe_timeout,
     _read_object_store,
 )
@@ -335,6 +334,7 @@ class TestCloudCredentialProbe:
         return [
             HandlerCredential(key="authType", value="s3"),
             HandlerCredential(key="extra.aws_role_arn", value="arn:aws:iam::1:role/r"),
+            HandlerCredential(key="extra.region", value="ap-southeast-2"),
         ]
 
     @pytest.mark.asyncio
@@ -493,20 +493,10 @@ class TestCloudCredentialProbe:
         assert out.status == PreflightStatus.READY
         assert seen["raw"] == {
             "authType": "s3",
-            "extra": {"aws_role_arn": "arn:aws:iam::1:role/r"},
-        }
-
-    def test_flat_pairs_rebuild_the_nested_extra(self) -> None:
-        raw = _credentials_to_raw(
-            [
-                HandlerCredential(key="authType", value="s3"),
-                HandlerCredential(key="extra.aws_role_arn", value="arn"),
-                HandlerCredential(key="extra.region", value="ap-southeast-2"),
-            ]
-        )
-        assert raw == {
-            "authType": "s3",
-            "extra": {"aws_role_arn": "arn", "region": "ap-southeast-2"},
+            "extra": {
+                "aws_role_arn": "arn:aws:iam::1:role/r",
+                "region": "ap-southeast-2",
+            },
         }
 
     def test_severed_context_is_not_walked(self) -> None:

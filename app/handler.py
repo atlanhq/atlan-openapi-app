@@ -40,6 +40,7 @@ import os
 import time
 from typing import Any
 
+from application_sdk.credentials import expand_dotted_keys
 from application_sdk.errors import RateLimitedError
 from application_sdk.errors.base import AppError, sanitize_cause_repr
 from application_sdk.handler import (
@@ -112,29 +113,6 @@ _TRANSIENT_NETWORK_ERRORS = frozenset(
         "RemoteProtocolError",
     }
 )
-
-
-def _credentials_to_raw(credentials: list[HandlerCredential]) -> dict[str, Any]:
-    """Rebuild the nested credential dict ``CloudStore.from_credentials`` wants.
-
-    Inverse of the SDK's ``flatten_credentials_to_pairs``, which hoists nested
-    ``extra`` to ``extra.<k>`` pairs — the only credential view a gate-side
-    handler is given. Reconstructing it here keeps the probe on exactly the
-    credential extraction will use, rather than a narrower reading of it.
-
-    Not the SDK's ``expand_dotted_keys``: on a key conflict it debug-logs the
-    conflicting value with ``%r``, and every value here is credential material.
-    """
-    raw: dict[str, Any] = {}
-    extra: dict[str, Any] = {}
-    for pair in credentials:
-        if pair.key.startswith("extra."):
-            extra[pair.key.removeprefix("extra.")] = pair.value
-        else:
-            raw[pair.key] = pair.value
-    if extra:
-        raw["extra"] = extra
-    return raw
 
 
 async def _read_object_store(raw: dict[str, Any], prefix: str, key: str) -> bool:
@@ -453,7 +431,9 @@ class OpenAPIConnectorHandler(DefaultHandler):
             )
         if not credentials:
             return _unprobed("object-store credential did not resolve on the gate path")
-        raw = _credentials_to_raw(credentials)
+        # The gate hands the credential over as flat pairs, nested ``extra``
+        # hoisted to ``extra.<k>``; CloudStore.from_credentials wants it nested.
+        raw = expand_dotted_keys({c.key: c.value for c in credentials})
         if not has_valid_auth(raw):
             return _unprobed(
                 "object-store credential carries no key or role auth, so the run "
