@@ -37,6 +37,7 @@ from app.handler import (
     _classify_store_failure,
     _credentials_to_raw,
     _probe_timeout,
+    _read_object_store,
 )
 
 # DNS is stubbed suite-wide (tests/unit/conftest.py) so the SSRF check in
@@ -292,8 +293,8 @@ class TestCloudMode:
             _input(import_type="CLOUD", spec_prefix="specs", spec_key="a.json")
         )
         assert out.status == PreflightStatus.READY
-        # PF-15: the check row states what is NOT probed.
-        assert "not probed" in out.checks[0].message
+        # PF-15: the check row states what it does NOT probe.
+        assert "does not probe" in out.checks[0].message
 
     @pytest.mark.asyncio
     async def test_missing_location_is_not_ready(self) -> None:
@@ -340,9 +341,10 @@ class TestCloudCredentialProbe:
     async def test_readable_store_is_ready(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        async def _ok(raw: dict, prefix: str, key: str) -> None:
+        async def _ok(raw: dict, prefix: str, key: str) -> bool:
             assert prefix == "specs"
             assert key == "a.json"
+            return True
 
         monkeypatch.setattr("app.handler._read_object_store", _ok)
         out = await OpenAPIConnectorHandler().preflight_check(
@@ -470,13 +472,13 @@ class TestCloudCredentialProbe:
     async def test_inline_credentials_are_probed_on_the_ui_path(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Test-Connection sends credentials inline, not through the gate's named
-        ref. Without the fallback the probe silently reports "not probed" on the
-        one surface a user watches interactively."""
+        """A direct handler call (tests, local dev) passes credentials inline,
+        not through the gate's named ref; the probe still runs on them."""
         seen: dict[str, object] = {}
 
-        async def _capture(raw: dict, prefix: str, key: str) -> None:
+        async def _capture(raw: dict, prefix: str, key: str) -> bool:
             seen["raw"] = raw
+            return True
 
         monkeypatch.setattr("app.handler._read_object_store", _capture)
         out = await OpenAPIConnectorHandler().preflight_check(
@@ -528,6 +530,126 @@ class TestCloudCredentialProbe:
         fail closed on an object-store outage."""
         assert _classify_store_failure(RuntimeError("who knows")) is None
 
+    @staticmethod
+    def _no_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+        async def _boom(raw: dict, prefix: str, key: str) -> bool:
+            raise AssertionError("must not probe a store the run will not read")
+
+        monkeypatch.setattr("app.handler._read_object_store", _boom)
+
+    @pytest.mark.asyncio
+    async def test_credential_without_key_or_role_auth_is_not_probed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A GCS service account or ADLS access key travels in ``password`` with
+        no ``username``. has_valid_auth reads that as no auth, so
+        download_cloud_spec reads the tenant store, and a verdict on the
+        customer bucket would describe a store the run never touches."""
+        self._no_probe(monkeypatch)
+        out = await OpenAPIConnectorHandler().preflight_check(
+            self._cloud_input(
+                object_store=[
+                    HandlerCredential(key="authType", value="gcs"),
+                    HandlerCredential(key="password", value="{}"),
+                    HandlerCredential(key="extra.gcs_bucket", value="b"),
+                ]
+            )
+        )
+        assert out.status == PreflightStatus.READY
+        row = next(c for c in out.checks if c.name == "cloud_spec_credential_valid")
+        assert row.passed
+        assert "tenant store" in row.message
+        assert "not probed" in row.message
+
+    @pytest.mark.asyncio
+    async def test_openapi_credential_takes_precedence_and_is_not_probed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Extraction routes a pre-built openapi_credential ahead of
+        cloud_source, so probing cloud_source would check the wrong store."""
+        self._no_probe(monkeypatch)
+        out = await OpenAPIConnectorHandler().preflight_check(
+            PreflightInput(
+                connection_config=BaseConnectionConfig(
+                    import_type="CLOUD",
+                    spec_key="a.json",
+                    openapi_credential={"credential_guid": "other-guid"},
+                ),
+                timeout_seconds=60,
+                credentials_by_name={"object_store": self._creds()},
+            )
+        )
+        assert out.status == PreflightStatus.READY
+        row = next(c for c in out.checks if c.name == "cloud_spec_credential_valid")
+        assert row.passed
+        assert "openapi_credential" in row.message
+
+    @pytest.mark.asyncio
+    async def test_prefix_with_no_spec_is_not_ready(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def _empty(raw: dict, prefix: str, key: str) -> bool:
+            return False
+
+        monkeypatch.setattr("app.handler._read_object_store", _empty)
+        out = await OpenAPIConnectorHandler().preflight_check(
+            PreflightInput(
+                connection_config=BaseConnectionConfig(
+                    import_type="CLOUD", spec_prefix="specs"
+                ),
+                timeout_seconds=60,
+                credentials_by_name={"object_store": self._creds()},
+            )
+        )
+        assert out.status == PreflightStatus.NOT_READY
+        row = next(c for c in out.checks if c.name == "cloud_spec_credential_valid")
+        assert row.error is not None
+        assert row.error.code == "NOT_FOUND_OPENAPI_CLOUD_SPEC"
+
+
+class TestReadObjectStore:
+    """The prefix-only listing must prove what extraction will find, using the
+    suffix filter download_cloud_spec downloads with."""
+
+    @staticmethod
+    async def _read_prefix(
+        monkeypatch: pytest.MonkeyPatch, listing: dict[str, list]
+    ) -> bool:
+        import obstore
+        from application_sdk.storage.cloud import CloudStore
+
+        class _Store:
+            store = object()
+
+        async def _list(store: object, prefix: str | None) -> dict[str, list]:
+            assert prefix == "specs"
+            return listing
+
+        monkeypatch.setattr(CloudStore, "from_credentials", lambda raw: _Store())
+        monkeypatch.setattr(obstore, "list_with_delimiter_async", _list)
+        return await _read_object_store({}, "specs", "")
+
+    @pytest.mark.parametrize(
+        ("listing", "found"),
+        [
+            ({"common_prefixes": [], "objects": []}, False),
+            ({"common_prefixes": [], "objects": [{"path": "specs/a.txt"}]}, False),
+            ({"common_prefixes": [], "objects": [{"path": "specs/A.JSON"}]}, True),
+            ({"common_prefixes": [], "objects": [{"path": "specs/a.yml"}]}, True),
+            # A subdirectory may hold a spec one level deeper than this listing
+            # sees, and extraction recurses into it, so it is not a miss.
+            ({"common_prefixes": ["specs/v1/"], "objects": []}, True),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_prefix_listing_verdict(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        listing: dict[str, list],
+        found: bool,
+    ) -> None:
+        assert await self._read_prefix(monkeypatch, listing) is found
+
 
 class TestNamedCredentialRef:
     def test_gate_resolves_the_object_store_credential(self) -> None:
@@ -556,6 +678,53 @@ class TestNamedCredentialRef:
         )
         assert gate_input.credential_ref_fields == {"object_store": "cloud_source"}
         assert gate_input.extraction_snapshot["cloud_source"] == "some-guid"
+
+    @pytest.mark.asyncio
+    async def test_openapi_credential_reaches_the_handler_on_the_gate_path(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The precedence guard reads openapi_credential off the config the gate
+        builds. If the gate ever strips it the way it strips the routing
+        fields, the guard goes blind and the probe checks cloud_source while
+        the run reads openapi_credential."""
+        # conformance: ignore[P005] the gate envelope has no public re-export, absent from application_sdk.execution / .app / .handler
+        from application_sdk.execution._temporal.preflight_gate import (
+            PreflightGateInput,
+            _gate_preflight_input,
+        )
+
+        from app.contracts import OpenAPIConnectorInput
+
+        async def _boom(raw: dict, prefix: str, key: str) -> bool:
+            raise AssertionError("must not probe cloud_source")
+
+        monkeypatch.setattr("app.handler._read_object_store", _boom)
+        gate_input = PreflightGateInput.from_extraction_input(
+            OpenAPIConnectorInput.model_validate(
+                {
+                    "workflow_id": "w",
+                    "import_type": "CLOUD",
+                    "spec_key": "a.json",
+                    "cloud_source": "some-guid",
+                    "openapi_credential": {
+                        "name": "openapi",
+                        "credential_type": "unknown",
+                        "credential_guid": "other-guid",
+                    },
+                }
+            ),
+            "crawler",
+        )
+        preflight_input, _ = _gate_preflight_input(
+            gate_input,
+            [],
+            {"object_store": TestCloudCredentialProbe._creds()},
+            60,
+        )
+        out = await OpenAPIConnectorHandler().preflight_check(preflight_input)
+        row = next(c for c in out.checks if c.name == "cloud_spec_credential_valid")
+        assert row.passed
+        assert "openapi_credential" in row.message
 
     def test_run_input_subclasses_the_sdk_input(self) -> None:
         """Backs the P013 suppression in app/connector.py: the static check

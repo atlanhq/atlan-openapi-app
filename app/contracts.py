@@ -48,6 +48,15 @@ class OpenAPIConnectorInput(AppInputContract):
 
     Must stay a ``ClassVar``: declared as a pydantic field the gate reads ``{}``
     and silently falls back to single-credential resolution.
+
+    Coverage boundary: as of SDK 3.43 the gate resolves *either* the named refs
+    *or* the routing triple (pre-built ref / ``agent_json`` /
+    ``credential_guid``), never both. Extraction tries the triple first
+    (``route_credentials``) and ``cloud_source`` last. The handler reports the
+    probe unprobed when ``openapi_credential`` is set. An agent-mode run is not
+    visible to the handler (the gate strips the routing fields from its
+    config), so for one that also carries a ``cloud_source`` guid, the probe
+    reads that guid's store rather than the agent's.
     """
 
     preflight_credential_refs: ClassVar[dict[str, str]] = {

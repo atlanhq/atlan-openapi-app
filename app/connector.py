@@ -20,7 +20,6 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 import msgspec
-import orjson
 from application_sdk.app import App, task
 from application_sdk.common.asset_serialization import entity_bytes
 from application_sdk.common.entity_envelope import EntityEnvelopePolicy, EnvelopeShape
@@ -31,7 +30,6 @@ from application_sdk.credentials.ref import CredentialRef
 from application_sdk.errors import InternalError
 from application_sdk.errors.base import AppError, sanitize_cause_repr
 from application_sdk.observability.logger_adaptor import AtlanLoggerAdapter as Logger
-from application_sdk.observability.logger_adaptor import get_logger
 from application_sdk.outputs import Metric, get_outputs
 
 from app.api_client import redact_url
@@ -42,6 +40,7 @@ from app.asset_mapper import (
     map_api_spec,
     map_connection,
 )
+from app.cloud_store import CLOUD_SPEC_SUFFIXES, has_valid_auth
 from app.contracts import (
     DownloadCloudSpecInput,
     DownloadCloudSpecOutput,
@@ -75,11 +74,6 @@ T = TypeVar("T")
 # Module-level constants
 # =============================================================================
 
-# Module-level sink for the handful of module-level helpers below. Every
-# method on the App class logs through its own ``self.logger``; this exists
-# only so a free function is not forced to swallow an event silently.
-_logger = get_logger(__name__)
-
 # How every transformed JSONL line is shaped (FND-2724). FLATTENED puts
 # relationship refs (APIPath.apiSpec) under ``attributes``, which is what
 # atlan-publish-app's relationship diffing reads; it is also the SDK default,
@@ -93,44 +87,6 @@ def _is_unsubstituted_placeholder(value: str) -> bool:
     run that never had a real connection selected, before the placeholder leaks
     into downstream object-store paths."""
     return "{{" in value or "}}" in value
-
-
-def _has_valid_auth(credentials: dict[str, Any]) -> bool:
-    """Return True if credentials have explicit key-based or role-based auth.
-
-    Determines whether to use an external cloud store (Path A) or fall back
-    to the tenant's own Dapr-configured store (Path B).
-
-    Must never raise: the resolved credential dict (plaintext password
-    included) is in this frame, and the SDK's loguru sinks format tracebacks
-    with ``diagnose`` enabled, which annotates frame variables — a raise here
-    would write the credential to the logs (CONNECT-812 PF-17 class). A
-    malformed ``extra`` therefore reads as "no role auth", not an error.
-    """
-    has_key_auth = bool(credentials.get("username") and credentials.get("password"))
-    extra = credentials.get("extra") or credentials.get("extras") or {}
-    if isinstance(extra, str):
-        try:
-            extra = orjson.loads(extra) if extra else {}
-        except orjson.JSONDecodeError as exc:
-            # Falling back to "no role auth" is the contract (see the docstring
-            # — this must never raise), but the fallback is no longer silent: a
-            # malformed ``extra`` is why an operator would otherwise see Path B
-            # chosen with no explanation. The cause goes through
-            # sanitize_cause_repr and ``exc_info`` stays off, because this
-            # frame holds the plaintext credential and loguru's ``diagnose``
-            # annotates frame variables into tracebacks (CONNECT-812 PF-17).
-            # orjson's message carries only a line/column position, never the
-            # payload.
-            _logger.warning(
-                "credential 'extra' is not valid JSON; treating as no role auth: %s",
-                sanitize_cause_repr(exc),
-            )
-            extra = {}
-    if not isinstance(extra, dict):
-        extra = {}
-    has_role_auth = bool(extra.get("aws_role_arn"))
-    return has_key_auth or has_role_auth
 
 
 def _enc_hook(obj: Any) -> Any:
@@ -496,7 +452,7 @@ class OpenAPIConnector(App):
                 list(credential_data.keys()),
             )
 
-        if credential_data is not None and _has_valid_auth(credential_data):
+        if credential_data is not None and has_valid_auth(credential_data):
             self.logger.info(
                 "using external cloud storage auth_type=%s",
                 credential_data.get("authType")
@@ -596,7 +552,7 @@ class OpenAPIConnector(App):
             local_paths = await store.download(
                 prefix=prefix,
                 output_dir=tmp_dir,
-                suffix_filter={".json", ".yaml", ".yml", ".zip"},
+                suffix_filter=set(CLOUD_SPEC_SUFFIXES),
             )
         return DownloadCloudSpecOutput(
             spec_files=[
