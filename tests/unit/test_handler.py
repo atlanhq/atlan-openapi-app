@@ -10,10 +10,11 @@ registry rules it was built against:
 
 Plus the two gate-semantics rules the handler must not get wrong:
 
-* a transient (429 / 5xx / no answer) is **returned** as a failed row carrying
-  its RATE_LIMITED / DEPENDENCY_UNAVAILABLE error, and the verdict stays
-  ``READY`` — a blip at the source is "ask me later", and a ``NOT_READY`` would
-  abort a healthy run once the app opts into hard mode;
+* a transient (429 / 5xx / no answer) is **raised** as a retryable
+  ``SOURCE_UNAVAILABLE`` leaf, not returned as a verdict — the gate records
+  the source as unverifiable and never blocks on that category, while a ``NOT_READY``
+  would abort a healthy run once the app opts into hard mode and a ``READY``
+  would carry a failed mandatory row nothing verified;
 * the probe's timeout stays strictly inside the enforced budget.
 """
 
@@ -25,13 +26,11 @@ from pathlib import Path
 import httpx
 import pytest
 import respx
-from application_sdk.errors import FailureCategory
+from application_sdk.errors import FailureCategory, SourceUnavailableError
 from application_sdk.handler import (
     BaseConnectionConfig,
     HandlerCredential,
-    PreflightCheck,
     PreflightInput,
-    PreflightOutput,
     PreflightStatus,
 )
 
@@ -197,61 +196,66 @@ class TestUrlMode:
         assert not [c for c in out.checks if c.name == "spec_content_type_plausible"]
 
 
-def _transient_row(out: PreflightOutput, name: str) -> PreflightCheck:
-    """The failed row a transient leaves behind, with the verdict it must not flip."""
-    assert out.status == PreflightStatus.READY
-    row = next(c for c in out.checks if c.name == name)
-    assert row.passed is False
-    assert row.error is not None
-    assert row.error.category in {
-        FailureCategory.DEPENDENCY_UNAVAILABLE,
-        FailureCategory.RATE_LIMITED,
-    }
-    assert name in out.message
-    return row
+def _assert_retryable_source_leaf(error: Exception, code: str) -> None:
+    """A transient leaves as a leaf the gate never blocks on: retryable
+    SOURCE_UNAVAILABLE, not one of its deprecated fail-open categories, and with a
+    next step for the connection owner."""
+    assert isinstance(error, SourceUnavailableError)
+    assert error.category == FailureCategory.SOURCE_UNAVAILABLE
+    assert error.to_failure_details().retryable is True
+    assert error.code == code
+    assert error.to_failure_details().suggested_action
 
 
-class TestTransientsAreReportedNotVoted:
+class TestTransientsAreRaisedNotVoted:
     """A transient means 'ask me later', not 'the source is not ready'.
 
-    It comes back as a failed row whose typed error says so, and the verdict
-    stays READY. Raising it instead loses the row, and the gate no longer
-    treats a raise from the handler as its own plumbing; a NOT_READY would
-    abort a healthy run on a spec-host blip the moment the app goes hard.
+    The handler raises a retryable SOURCE_UNAVAILABLE leaf: the gate records the
+    source as unverifiable and never blocks on that category. RATE_LIMITED and
+    DEPENDENCY_UNAVAILABLE are the gate's deprecated fail-open categories, so a
+    429 is mapped onto the same leaf. Returning NOT_READY instead would abort a
+    healthy run on a spec-host blip the moment the app goes hard.
     """
 
     URL = "https://example.com/api.json"
 
-    async def _preflight(self) -> PreflightOutput:
-        return await OpenAPIConnectorHandler().preflight_check(
-            _input(import_type="URL", spec_url=self.URL)
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_429_raises_a_retryable_source_unavailable_leaf(self) -> None:
+        respx.get(self.URL).mock(return_value=httpx.Response(429))
+        with pytest.raises(SourceUnavailableError) as excinfo:
+            await OpenAPIConnectorHandler().preflight_check(
+                _input(import_type="URL", spec_url=self.URL)
+            )
+        _assert_retryable_source_leaf(
+            excinfo.value, "SOURCE_UNAVAILABLE_OPENAPI_SPEC_SOURCE"
         )
 
     @pytest.mark.asyncio
     @respx.mock
-    async def test_429_is_a_rate_limited_row_and_ready(self) -> None:
-        respx.get(self.URL).mock(return_value=httpx.Response(429))
-        row = _transient_row(await self._preflight(), "spec_source_reachable")
-        assert row.error is not None
-        assert row.error.category == FailureCategory.RATE_LIMITED
-
-    @pytest.mark.asyncio
-    @respx.mock
-    async def test_5xx_is_a_dependency_unavailable_row_and_ready(self) -> None:
+    async def test_5xx_raises_a_retryable_source_unavailable_leaf(self) -> None:
         respx.get(self.URL).mock(return_value=httpx.Response(503))
-        row = _transient_row(await self._preflight(), "spec_source_reachable")
-        assert row.error is not None
-        assert row.error.code == "DEPENDENCY_UNAVAILABLE_OPENAPI_SPEC_SOURCE"
+        with pytest.raises(SourceUnavailableError) as excinfo:
+            await OpenAPIConnectorHandler().preflight_check(
+                _input(import_type="URL", spec_url=self.URL)
+            )
+        _assert_retryable_source_leaf(
+            excinfo.value, "SOURCE_UNAVAILABLE_OPENAPI_SPEC_SOURCE"
+        )
 
     @pytest.mark.asyncio
     @respx.mock
-    async def test_read_timeout_is_a_dependency_unavailable_row_and_ready(
+    async def test_read_timeout_raises_a_retryable_source_unavailable_leaf(
         self,
     ) -> None:
         respx.get(self.URL).mock(side_effect=httpx.ReadTimeout("slow"))
-        row = _transient_row(await self._preflight(), "spec_source_reachable")
-        assert row.error is not None
-        assert row.error.code == "DEPENDENCY_UNAVAILABLE_OPENAPI_SPEC_SOURCE"
+        with pytest.raises(SourceUnavailableError) as excinfo:
+            await OpenAPIConnectorHandler().preflight_check(
+                _input(import_type="URL", spec_url=self.URL)
+            )
+        _assert_retryable_source_leaf(
+            excinfo.value, "SOURCE_UNAVAILABLE_OPENAPI_SPEC_SOURCE"
+        )
 
     @pytest.mark.asyncio
     @respx.mock
@@ -442,21 +446,25 @@ class TestCloudCredentialProbe:
         assert row.error.retryable is False
 
     @pytest.mark.asyncio
-    async def test_unattributable_failure_is_a_transient_row_and_ready(
+    async def test_unattributable_failure_is_raised_not_voted(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         async def _fail(raw: dict, prefix: str, key: str) -> None:
             raise RuntimeError("something else entirely")
 
         monkeypatch.setattr("app.handler._read_object_store", _fail)
-        out = await OpenAPIConnectorHandler().preflight_check(
-            self._cloud_input(object_store=self._creds())
+        with pytest.raises(SourceUnavailableError) as caught:
+            await OpenAPIConnectorHandler().preflight_check(
+                self._cloud_input(object_store=self._creds())
+            )
+        _assert_retryable_source_leaf(
+            caught.value, "SOURCE_UNAVAILABLE_OPENAPI_CLOUD_SPEC_STORE"
         )
-        row = _transient_row(out, "cloud_spec_credential_valid")
-        assert row.error is not None
-        assert row.error.code == "DEPENDENCY_UNAVAILABLE_OPENAPI_CLOUD_SPEC_STORE"
-        assert "something else entirely" not in row.resolved_message
-        assert row.resolved_suggested_action
+        # PF-17: the chain out of the credential-holding frame is severed.
+        assert caught.value.__suppress_context__ is True
+        assert (
+            "something else entirely" not in caught.value.to_failure_details().message
+        )
 
     @pytest.mark.asyncio
     async def test_overrun_is_a_transient_not_a_verdict(
@@ -467,12 +475,14 @@ class TestCloudCredentialProbe:
 
         monkeypatch.setattr("app.handler._read_object_store", _hang)
         monkeypatch.setattr("app.handler._probe_timeout", lambda _budget: 0.01)
-        out = await OpenAPIConnectorHandler().preflight_check(
-            self._cloud_input(object_store=self._creds())
+        with pytest.raises(SourceUnavailableError) as caught:
+            await OpenAPIConnectorHandler().preflight_check(
+                self._cloud_input(object_store=self._creds())
+            )
+        _assert_retryable_source_leaf(
+            caught.value, "SOURCE_UNAVAILABLE_OPENAPI_CLOUD_SPEC_STORE"
         )
-        row = _transient_row(out, "cloud_spec_credential_valid")
-        assert row.error is not None
-        assert row.error.code == "DEPENDENCY_UNAVAILABLE_OPENAPI_CLOUD_SPEC_STORE"
+        assert caught.value.__suppress_context__ is True
 
     @pytest.mark.asyncio
     async def test_missing_location_short_circuits_the_probe(
