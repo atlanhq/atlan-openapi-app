@@ -27,10 +27,13 @@ Design rules applied from the CONNECT-812 pattern registry:
 
 **Verdicts versus transients.** A ``NOT_READY`` verdict means *the source is
 not ready* — something the connection owner must fix. A rate limit, a 5xx, or
-an endpoint that will not answer is "ask me later", not a verdict: those are
-**raised** as ``RATE_LIMITED`` / ``DEPENDENCY_UNAVAILABLE`` leaves, which the
-gate classifies as its own plumbing and fails open on. Collapsing the two would
-make hard mode abort a healthy run whenever the spec host hiccups.
+an endpoint that will not answer is "ask me later", not a verdict: the probe
+**returns** it as a failed row whose typed error is a ``RATE_LIMITED`` /
+``DEPENDENCY_UNAVAILABLE`` leaf, and such a row does not count against the
+verdict, which stays ``READY``. The row keeps the evidence on the check matrix,
+and the run proceeds. Raising it instead would lose the row, and the gate no
+longer treats a raise from the handler as its own plumbing. Collapsing the two
+would make hard mode abort a healthy run whenever the spec host hiccups.
 """
 
 from __future__ import annotations
@@ -41,7 +44,7 @@ import time
 from typing import Any
 
 from application_sdk.credentials import expand_dotted_keys
-from application_sdk.errors import RateLimitedError
+from application_sdk.errors import FailureCategory, RateLimitedError
 from application_sdk.errors.base import AppError, sanitize_cause_repr
 from application_sdk.handler import (
     BaseConnectionConfig,
@@ -55,7 +58,7 @@ from application_sdk.handler import (
 from application_sdk.observability.logger_adaptor import get_logger
 
 from app.api_client import OpenAPIApiClient, redact_url
-from app.cloud_store import CLOUD_SPEC_SUFFIXES, has_valid_auth
+from app.cloud_store import CLOUD_SPEC_SUFFIXES, extra_is_malformed, has_valid_auth
 from app.errors import (
     CloudSpecAccessDeniedError,
     CloudSpecCredentialRejectedError,
@@ -82,6 +85,26 @@ _MANDATORY_CHECKS = frozenset(
         "cloud_spec_credential_valid",
     }
 )
+
+# A failed row in these categories says the source could not be evaluated this
+# time, not that it is unready, so it never flips the verdict (see the module
+# docstring).
+_TRANSIENT_CATEGORIES = frozenset(
+    {FailureCategory.DEPENDENCY_UNAVAILABLE, FailureCategory.RATE_LIMITED}
+)
+
+
+# Operator hint for an object-store transient (PLATFORM audience).
+_STORE_TRANSIENT_ACTION = (
+    "No action unless this repeats: the run proceeds and reads the object store "
+    "again. If it recurs across runs, check the object store's availability and "
+    "latency for requests from the worker."
+)
+
+
+def _is_transient(check: PreflightCheck) -> bool:
+    return check.error is not None and check.error.category in _TRANSIENT_CATEGORIES
+
 
 # Ceiling for the URL probe, and the share of the remaining gate budget it may
 # consume. ``input.timeout_seconds`` carries the *enforced* remaining budget, so
@@ -162,9 +185,9 @@ def _classify_store_failure(exc: BaseException) -> AppError | None:
     rather than the SDK wrapper — otherwise a bad role token is filed against the
     platform and the probe fails open on the one case it exists to catch.
 
-    ``None`` means "could not attribute", which the caller turns into a
-    fail-open transient. Guessing here would make the gate fail closed on an
-    outage.
+    ``None`` means "could not attribute", which the caller reports as a
+    transient row that leaves the verdict READY. Guessing here would make the
+    gate fail closed on an outage.
     """
     from obstore.exceptions import (  # noqa: PLC0415 — native module, lazy
         NotFoundError as ObstoreNotFoundError,
@@ -227,15 +250,15 @@ def _classify_store_failure(exc: BaseException) -> AppError | None:
 
 
 def _as_gate_transient(error: AppError) -> AppError | None:
-    """The fail-open error to raise instead of a ``NOT_READY`` verdict, or None.
+    """The transient to report in place of a ``NOT_READY`` verdict, or None.
 
     The extraction path types a 5xx and a read timeout as
     ``SpecSourceUnavailableError`` (USER audience) — correct there, because the
     run really did fail and the connection owner is the one who chases the spec
     host. On the *preflight* path the same condition means only "could not be
     evaluated this time", so it is remapped onto a ``DEPENDENCY_UNAVAILABLE``
-    leaf, which the gate routes to fail-open in both postures. One root cause,
-    two surfaces, each attributed for what actually happened on it.
+    leaf, whose row leaves the verdict READY. One root cause, two surfaces,
+    each attributed for what actually happened on it.
     """
     if isinstance(error, RateLimitedError):
         return error
@@ -253,6 +276,11 @@ def _as_gate_transient(error: AppError) -> AppError | None:
         message=(
             "spec endpoint could not be evaluated during preflight "
             f"({reason}); treating as a transient rather than a verdict"
+        ),
+        suggested_action=(
+            "No action unless this repeats: the run proceeds and fetches the spec "
+            "again. If it recurs across runs, check whether the spec host is "
+            "returning 5xx responses or timing out for requests from the worker."
         ),
         service="openapi_spec_endpoint",
         cause=error,
@@ -306,10 +334,14 @@ class OpenAPIConnectorHandler(DefaultHandler):
         # PF-12: mandatory checks alone decide the verdict. An advisory failure
         # is reported in the check rows and the summary message below but does
         # not change it — extraction can still proceed, so the verdict stays
-        # READY. (PreflightStatus.PARTIAL is deprecated and is removed in SDK
-        # v3.40.0; READY / NOT_READY are the only two verdicts.)
+        # READY. A transient on a mandatory check is reported the same way: the
+        # source could not be evaluated, which is not evidence it is unready.
+        # (PreflightStatus.PARTIAL is deprecated and is removed in SDK v3.40.0;
+        # READY / NOT_READY are the only two verdicts.)
         mandatory_failed = any(
-            not c.passed for c in checks if c.name in _MANDATORY_CHECKS
+            not c.passed and not _is_transient(c)
+            for c in checks
+            if c.name in _MANDATORY_CHECKS
         )
         if mandatory_failed:
             status = PreflightStatus.NOT_READY
@@ -408,10 +440,10 @@ class OpenAPIConnectorHandler(DefaultHandler):
         * No key or role auth: ``download_cloud_spec`` reads the tenant store
           instead (:func:`~app.cloud_store.has_valid_auth`).
 
-        Raises:
-            AppError: For a transient (store not answering, or a failure this
-                cannot attribute to the credential). Raising rather than
-                returning ``NOT_READY`` is deliberate; see the module docstring.
+        A transient (store not answering, or a failure this cannot attribute
+        to the credential) comes back as a failed row carrying
+        :class:`~app.errors.CloudSpecStoreTransientError`, which leaves the
+        verdict READY; see the module docstring.
         """
         started = time.monotonic()
         check_name = "cloud_spec_credential_valid"
@@ -435,6 +467,11 @@ class OpenAPIConnectorHandler(DefaultHandler):
         # hoisted to ``extra.<k>``; CloudStore.from_credentials wants it nested.
         raw = expand_dotted_keys({c.key: c.value for c in credentials})
         if not has_valid_auth(raw):
+            if extra_is_malformed(raw):
+                return _unprobed(
+                    "object-store credential's extra is not valid JSON, so it "
+                    "carries no role auth and the run reads the tenant store"
+                )
             return _unprobed(
                 "object-store credential carries no key or role auth, so the run "
                 "reads the tenant store"
@@ -447,28 +484,36 @@ class OpenAPIConnectorHandler(DefaultHandler):
             found = await asyncio.wait_for(
                 _read_object_store(raw, prefix, key), timeout_seconds
             )
-        except TimeoutError:
-            # PF-17: this frame holds the resolved credential, and the SDK's
-            # loguru sinks annotate frame variables when formatting a chained
-            # traceback. Sever the chain on every path out of here.
-            raise CloudSpecStoreTransientError(
-                message=(
-                    "object store did not answer within the preflight budget; "
-                    "treating as a transient rather than a verdict"
-                ),
-                service="openapi_object_store",
-            ) from None
+        except TimeoutError as exc:
+            # PF-17: this frame holds the resolved credential, so nothing that
+            # leaves it may carry a traceback through it; the row carries only
+            # the typed error, whose cause_repr the SDK redacts.
+            return PreflightCheck(
+                name=check_name,
+                passed=False,
+                error=CloudSpecStoreTransientError(
+                    message=(
+                        "object store did not answer within the preflight budget; "
+                        "treating as a transient rather than a verdict"
+                    ),
+                    suggested_action=_STORE_TRANSIENT_ACTION,
+                    service="openapi_object_store",
+                    cause=exc,
+                ).to_failure_details(),
+                duration_ms=(time.monotonic() - started) * 1000.0,
+            )
         except Exception as exc:
             failure = _classify_store_failure(exc)
             if failure is None:
-                raise CloudSpecStoreTransientError(
+                failure = CloudSpecStoreTransientError(
                     message=(
                         "object store could not be evaluated during preflight; "
                         "treating as a transient rather than a verdict"
                     ),
+                    suggested_action=_STORE_TRANSIENT_ACTION,
                     service="openapi_object_store",
                     cause=exc,
-                ) from None
+                )
             return PreflightCheck(
                 name=check_name,
                 passed=False,
@@ -510,11 +555,9 @@ class OpenAPIConnectorHandler(DefaultHandler):
 
         Returns the mandatory ``spec_source_reachable`` row, plus — when the
         endpoint answered — the advisory ``spec_content_type_plausible`` row.
-
-        Raises:
-            AppError: For a transient (rate limit, 5xx, no answer). Raising
-                rather than returning ``NOT_READY`` is deliberate; see the
-                module docstring.
+        A transient (rate limit, 5xx, no answer) fails the reachability row
+        with its RATE_LIMITED / DEPENDENCY_UNAVAILABLE error, which leaves the
+        verdict READY; see the module docstring.
         """
         started = time.monotonic()
         check_name = "spec_source_reachable"
@@ -570,9 +613,16 @@ class OpenAPIConnectorHandler(DefaultHandler):
         except AppError as exc:
             transient = _as_gate_transient(exc)
             if transient is not None:
-                # Not a verdict — the source could not be evaluated this time.
-                # The gate fails open on these categories in both postures.
-                raise transient from exc
+                # Not a verdict — the source could not be evaluated this time,
+                # so the row carries the transient and the verdict stays READY.
+                return [
+                    PreflightCheck(
+                        name=check_name,
+                        passed=False,
+                        error=transient.to_failure_details(),
+                        duration_ms=(time.monotonic() - started) * 1000.0,
+                    )
+                ]
             # The error is the return value, carried structurally to the gate
             # as PreflightCheck.error — but a NOT_READY verdict should also be
             # greppable in the run's own logs, not only in the check matrix.

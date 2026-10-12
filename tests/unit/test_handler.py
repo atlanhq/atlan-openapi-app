@@ -10,9 +10,10 @@ registry rules it was built against:
 
 Plus the two gate-semantics rules the handler must not get wrong:
 
-* a transient (429 / 5xx / no answer) is **raised**, not returned as
-  ``NOT_READY`` — the gate fails open on those categories, so returning a
-  verdict would abort healthy runs once the app opts into hard mode;
+* a transient (429 / 5xx / no answer) is **returned** as a failed row carrying
+  its RATE_LIMITED / DEPENDENCY_UNAVAILABLE error, and the verdict stays
+  ``READY`` — a blip at the source is "ask me later", and a ``NOT_READY`` would
+  abort a healthy run once the app opts into hard mode;
 * the probe's timeout stays strictly inside the enforced budget.
 """
 
@@ -24,11 +25,13 @@ from pathlib import Path
 import httpx
 import pytest
 import respx
-from application_sdk.errors import DependencyUnavailableError, RateLimitedError
+from application_sdk.errors import FailureCategory
 from application_sdk.handler import (
     BaseConnectionConfig,
     HandlerCredential,
+    PreflightCheck,
     PreflightInput,
+    PreflightOutput,
     PreflightStatus,
 )
 
@@ -194,43 +197,61 @@ class TestUrlMode:
         assert not [c for c in out.checks if c.name == "spec_content_type_plausible"]
 
 
-class TestTransientsAreRaisedNotVoted:
+def _transient_row(out: PreflightOutput, name: str) -> PreflightCheck:
+    """The failed row a transient leaves behind, with the verdict it must not flip."""
+    assert out.status == PreflightStatus.READY
+    row = next(c for c in out.checks if c.name == name)
+    assert row.passed is False
+    assert row.error is not None
+    assert row.error.category in {
+        FailureCategory.DEPENDENCY_UNAVAILABLE,
+        FailureCategory.RATE_LIMITED,
+    }
+    assert name in out.message
+    return row
+
+
+class TestTransientsAreReportedNotVoted:
     """A transient means 'ask me later', not 'the source is not ready'.
 
-    The gate treats RATE_LIMITED / DEPENDENCY_UNAVAILABLE as its own plumbing
-    and fails open on them in both postures. Returning NOT_READY instead would
+    It comes back as a failed row whose typed error says so, and the verdict
+    stays READY. Raising it instead loses the row, and the gate no longer
+    treats a raise from the handler as its own plumbing; a NOT_READY would
     abort a healthy run on a spec-host blip the moment the app goes hard.
     """
 
     URL = "https://example.com/api.json"
 
+    async def _preflight(self) -> PreflightOutput:
+        return await OpenAPIConnectorHandler().preflight_check(
+            _input(import_type="URL", spec_url=self.URL)
+        )
+
     @pytest.mark.asyncio
     @respx.mock
-    async def test_429_raises_rate_limited(self) -> None:
+    async def test_429_is_a_rate_limited_row_and_ready(self) -> None:
         respx.get(self.URL).mock(return_value=httpx.Response(429))
-        with pytest.raises(RateLimitedError):
-            await OpenAPIConnectorHandler().preflight_check(
-                _input(import_type="URL", spec_url=self.URL)
-            )
+        row = _transient_row(await self._preflight(), "spec_source_reachable")
+        assert row.error is not None
+        assert row.error.category == FailureCategory.RATE_LIMITED
 
     @pytest.mark.asyncio
     @respx.mock
-    async def test_5xx_raises_dependency_unavailable(self) -> None:
+    async def test_5xx_is_a_dependency_unavailable_row_and_ready(self) -> None:
         respx.get(self.URL).mock(return_value=httpx.Response(503))
-        with pytest.raises(DependencyUnavailableError) as excinfo:
-            await OpenAPIConnectorHandler().preflight_check(
-                _input(import_type="URL", spec_url=self.URL)
-            )
-        assert excinfo.value.code == "DEPENDENCY_UNAVAILABLE_OPENAPI_SPEC_SOURCE"
+        row = _transient_row(await self._preflight(), "spec_source_reachable")
+        assert row.error is not None
+        assert row.error.code == "DEPENDENCY_UNAVAILABLE_OPENAPI_SPEC_SOURCE"
 
     @pytest.mark.asyncio
     @respx.mock
-    async def test_read_timeout_raises_dependency_unavailable(self) -> None:
+    async def test_read_timeout_is_a_dependency_unavailable_row_and_ready(
+        self,
+    ) -> None:
         respx.get(self.URL).mock(side_effect=httpx.ReadTimeout("slow"))
-        with pytest.raises(DependencyUnavailableError):
-            await OpenAPIConnectorHandler().preflight_check(
-                _input(import_type="URL", spec_url=self.URL)
-            )
+        row = _transient_row(await self._preflight(), "spec_source_reachable")
+        assert row.error is not None
+        assert row.error.code == "DEPENDENCY_UNAVAILABLE_OPENAPI_SPEC_SOURCE"
 
     @pytest.mark.asyncio
     @respx.mock
@@ -421,18 +442,21 @@ class TestCloudCredentialProbe:
         assert row.error.retryable is False
 
     @pytest.mark.asyncio
-    async def test_unattributable_failure_is_raised_not_voted(
+    async def test_unattributable_failure_is_a_transient_row_and_ready(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         async def _fail(raw: dict, prefix: str, key: str) -> None:
             raise RuntimeError("something else entirely")
 
         monkeypatch.setattr("app.handler._read_object_store", _fail)
-        with pytest.raises(DependencyUnavailableError) as caught:
-            await OpenAPIConnectorHandler().preflight_check(
-                self._cloud_input(object_store=self._creds())
-            )
-        assert caught.value.code == "DEPENDENCY_UNAVAILABLE_OPENAPI_CLOUD_SPEC_STORE"
+        out = await OpenAPIConnectorHandler().preflight_check(
+            self._cloud_input(object_store=self._creds())
+        )
+        row = _transient_row(out, "cloud_spec_credential_valid")
+        assert row.error is not None
+        assert row.error.code == "DEPENDENCY_UNAVAILABLE_OPENAPI_CLOUD_SPEC_STORE"
+        assert "something else entirely" not in row.resolved_message
+        assert row.resolved_suggested_action
 
     @pytest.mark.asyncio
     async def test_overrun_is_a_transient_not_a_verdict(
@@ -443,10 +467,12 @@ class TestCloudCredentialProbe:
 
         monkeypatch.setattr("app.handler._read_object_store", _hang)
         monkeypatch.setattr("app.handler._probe_timeout", lambda _budget: 0.01)
-        with pytest.raises(DependencyUnavailableError):
-            await OpenAPIConnectorHandler().preflight_check(
-                self._cloud_input(object_store=self._creds())
-            )
+        out = await OpenAPIConnectorHandler().preflight_check(
+            self._cloud_input(object_store=self._creds())
+        )
+        row = _transient_row(out, "cloud_spec_credential_valid")
+        assert row.error is not None
+        assert row.error.code == "DEPENDENCY_UNAVAILABLE_OPENAPI_CLOUD_SPEC_STORE"
 
     @pytest.mark.asyncio
     async def test_missing_location_short_circuits_the_probe(
@@ -516,7 +542,7 @@ class TestCloudCredentialProbe:
                 assert _classify_store_failure(exc) is None
 
     def test_unknown_failure_stays_unattributed(self) -> None:
-        """None is what routes to fail-open. Guessing here would make the gate
+        """None is what reports a transient. Guessing here would make the gate
         fail closed on an object-store outage."""
         assert _classify_store_failure(RuntimeError("who knows")) is None
 
@@ -550,6 +576,29 @@ class TestCloudCredentialProbe:
         assert row.passed
         assert "tenant store" in row.message
         assert "not probed" in row.message
+
+    @pytest.mark.asyncio
+    async def test_malformed_extra_is_named_in_the_unprobed_row(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A credential whose ``extra`` is not JSON reads as no role auth, so the
+        run reads the tenant store. The row has to say why, because the run's log
+        line for it is DEBUG and the row is what the connection owner sees."""
+        self._no_probe(monkeypatch)
+        out = await OpenAPIConnectorHandler().preflight_check(
+            self._cloud_input(
+                object_store=[
+                    HandlerCredential(key="authType", value="s3"),
+                    HandlerCredential(key="extra", value="{not json"),
+                ]
+            )
+        )
+        assert out.status == PreflightStatus.READY
+        row = next(c for c in out.checks if c.name == "cloud_spec_credential_valid")
+        assert row.passed
+        assert "extra" in row.message
+        assert "not valid JSON" in row.message
+        assert "{not json" not in row.message
 
     @pytest.mark.asyncio
     async def test_openapi_credential_takes_precedence_and_is_not_probed(

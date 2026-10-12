@@ -144,11 +144,11 @@ class SpecSourceTransientError(DependencyUnavailableError):
     but not answering.
 
     Deliberately a ``DEPENDENCY_UNAVAILABLE`` leaf and deliberately distinct from
-    :class:`SpecSourceUnavailableError`. Raised (never returned as a verdict) from
-    the preflight probe: the gate routes this category to fail-open, so a blip at
-    the spec host can never abort a healthy run once the app opts into hard mode.
-    The extraction path keeps the USER-audience ``SpecSourceUnavailableError`` for
-    the same conditions, because there the run really did fail.
+    :class:`SpecSourceUnavailableError`. The preflight probe returns it on a failed
+    row that leaves the verdict READY, so a blip at the spec host can never abort
+    a healthy run once the app opts into hard mode. The extraction path keeps the
+    USER-audience ``SpecSourceUnavailableError`` for the same conditions, because
+    there the run really did fail.
     """
 
     code: ClassVar[str] = "DEPENDENCY_UNAVAILABLE_OPENAPI_SPEC_SOURCE"
@@ -190,7 +190,8 @@ class ObjectStoreCredentialError(InvalidInputError):
 # DEPENDENCY_UNAVAILABLE/PLATFORM — correct for an outage, wrong for a customer
 # credential the store rejected. The preflight probe re-types the cases it can
 # attribute to the connection owner, so a bad role token is not filed against
-# the platform. Anything it cannot attribute stays a transient and fails open.
+# the platform. Anything it cannot attribute stays a transient, reported on its
+# row without blocking the run.
 # ---------------------------------------------------------------------------
 
 
@@ -212,8 +213,8 @@ class CloudSpecAccessDeniedError(AppPermissionDeniedError):
 class CloudSpecStoreTransientError(DependencyUnavailableError):
     """The object store could not be evaluated during preflight.
 
-    Raised, never returned as ``NOT_READY``: the gate routes this category to
-    fail-open, so an object-store blip cannot block a run in either posture.
+    Returned on a failed row that leaves the verdict READY, never as a
+    ``NOT_READY``, so an object-store blip cannot block a run in either posture.
     """
 
     code: ClassVar[str] = "DEPENDENCY_UNAVAILABLE_OPENAPI_CLOUD_SPEC_STORE"

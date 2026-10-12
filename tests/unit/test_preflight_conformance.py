@@ -197,6 +197,14 @@ async def test_html_body_fails_advisory_without_blocking() -> None:
     assert "spec_content_type_plausible" in result.message
 
 
+def _assert_transient_row(result: Any) -> None:
+    """The reachability row a transient leaves: failed, DEPENDENCY_UNAVAILABLE."""
+    row = next(c for c in result.checks if c.name == "spec_source_reachable")
+    assert row.passed is False
+    assert row.error is not None
+    assert row.error.code == "DEPENDENCY_UNAVAILABLE_OPENAPI_SPEC_SOURCE"
+
+
 # =============================================================================
 # Recovery versus exhaustion
 # =============================================================================
@@ -205,18 +213,18 @@ async def test_html_body_fails_advisory_without_blocking() -> None:
 @pytest.mark.asyncio
 @respx.mock
 @pytest.mark.preflight_conformance(rule="F016", scenario="recoverable_transient")
-async def test_transient_raises_then_clears_on_the_next_attempt() -> None:
-    """A 5xx is 'ask me later', not a verdict: the handler raises a fail-open
-    leaf rather than returning NOT_READY, and the next gate attempt against a
-    recovered source returns READY."""
+async def test_transient_is_reported_then_clears_on_the_next_attempt() -> None:
+    """A 5xx is 'ask me later', not a verdict: the handler reports it on the
+    reachability row and keeps the verdict READY, and the next gate attempt
+    against a recovered source passes the row."""
     route = respx.get(SPEC_URL)
     route.side_effect = [httpx.Response(503), _json_ok()]
 
-    with pytest.raises(Exception) as first:
-        await _run(import_type="URL", spec_url=SPEC_URL)
-    # Raised, not returned — returning NOT_READY here would abort healthy runs
-    # once the app opts into hard mode.
-    assert first.value.__class__.__name__ == "SpecSourceTransientError"
+    first = await _run(import_type="URL", spec_url=SPEC_URL)
+    # READY, not NOT_READY — a verdict here would abort healthy runs once the
+    # app opts into hard mode. The row still carries the evidence.
+    assert first.status.value == "ready"
+    _assert_transient_row(first)
 
     result = await _run(import_type="URL", spec_url=SPEC_URL)
 
@@ -430,11 +438,11 @@ async def test_unanswered_probe_stays_inside_the_budget_and_cleans_up(
     respx.get(SPEC_URL).mock(side_effect=_hang)
 
     started = time.monotonic()
-    with pytest.raises(Exception) as hung:
-        await _run(budget=budget, import_type="URL", spec_url=SPEC_URL)
+    hung = await _run(budget=budget, import_type="URL", spec_url=SPEC_URL)
     elapsed = time.monotonic() - started
 
-    assert hung.value.__class__.__name__ == "SpecSourceTransientError"
+    assert hung.status.value == "ready"
+    _assert_transient_row(hung)
     assert probe_budgets and probe_budgets[0] < budget, (
         "probe deadline must sit strictly inside the enforced budget"
     )

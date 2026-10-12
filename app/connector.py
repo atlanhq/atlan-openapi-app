@@ -40,7 +40,7 @@ from app.asset_mapper import (
     map_api_spec,
     map_connection,
 )
-from app.cloud_store import CLOUD_SPEC_SUFFIXES, has_valid_auth
+from app.cloud_store import CLOUD_SPEC_SUFFIXES, extra_is_malformed, has_valid_auth
 from app.contracts import (
     DownloadCloudSpecInput,
     DownloadCloudSpecOutput,
@@ -452,6 +452,13 @@ class OpenAPIConnector(App):
                 list(credential_data.keys()),
             )
 
+        if credential_data is not None and extra_is_malformed(credential_data):
+            # Otherwise the run silently reads the tenant store instead of the
+            # customer's bucket. The value itself is never logged.
+            self.logger.warning(
+                "cloud_source credential 'extra' is not valid JSON; "
+                "treating as no role auth"
+            )
         if credential_data is not None and has_valid_auth(credential_data):
             self.logger.info(
                 "using external cloud storage auth_type=%s",

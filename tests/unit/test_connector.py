@@ -29,7 +29,7 @@ from app.connector import (
     _iter_jsonl,
     _transform_blocking,
 )
-from app.cloud_store import has_valid_auth
+from app.cloud_store import extra_is_malformed, has_valid_auth
 from app.contracts import (
     DownloadCloudSpecInput,
     DownloadCloudSpecOutput,
@@ -925,6 +925,14 @@ class TestHasValidAuth:
             has_valid_auth({"username": "u", "password": "p", "extra": "{not json"})
             is True
         )
+
+    def test_extra_is_malformed_names_only_unparseable_strings(self) -> None:
+        assert extra_is_malformed({"extra": "{not json"}) is True
+        assert extra_is_malformed({"extras": "{not json"}) is True
+        assert extra_is_malformed({"extra": '{"aws_role_arn": "arn:x"}'}) is False
+        assert extra_is_malformed({"extra": {"aws_role_arn": "arn:x"}}) is False
+        assert extra_is_malformed({"extra": ""}) is False
+        assert extra_is_malformed({}) is False
 
     def test_role_auth_detected(self) -> None:
         assert (
