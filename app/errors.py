@@ -139,19 +139,26 @@ class SpecRedirectNotFollowedError(InvalidInputError):
 
 
 @dataclass(kw_only=True)
-class SpecSourceTransientError(DependencyUnavailableError):
-    """The spec endpoint could not be evaluated *this time* — 5xx, or reached
-    but not answering.
+class SpecSourceTransientError(SourceUnavailableError):
+    """The spec endpoint could not be evaluated *this time* — a 429, a 5xx, or
+    reached but not answering.
 
-    Deliberately a ``DEPENDENCY_UNAVAILABLE`` leaf and deliberately distinct from
-    :class:`SpecSourceUnavailableError`. Raised (never returned as a verdict) from
-    the preflight probe: the gate routes this category to fail-open, so a blip at
-    the spec host can never abort a healthy run once the app opts into hard mode.
-    The extraction path keeps the USER-audience ``SpecSourceUnavailableError`` for
-    the same conditions, because there the run really did fail.
+    A retryable ``SOURCE_UNAVAILABLE`` leaf the preflight probe raises rather than
+    returns: the gate records the source as unverifiable and never blocks on
+    this category, so a blip at the spec host can never abort a healthy run once the
+    app opts into hard mode, and no verdict is recorded that nothing verified.
+    A rate limit is folded in here too, because ``RATE_LIMITED`` is one of the
+    gate's deprecated fail-open categories. Distinct from
+    :class:`SpecSourceUnavailableError`, which the extraction path keeps for the
+    same conditions because there the run really did fail.
     """
 
-    code: ClassVar[str] = "DEPENDENCY_UNAVAILABLE_OPENAPI_SPEC_SOURCE"
+    code: ClassVar[str] = "SOURCE_UNAVAILABLE_OPENAPI_SPEC_SOURCE"
+    suggested_action: str | None = (
+        "No action is needed if the next attempt succeeds. If this keeps "
+        "happening, check that the spec URL's host is up and not rate limiting "
+        "Atlan, then run the workflow again."
+    )
 
 
 @dataclass(kw_only=True)
@@ -190,7 +197,8 @@ class ObjectStoreCredentialError(InvalidInputError):
 # DEPENDENCY_UNAVAILABLE/PLATFORM — correct for an outage, wrong for a customer
 # credential the store rejected. The preflight probe re-types the cases it can
 # attribute to the connection owner, so a bad role token is not filed against
-# the platform. Anything it cannot attribute stays a transient and fails open.
+# the platform. Anything it cannot attribute is raised as a retryable transient,
+# which the gate never blocks on.
 # ---------------------------------------------------------------------------
 
 
@@ -209,11 +217,19 @@ class CloudSpecAccessDeniedError(AppPermissionDeniedError):
 
 
 @dataclass(kw_only=True)
-class CloudSpecStoreTransientError(DependencyUnavailableError):
-    """The object store could not be evaluated during preflight.
+class CloudSpecStoreTransientError(SourceUnavailableError):
+    """The customer's object store could not be evaluated during preflight.
 
-    Raised, never returned as ``NOT_READY``: the gate routes this category to
-    fail-open, so an object-store blip cannot block a run in either posture.
+    A retryable ``SOURCE_UNAVAILABLE`` leaf, raised rather than returned as a
+    verdict: the gate records the source as unverifiable and never blocks on
+    this category, so an object-store blip cannot block a run in either posture.
+    ``SOURCE_UNAVAILABLE`` rather than ``DEPENDENCY_UNAVAILABLE`` because the
+    bucket is the customer's, not an Atlan platform service.
     """
 
-    code: ClassVar[str] = "DEPENDENCY_UNAVAILABLE_OPENAPI_CLOUD_SPEC_STORE"
+    code: ClassVar[str] = "SOURCE_UNAVAILABLE_OPENAPI_CLOUD_SPEC_STORE"
+    suggested_action: str | None = (
+        "No action is needed if the next attempt succeeds. If this keeps "
+        "happening, check that the object store on this connection is reachable "
+        "and responding, then run the workflow again."
+    )

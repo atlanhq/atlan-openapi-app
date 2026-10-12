@@ -27,10 +27,15 @@ Design rules applied from the CONNECT-812 pattern registry:
 
 **Verdicts versus transients.** A ``NOT_READY`` verdict means *the source is
 not ready* — something the connection owner must fix. A rate limit, a 5xx, or
-an endpoint that will not answer is "ask me later", not a verdict: those are
-**raised** as ``RATE_LIMITED`` / ``DEPENDENCY_UNAVAILABLE`` leaves, which the
-gate classifies as its own plumbing and fails open on. Collapsing the two would
-make hard mode abort a healthy run whenever the spec host hiccups.
+an endpoint that will not answer is "ask me later", not a verdict, and there is
+no honest verdict to return for it: ``NOT_READY`` would make hard mode abort a
+healthy run whenever the spec host hiccups, and ``READY`` would carry a failed
+mandatory row that nothing verified. So the probe **raises** a retryable
+``SOURCE_UNAVAILABLE`` leaf. The gate never blocks a run on that category: it
+records the source as unverifiable and the run proceeds, and the leaf's
+retryable flag says asking again is expected to succeed. ``RATE_LIMITED``
+and ``DEPENDENCY_UNAVAILABLE`` are not used for this: those are the gate's
+deprecated fail-open categories.
 """
 
 from __future__ import annotations
@@ -55,7 +60,7 @@ from application_sdk.handler import (
 from application_sdk.observability.logger_adaptor import get_logger
 
 from app.api_client import OpenAPIApiClient, redact_url
-from app.cloud_store import CLOUD_SPEC_SUFFIXES, has_valid_auth
+from app.cloud_store import CLOUD_SPEC_SUFFIXES, extra_is_malformed, has_valid_auth
 from app.errors import (
     CloudSpecAccessDeniedError,
     CloudSpecCredentialRejectedError,
@@ -82,6 +87,7 @@ _MANDATORY_CHECKS = frozenset(
         "cloud_spec_credential_valid",
     }
 )
+
 
 # Ceiling for the URL probe, and the share of the remaining gate budget it may
 # consume. ``input.timeout_seconds`` carries the *enforced* remaining budget, so
@@ -162,9 +168,8 @@ def _classify_store_failure(exc: BaseException) -> AppError | None:
     rather than the SDK wrapper — otherwise a bad role token is filed against the
     platform and the probe fails open on the one case it exists to catch.
 
-    ``None`` means "could not attribute", which the caller turns into a
-    fail-open transient. Guessing here would make the gate fail closed on an
-    outage.
+    ``None`` means "could not attribute", which the caller raises as a retryable
+    transient. Guessing here would make the gate fail closed on an outage.
     """
     from obstore.exceptions import (  # noqa: PLC0415 — native module, lazy
         NotFoundError as ObstoreNotFoundError,
@@ -227,34 +232,36 @@ def _classify_store_failure(exc: BaseException) -> AppError | None:
 
 
 def _as_gate_transient(error: AppError) -> AppError | None:
-    """The fail-open error to raise instead of a ``NOT_READY`` verdict, or None.
+    """The retryable leaf to raise in place of a ``NOT_READY`` verdict, or None.
 
     The extraction path types a 5xx and a read timeout as
-    ``SpecSourceUnavailableError`` (USER audience) — correct there, because the
-    run really did fail and the connection owner is the one who chases the spec
-    host. On the *preflight* path the same condition means only "could not be
-    evaluated this time", so it is remapped onto a ``DEPENDENCY_UNAVAILABLE``
-    leaf, which the gate routes to fail-open in both postures. One root cause,
-    two surfaces, each attributed for what actually happened on it.
+    ``SpecSourceUnavailableError`` and a 429 as ``SpecFetchRateLimitedError`` —
+    correct there, because the run really did fail and the connection owner is
+    the one who chases the spec host. On the *preflight* path the same
+    conditions mean only "could not be evaluated this time", so they are
+    remapped onto :class:`~app.errors.SpecSourceTransientError`, a retryable
+    ``SOURCE_UNAVAILABLE`` leaf the gate never blocks on. One root
+    cause, two surfaces, each attributed for what actually happened on it.
     """
-    if isinstance(error, RateLimitedError):
-        return error
-    if not isinstance(error, SpecSourceUnavailableError):
-        return None
     http_status = getattr(error, "http_status", None)
-    network_error = getattr(error, "network_error", "") or ""
-    if http_status:
-        reason = f"HTTP {http_status}"
-    elif network_error in _TRANSIENT_NETWORK_ERRORS:
-        reason = network_error
-    else:
+    if isinstance(error, RateLimitedError):
+        reason = "rate limited"
+    elif not isinstance(error, SpecSourceUnavailableError):
         return None
+    elif http_status:
+        reason = f"HTTP {http_status}"
+    else:
+        network_error = getattr(error, "network_error", "") or ""
+        if network_error not in _TRANSIENT_NETWORK_ERRORS:
+            return None
+        reason = network_error
     return SpecSourceTransientError(
         message=(
             "spec endpoint could not be evaluated during preflight "
             f"({reason}); treating as a transient rather than a verdict"
         ),
-        service="openapi_spec_endpoint",
+        source_type="openapi_spec_endpoint",
+        http_status=http_status,
         cause=error,
     )
 
@@ -409,9 +416,10 @@ class OpenAPIConnectorHandler(DefaultHandler):
           instead (:func:`~app.cloud_store.has_valid_auth`).
 
         Raises:
-            AppError: For a transient (store not answering, or a failure this
-                cannot attribute to the credential). Raising rather than
-                returning ``NOT_READY`` is deliberate; see the module docstring.
+            CloudSpecStoreTransientError: For a transient (store not answering,
+                or a failure this cannot attribute to the credential): a
+                retryable ``SOURCE_UNAVAILABLE`` leaf the gate never
+                blocks on; see the module docstring.
         """
         started = time.monotonic()
         check_name = "cloud_spec_credential_valid"
@@ -435,6 +443,11 @@ class OpenAPIConnectorHandler(DefaultHandler):
         # hoisted to ``extra.<k>``; CloudStore.from_credentials wants it nested.
         raw = expand_dotted_keys({c.key: c.value for c in credentials})
         if not has_valid_auth(raw):
+            if extra_is_malformed(raw):
+                return _unprobed(
+                    "object-store credential's extra is not valid JSON, so it "
+                    "carries no role auth and the run reads the tenant store"
+                )
             return _unprobed(
                 "object-store credential carries no key or role auth, so the run "
                 "reads the tenant store"
@@ -447,26 +460,32 @@ class OpenAPIConnectorHandler(DefaultHandler):
             found = await asyncio.wait_for(
                 _read_object_store(raw, prefix, key), timeout_seconds
             )
-        except TimeoutError:
-            # PF-17: this frame holds the resolved credential, and the SDK's
-            # loguru sinks annotate frame variables when formatting a chained
-            # traceback. Sever the chain on every path out of here.
+        except TimeoutError as exc:
+            # Not a verdict: a store that did not answer has said nothing about
+            # whether the spec is readable, so this is no verdict at all. PF-17: this
+            # frame holds the resolved credential, and the SDK's loguru sinks
+            # annotate frame variables when formatting a chained traceback.
+            # Sever the chain on every raise out of here; the typed ``cause``
+            # still carries the redacted original.
             raise CloudSpecStoreTransientError(
                 message=(
                     "object store did not answer within the preflight budget; "
                     "treating as a transient rather than a verdict"
                 ),
-                service="openapi_object_store",
+                source_type="object_store",
+                cause=exc,
             ) from None
         except Exception as exc:
             failure = _classify_store_failure(exc)
             if failure is None:
+                # Anything the classifier cannot attribute means "ask me again",
+                # the same retryable leaf as an overrun.
                 raise CloudSpecStoreTransientError(
                     message=(
                         "object store could not be evaluated during preflight; "
                         "treating as a transient rather than a verdict"
                     ),
-                    service="openapi_object_store",
+                    source_type="object_store",
                     cause=exc,
                 ) from None
             return PreflightCheck(
@@ -510,11 +529,10 @@ class OpenAPIConnectorHandler(DefaultHandler):
 
         Returns the mandatory ``spec_source_reachable`` row, plus — when the
         endpoint answered — the advisory ``spec_content_type_plausible`` row.
-
         Raises:
-            AppError: For a transient (rate limit, 5xx, no answer). Raising
-                rather than returning ``NOT_READY`` is deliberate; see the
-                module docstring.
+            SpecSourceTransientError: For a transient (rate limit, 5xx, no
+                answer): a retryable ``SOURCE_UNAVAILABLE`` leaf the gate
+                never blocks on; see the module docstring.
         """
         started = time.monotonic()
         check_name = "spec_source_reachable"
@@ -571,7 +589,8 @@ class OpenAPIConnectorHandler(DefaultHandler):
             transient = _as_gate_transient(exc)
             if transient is not None:
                 # Not a verdict — the source could not be evaluated this time.
-                # The gate fails open on these categories in both postures.
+                # The retryable leaf records the source as unverifiable; the
+                # gate never blocks a run on this category.
                 raise transient from exc
             # The error is the return value, carried structurally to the gate
             # as PreflightCheck.error — but a NOT_READY verdict should also be

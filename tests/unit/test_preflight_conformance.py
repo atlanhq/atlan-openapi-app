@@ -36,6 +36,7 @@ from typing import Any
 import httpx
 import pytest
 import respx
+from application_sdk.errors import FailureCategory, SourceUnavailableError
 from application_sdk.handler import (
     BaseConnectionConfig,
     PreflightInput,
@@ -197,6 +198,15 @@ async def test_html_body_fails_advisory_without_blocking() -> None:
     assert "spec_content_type_plausible" in result.message
 
 
+def _assert_retryable_transient(error: Exception) -> None:
+    """The leaf a transient raises: retryable SOURCE_UNAVAILABLE, which the gate
+    never blocks on."""
+    assert isinstance(error, SourceUnavailableError)
+    assert error.category == FailureCategory.SOURCE_UNAVAILABLE
+    assert error.to_failure_details().retryable is True
+    assert error.code == "SOURCE_UNAVAILABLE_OPENAPI_SPEC_SOURCE"
+
+
 # =============================================================================
 # Recovery versus exhaustion
 # =============================================================================
@@ -206,17 +216,17 @@ async def test_html_body_fails_advisory_without_blocking() -> None:
 @respx.mock
 @pytest.mark.preflight_conformance(rule="F016", scenario="recoverable_transient")
 async def test_transient_raises_then_clears_on_the_next_attempt() -> None:
-    """A 5xx is 'ask me later', not a verdict: the handler raises a fail-open
-    leaf rather than returning NOT_READY, and the next gate attempt against a
-    recovered source returns READY."""
+    """A 5xx is 'ask me later', not a verdict: the handler raises a retryable
+    SOURCE_UNAVAILABLE leaf rather than returning a verdict, and the next gate
+    attempt against a recovered source returns READY."""
     route = respx.get(SPEC_URL)
     route.side_effect = [httpx.Response(503), _json_ok()]
 
-    with pytest.raises(Exception) as first:
+    with pytest.raises(SourceUnavailableError) as first:
         await _run(import_type="URL", spec_url=SPEC_URL)
-    # Raised, not returned — returning NOT_READY here would abort healthy runs
-    # once the app opts into hard mode.
-    assert first.value.__class__.__name__ == "SpecSourceTransientError"
+    # Raised, not returned — NOT_READY here would abort healthy runs once the
+    # app opts into hard mode, and READY would carry a failed mandatory row.
+    _assert_retryable_transient(first.value)
 
     result = await _run(import_type="URL", spec_url=SPEC_URL)
 
@@ -430,11 +440,11 @@ async def test_unanswered_probe_stays_inside_the_budget_and_cleans_up(
     respx.get(SPEC_URL).mock(side_effect=_hang)
 
     started = time.monotonic()
-    with pytest.raises(Exception) as hung:
+    with pytest.raises(SourceUnavailableError) as hung:
         await _run(budget=budget, import_type="URL", spec_url=SPEC_URL)
     elapsed = time.monotonic() - started
 
-    assert hung.value.__class__.__name__ == "SpecSourceTransientError"
+    _assert_retryable_transient(hung.value)
     assert probe_budgets and probe_budgets[0] < budget, (
         "probe deadline must sit strictly inside the enforced budget"
     )
