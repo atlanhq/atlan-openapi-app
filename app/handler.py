@@ -266,26 +266,6 @@ def _as_gate_transient(error: AppError) -> AppError | None:
     )
 
 
-def _store_transient(exc: BaseException) -> CloudSpecStoreTransientError:
-    """The retryable leaf for an object-store failure that is not a verdict.
-
-    A probe that outran its slice of the budget surfaces from
-    ``asyncio.wait_for`` as a bare ``TimeoutError``; anything
-    :func:`_classify_store_failure` could not attribute lands here too. Both
-    mean "ask me again", so both become the same retryable
-    ``SOURCE_UNAVAILABLE`` leaf, built in one place.
-    """
-    if isinstance(exc, TimeoutError):
-        reason = "did not answer within the preflight budget"
-    else:
-        reason = "could not be evaluated during preflight"
-    return CloudSpecStoreTransientError(
-        message=f"object store {reason}; treating as a transient rather than a verdict",
-        source_type="object_store",
-        cause=exc,
-    )
-
-
 class OpenAPIConnectorHandler(DefaultHandler):
     """Preflight checks for the OpenAPI Spec Loader.
 
@@ -485,14 +465,29 @@ class OpenAPIConnectorHandler(DefaultHandler):
             # whether the spec is readable, so this is no verdict at all. PF-17: this
             # frame holds the resolved credential, and the SDK's loguru sinks
             # annotate frame variables when formatting a chained traceback.
-            # Sever the chain on every raise out of here.
-            overrun = _store_transient(exc)
-            raise overrun from None
+            # Sever the chain on every raise out of here; the typed ``cause``
+            # still carries the redacted original.
+            raise CloudSpecStoreTransientError(
+                message=(
+                    "object store did not answer within the preflight budget; "
+                    "treating as a transient rather than a verdict"
+                ),
+                source_type="object_store",
+                cause=exc,
+            ) from None
         except Exception as exc:
             failure = _classify_store_failure(exc)
             if failure is None:
-                transient = _store_transient(exc)
-                raise transient from None
+                # Anything the classifier cannot attribute means "ask me again",
+                # the same retryable leaf as an overrun.
+                raise CloudSpecStoreTransientError(
+                    message=(
+                        "object store could not be evaluated during preflight; "
+                        "treating as a transient rather than a verdict"
+                    ),
+                    source_type="object_store",
+                    cause=exc,
+                ) from None
             return PreflightCheck(
                 name=check_name,
                 passed=False,
