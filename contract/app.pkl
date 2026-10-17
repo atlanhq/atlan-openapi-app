@@ -19,6 +19,11 @@ metadata {
   ["app_id"] = "019d1f6b-6fea-7db3-96d8-e61e159d0351"
 }
 
+// App release train slot (FND-3529); rendered to app/generated/release_schedule.yaml.
+releaseSchedule {
+  new { day = "mon"; slot = "12:00" }
+}
+
 // The top-level `execution_mode: native` above is NOT enough on its own: it is
 // synced to the app catalog (/marketplace/apps) but is not part of the version
 // config. atlan-cli publishes only the `deploy:` block as the version config
