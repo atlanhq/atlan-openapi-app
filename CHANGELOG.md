@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.7.4 (October 21, 2026)
+
+Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.7.3...v0.7.4
+
+### Chores
+
+- lock file maintenance (#767) (by @atlan-app-fleet[bot] in [8db0e1f](https://github.com/atlanhq/atlan-openapi-app/commit/8db0e1f))
+- lock file maintenance (#769) (by @atlan-app-fleet[bot] in [f184046](https://github.com/atlanhq/atlan-openapi-app/commit/f184046))
+- lock file maintenance (#770) (by @atlan-app-fleet[bot] in [7eca468](https://github.com/atlanhq/atlan-openapi-app/commit/7eca468))
+- lock file maintenance (#771) (by @atlan-app-fleet[bot] in [f0f21cf](https://github.com/atlanhq/atlan-openapi-app/commit/f0f21cf))
+- lock file maintenance (#772) (by @atlan-app-fleet[bot] in [9f2c60b](https://github.com/atlanhq/atlan-openapi-app/commit/9f2c60b))
+- lock file maintenance (#773) (by @atlan-app-fleet[bot] in [08b8046](https://github.com/atlanhq/atlan-openapi-app/commit/08b8046))
+- lock file maintenance (#774) (by @atlan-app-fleet[bot] in [aefb2a5](https://github.com/atlanhq/atlan-openapi-app/commit/aefb2a5))
+- lock file maintenance (#775) (by @atlan-app-fleet[bot] in [fd03e5e](https://github.com/atlanhq/atlan-openapi-app/commit/fd03e5e))
+- update dependency atlan-application-sdk to v3.50.0 (#777) (by @atlan-app-fleet[bot] in [4c6ed2b](https://github.com/atlanhq/atlan-openapi-app/commit/4c6ed2b))
+- lock file maintenance (#778) (by @atlan-app-fleet[bot] in [0605f06](https://github.com/atlanhq/atlan-openapi-app/commit/0605f06))
+- update atlan framework dependencies (#779) (by @atlan-app-fleet[bot] in [ff9cf49](https://github.com/atlanhq/atlan-openapi-app/commit/ff9cf49))
+- lock file maintenance (#780) (by @atlan-app-fleet[bot] in [9c878b5](https://github.com/atlanhq/atlan-openapi-app/commit/9c878b5))
+- lock file maintenance (#781) (by @atlan-app-fleet[bot] in [7e1b42a](https://github.com/atlanhq/atlan-openapi-app/commit/7e1b42a))
+- update dependency atlan-application-sdk to v3.51.0 (#782) (by @atlan-app-fleet[bot] in [8853951](https://github.com/atlanhq/atlan-openapi-app/commit/8853951))
+- update dependency atlan-application-sdk to v3.51.1 (#784) (by @atlan-app-fleet[bot] in [292097d](https://github.com/atlanhq/atlan-openapi-app/commit/292097d))
+- lock file maintenance (#785) (by @atlan-app-fleet[bot] in [007a6d4](https://github.com/atlanhq/atlan-openapi-app/commit/007a6d4))
+
+
 ## v0.7.3 (October 16, 2026)
 
 Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.7.2...v0.7.3
