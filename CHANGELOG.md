@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.7.5 (October 22, 2026)
+
+Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.7.4...v0.7.5
+
+### Bug Fixes
+
+- FND-4310 deliver every transform output by reference (#789) (by @sachi-atlan in [8988d68](https://github.com/atlanhq/atlan-openapi-app/commit/8988d68))
+
+### Chores
+
+- lock file maintenance (#786) (by @atlan-app-fleet[bot] in [9f7c2a3](https://github.com/atlanhq/atlan-openapi-app/commit/9f7c2a3))
+- lock file maintenance (#788) (by @atlan-app-fleet[bot] in [913e880](https://github.com/atlanhq/atlan-openapi-app/commit/913e880))
+- lock file maintenance (#790) (by @atlan-app-fleet[bot] in [63a6832](https://github.com/atlanhq/atlan-openapi-app/commit/63a6832))
+- lock file maintenance (#791) (by @atlan-app-fleet[bot] in [a88eeee](https://github.com/atlanhq/atlan-openapi-app/commit/a88eeee))
+- update atlan framework dependencies (#792) (by @atlan-app-fleet[bot] in [c5a9fc2](https://github.com/atlanhq/atlan-openapi-app/commit/c5a9fc2))
+
+
 ## v0.7.4 (October 21, 2026)
 
 Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.7.3...v0.7.4
