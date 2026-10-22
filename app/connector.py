@@ -23,11 +23,10 @@ import msgspec
 from application_sdk.app import App, task
 from application_sdk.common.asset_serialization import entity_bytes
 from application_sdk.common.entity_envelope import EntityEnvelopePolicy, EnvelopeShape
-from application_sdk.contracts.storage import UploadInput
+from application_sdk.contracts.storage import DeclaredFile, UploadRefsInput
 from application_sdk.contracts.types import ConnectionRef, FileReference, StorageTier
 from application_sdk.credentials import route_credentials
 from application_sdk.credentials.ref import CredentialRef
-from application_sdk.errors import InternalError
 from application_sdk.errors.base import AppError, sanitize_cause_repr
 from application_sdk.observability.logger_adaptor import AtlanLoggerAdapter as Logger
 from application_sdk.outputs import Metric, get_outputs
@@ -297,6 +296,18 @@ async def _extract_spec_async(
 # Transform helper
 # =============================================================================
 
+_TRANSFORM_OUTPUT_NAME = "openapi_metadata.json"
+
+
+def _transformed_leaf(index: int) -> str:
+    """Key under ``transformed/`` for the *index*-th transform output.
+
+    The first keeps the name a single-spec run has always published under.
+    """
+    if index == 0:
+        return _TRANSFORM_OUTPUT_NAME
+    return f"openapi_metadata_{index}.json"
+
 
 def _transform_blocking(
     input: TransformInput,
@@ -304,7 +315,7 @@ def _transform_blocking(
 ) -> TransformOutput:
     """Transform OpenAPI records to Atlan Atlas entity format."""
     out_dir = Path(tempfile.mkdtemp(prefix="openapi-transform-"))
-    output_file = out_dir / "openapi_metadata.json"
+    output_file = out_dir / _TRANSFORM_OUTPUT_NAME
 
     connection = input.connection
     if connection is None:
@@ -801,6 +812,7 @@ class OpenAPIConnector(App):
         api_spec_count = 0
         api_path_count = 0
         output_file_ref: FileReference | None = None
+        transformed_files: list[DeclaredFile] = []
 
         if total_scanned > 0:
             workflow_run_at_ms = int(self.context.started_at.timestamp() * 1000)
@@ -813,13 +825,20 @@ class OpenAPIConnector(App):
                         api_path_file=extract_result.api_path_file,
                         connection=connection,
                         connection_qualified_name=conn_qn,
-                        emit_connection=emit_connection,
+                        emit_connection=emit_connection and not transformed_files,
                         workflow_id=self.run_id,
                         workflow_type=self.context.app_name,
                         workflow_run_at_ms=workflow_run_at_ms,
                     )
                 )
                 output_file_ref = transform_result.output_file
+                if output_file_ref is not None:
+                    transformed_files.append(
+                        DeclaredFile(
+                            ref=output_file_ref,
+                            label=_transformed_leaf(len(transformed_files)),
+                        )
+                    )
                 api_spec_count += transform_result.api_spec_count
                 api_path_count += transform_result.api_path_count
 
@@ -827,28 +846,21 @@ class OpenAPIConnector(App):
         # Step 3: Upload and publish to Atlan (if requested)
         # ================================================================
         publish_completed = False
-        output_file_path = output_file_ref.local_path if output_file_ref else ""
 
         transformed_data_prefix = ""
 
-        if input.load_to_atlan and output_file_path:
-            upload_result = await self.upload(
-                UploadInput(
-                    local_path=output_file_path,
-                    storage_subdir="transformed",
+        if input.load_to_atlan and transformed_files:
+            delivered = await self.upload_refs(
+                UploadRefsInput(
+                    files=transformed_files,
+                    prefix=(
+                        f"artifacts/apps/{self.context.app_name}/workflows/"
+                        f"{self.context.workflow_id}/{self.run_id}/transformed"
+                    ),
+                    tier=StorageTier.RETAINED,
                 )
             )
-            if not upload_result.ref.storage_path:
-                raise InternalError(
-                    message=(
-                        "upload_result.ref.storage_path is None; "
-                        "cannot derive transformed_data_prefix"
-                    ),
-                    component="connector.upload",
-                    invariant="upload activity must populate ref.storage_path",
-                    classification_pending=True,
-                )
-            transformed_data_prefix = str(Path(upload_result.ref.storage_path).parent)
+            transformed_data_prefix = delivered.prefix
             publish_completed = True
             self.logger.info(
                 "upload complete transformed_data_prefix=%s", transformed_data_prefix

@@ -15,11 +15,10 @@ from unittest.mock import AsyncMock
 
 import orjson
 import pytest
-from application_sdk.contracts.storage import UploadOutput
-from application_sdk.contracts.types import ConnectionRef, FileReference
+from application_sdk.contracts.storage import UploadRefsInput, UploadRefsOutput
+from application_sdk.contracts.types import ConnectionRef, FileReference, StorageTier
 from application_sdk.credentials.errors import CredentialRoutingError
 from application_sdk.credentials.ref import CredentialRef
-from application_sdk.errors import InternalError
 from application_sdk.observability.logger_adaptor import get_logger
 
 from app.connector import (
@@ -78,10 +77,18 @@ def _make_connector_for_run() -> OpenAPIConnector:
         logger=_LOGGER,
         run_id="test-run",
         app_name="openapi",
+        workflow_id="test-wf",
         storage=None,
         started_at=datetime.now(timezone.utc),
     )
     return connector
+
+
+_TRANSFORMED_PREFIX = "artifacts/apps/openapi/workflows/test-wf/test-run/transformed"
+
+
+def _fake_upload_refs(input: UploadRefsInput) -> UploadRefsOutput:
+    return UploadRefsOutput(prefix=input.prefix)
 
 
 def _conn_ref(qn: str = CONN_QN) -> ConnectionRef:
@@ -785,13 +792,8 @@ class TestRunUrlCreateHappyPath:
                 api_path_count=3,
             )
         )
-        connector.upload = AsyncMock(  # type: ignore[method-assign]
-            return_value=UploadOutput(
-                ref=FileReference(
-                    local_path="/tmp/out.json",
-                    storage_path="raw/openapi/transformed/out.json",
-                )
-            )
+        connector.upload_refs = AsyncMock(  # type: ignore[method-assign]
+            side_effect=_fake_upload_refs
         )
 
         input = _base_input(
@@ -801,13 +803,52 @@ class TestRunUrlCreateHappyPath:
 
         connector.extract_spec.assert_awaited_once()
         connector.transform.assert_awaited_once()
-        connector.upload.assert_awaited_once()
+        connector.upload_refs.assert_awaited_once()
         assert result.api_spec_count == 1
         assert result.api_path_count == 3
         assert result.total_scanned == 4
         assert result.publish_completed is True
         assert result.assertion_only_enabled is False
-        assert result.transformed_data_prefix == "raw/openapi/transformed"
+        assert result.transformed_data_prefix == _TRANSFORMED_PREFIX
+
+    async def test_transform_output_is_delivered_by_reference(self) -> None:
+        """The transform's own ref is declared, not a local path string.
+
+        On another pod the transform's temp dir does not exist; only the ref's
+        storage_path (the key the task wrapper persisted it under) can find it.
+        The label keeps the single-spec key at transformed/openapi_metadata.json.
+        """
+        connector = _make_connector_for_run()
+        out_ref = FileReference(
+            local_path="/tmp/openapi-transform-x/openapi_metadata.json",
+            storage_path="file_refs/abc123.json",
+            tier=StorageTier.RETAINED,
+        )
+        connector.extract_spec = AsyncMock(  # type: ignore[method-assign]
+            return_value=ExtractSpecOutput(
+                api_spec_file=FileReference(local_path="/tmp/spec.jsonl"),
+                api_path_file=FileReference(local_path="/tmp/path.jsonl"),
+                api_spec_count=1,
+                api_path_count=1,
+            )
+        )
+        connector.transform = AsyncMock(  # type: ignore[method-assign]
+            return_value=TransformOutput(
+                output_file=out_ref, api_spec_count=1, api_path_count=1
+            )
+        )
+        connector.upload_refs = AsyncMock(  # type: ignore[method-assign]
+            side_effect=_fake_upload_refs
+        )
+
+        await connector.run(_base_input(load_to_atlan=True))
+
+        sent: UploadRefsInput = connector.upload_refs.await_args.args[0]
+        assert sent.prefix == _TRANSFORMED_PREFIX
+        assert sent.tier is StorageTier.RETAINED
+        assert [(f.ref, f.label) for f in sent.files] == [
+            (out_ref, "openapi_metadata.json")
+        ]
 
 
 class TestRunReusePath:
@@ -828,7 +869,7 @@ class TestRunReusePath:
                 api_path_count=2,
             )
         )
-        connector.upload = AsyncMock()  # type: ignore[method-assign]
+        connector.upload_refs = AsyncMock()  # type: ignore[method-assign]
 
         input = _base_input(
             connection_usage="REUSE",
@@ -838,7 +879,7 @@ class TestRunReusePath:
         )
         result = await connector.run(input)
 
-        connector.upload.assert_not_awaited()
+        connector.upload_refs.assert_not_awaited()
         assert result.assertion_only_enabled is True
         assert result.publish_completed is False
         assert result.connection_qualified_name == CONN_QN
@@ -1042,13 +1083,13 @@ class TestRunZeroScanned:
             return_value=ExtractSpecOutput(api_spec_count=0, api_path_count=0)
         )
         connector.transform = AsyncMock()  # type: ignore[method-assign]
-        connector.upload = AsyncMock()  # type: ignore[method-assign]
+        connector.upload_refs = AsyncMock()  # type: ignore[method-assign]
 
         input = _base_input(load_to_atlan=True)
         result = await connector.run(input)
 
         connector.transform.assert_not_awaited()
-        connector.upload.assert_not_awaited()
+        connector.upload_refs.assert_not_awaited()
         assert result.total_scanned == 0
         assert result.publish_completed is False
         assert result.output_file is None
@@ -1093,33 +1134,62 @@ class TestRunPartialZeroAmongMultiple:
         assert result.total_scanned == 2
 
 
-class TestRunUploadStoragePathMissing:
-    async def test_missing_storage_path_raises_internal_error(self) -> None:
+class TestRunMultipleSpecsDeliverEveryOutput:
+    async def test_every_transform_output_is_declared(self) -> None:
+        """Each spec's transform writes its own file; all of them are published.
+
+        The connection is emitted by the first transform only, so publish sees
+        it once however many spec files the run carries.
+        """
         connector = _make_connector_for_run()
+        connector.download_cloud_spec = AsyncMock(  # type: ignore[method-assign]
+            return_value=DownloadCloudSpecOutput(
+                spec_files=[
+                    FileReference(local_path="/tmp/a.json"),
+                    FileReference(local_path="/tmp/b.json"),
+                    FileReference(local_path="/tmp/c.json"),
+                ]
+            )
+        )
         connector.extract_spec = AsyncMock(  # type: ignore[method-assign]
             return_value=ExtractSpecOutput(
                 api_spec_file=FileReference(local_path="/tmp/spec.jsonl"),
                 api_path_file=FileReference(local_path="/tmp/path.jsonl"),
                 api_spec_count=1,
-                api_path_count=0,
+                api_path_count=2,
             )
         )
+        out_refs = [
+            FileReference(local_path=f"/tmp/t{i}/openapi_metadata.json")
+            for i in range(3)
+        ]
         connector.transform = AsyncMock(  # type: ignore[method-assign]
-            return_value=TransformOutput(
-                output_file=FileReference(local_path="/tmp/out.json"),
-                api_spec_count=1,
-                api_path_count=0,
-            )
+            side_effect=[
+                TransformOutput(output_file=r, api_spec_count=1, api_path_count=2)
+                for r in out_refs
+            ]
         )
-        connector.upload = AsyncMock(  # type: ignore[method-assign]
-            return_value=UploadOutput(
-                ref=FileReference(local_path="/tmp/out.json", storage_path=None)
-            )
+        connector.upload_refs = AsyncMock(  # type: ignore[method-assign]
+            side_effect=_fake_upload_refs
         )
 
-        input = _base_input(load_to_atlan=True)
-        with pytest.raises(InternalError):
-            await connector.run(input)
+        result = await connector.run(
+            _base_input(import_type="CLOUD", spec_prefix="specs", load_to_atlan=True)
+        )
+
+        sent: UploadRefsInput = connector.upload_refs.await_args.args[0]
+        assert [(f.ref, f.label) for f in sent.files] == [
+            (out_refs[0], "openapi_metadata.json"),
+            (out_refs[1], "openapi_metadata_1.json"),
+            (out_refs[2], "openapi_metadata_2.json"),
+        ]
+        emitted = [
+            c.args[0].emit_connection for c in connector.transform.await_args_list
+        ]
+        assert emitted == [True, False, False]
+        assert result.transformed_data_prefix == _TRANSFORMED_PREFIX
+        assert result.api_spec_count == 3
+        assert result.api_path_count == 6
 
 
 class TestTransformTaskWrapper:
