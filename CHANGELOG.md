@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.7.6 (October 24, 2026)
+
+Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.7.5...v0.7.6
+
+### Chores
+
+- lock file maintenance (#793) (by @atlan-app-fleet[bot] in [514768c](https://github.com/atlanhq/atlan-openapi-app/commit/514768c))
+- update dependency atlan-application-sdk-conformance to v0.52.1 (#795) (by @atlan-app-fleet[bot] in [472abda](https://github.com/atlanhq/atlan-openapi-app/commit/472abda))
+- lock file maintenance (#796) (by @atlan-app-fleet[bot] in [ffd9545](https://github.com/atlanhq/atlan-openapi-app/commit/ffd9545))
+- update dependency atlan-application-sdk to v3.52.0 (#797) (by @atlan-app-fleet[bot] in [031f61b](https://github.com/atlanhq/atlan-openapi-app/commit/031f61b))
+- lock file maintenance (#798) (by @atlan-app-fleet[bot] in [21c1b80](https://github.com/atlanhq/atlan-openapi-app/commit/21c1b80))
+- lock file maintenance (#799) (by @atlan-app-fleet[bot] in [8cb4dd9](https://github.com/atlanhq/atlan-openapi-app/commit/8cb4dd9))
+- lock file maintenance (#800) (by @atlan-app-fleet[bot] in [b067031](https://github.com/atlanhq/atlan-openapi-app/commit/b067031))
+
+
 ## v0.7.5 (October 22, 2026)
 
 Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.7.4...v0.7.5
