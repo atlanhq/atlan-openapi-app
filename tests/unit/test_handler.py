@@ -34,6 +34,7 @@ from application_sdk.handler import (
     PreflightStatus,
 )
 
+from app.errors import CloudSpecAccessDeniedError, CloudSpecCredentialRejectedError
 from app.handler import (
     OpenAPIConnectorHandler,
     _classify_store_failure,
@@ -419,6 +420,33 @@ class TestCloudCredentialProbe:
         assert row.error.code == code
 
     @pytest.mark.asyncio
+    async def test_generic_status_401_blocks_as_rejected_credential(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A rejected Azure secret surfaces as a GenericError carrying only the
+        status text. Before it was read, this case reported a transient and the
+        gate let a run through that could only fail on the same 401."""
+        from obstore.exceptions import GenericError
+
+        async def _fail(raw: dict, prefix: str, key: str) -> None:
+            raise GenericError(
+                "Generic MicrosoftAzure error: Error performing token request: "
+                "Server returned non-2xx status code: 401 Unauthorized: "
+                '{"error":"invalid_client"}'
+            )
+
+        monkeypatch.setattr("app.handler._read_object_store", _fail)
+        out = await OpenAPIConnectorHandler().preflight_check(
+            self._cloud_input(object_store=self._creds())
+        )
+        assert out.status == PreflightStatus.NOT_READY
+        row = next(c for c in out.checks if c.name == "cloud_spec_credential_valid")
+        assert row.error is not None
+        assert row.error.code == "AUTH_OPENAPI_CLOUD_SPEC_CREDENTIAL"
+        assert row.error.category == FailureCategory.AUTH
+        assert row.error.retryable is False
+
+    @pytest.mark.asyncio
     async def test_wrapped_cause_is_still_classified(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -550,6 +578,49 @@ class TestCloudCredentialProbe:
             except RuntimeError as exc:
                 assert exc.__context__ is not None
                 assert _classify_store_failure(exc) is None
+
+    def test_azure_token_401_is_a_rejected_credential(self) -> None:
+        """An Azure secret the identity provider refuses arrives as a
+        GenericError from the token request — only its text says 401."""
+        from obstore.exceptions import GenericError
+
+        failure = _classify_store_failure(
+            GenericError(
+                "Generic MicrosoftAzure error: Error performing token request: "
+                "Error performing POST https://login.microsoftonline.com/"
+                "example-tenant/oauth2/v2.0/token in 77ms - Server returned "
+                "non-2xx status code: 401 Unauthorized: "
+                '{"error":"invalid_client","error_codes":[7000215]}'
+            )
+        )
+        assert isinstance(failure, CloudSpecCredentialRejectedError)
+        assert failure.audience.name == "USER"
+        assert failure.effective_retryable is False
+        assert "secret value, not the secret ID" in (failure.suggested_action or "")
+
+    def test_wrapped_status_403_is_access_denied(self) -> None:
+        """The SDK wraps the driver error; the walk still reaches its status."""
+        try:
+            raise RuntimeError(
+                "Generic GCS error: Client error with status 403 Forbidden: "
+                "<Error><Code>AccessDenied</Code></Error>"
+            )
+        except RuntimeError as driver:
+            try:
+                raise ValueError("Failed to head key 'specs/a.json'") from driver
+            except ValueError as exc:
+                failure = _classify_store_failure(exc)
+        assert isinstance(failure, CloudSpecAccessDeniedError)
+        assert failure.effective_retryable is False
+
+    def test_status_503_stays_unattributed(self) -> None:
+        """An outage status is not the connection owner's to fix."""
+        assert (
+            _classify_store_failure(
+                RuntimeError("non-2xx status code: 503 Service Unavailable")
+            )
+            is None
+        )
 
     def test_unknown_failure_stays_unattributed(self) -> None:
         """None is what reports a transient. Guessing here would make the gate
