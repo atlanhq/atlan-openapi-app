@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import time
 from typing import Any
 
@@ -121,6 +122,15 @@ _TRANSIENT_NETWORK_ERRORS = frozenset(
 )
 
 
+# obstore only types a denial as UnauthenticatedError / PermissionDeniedError on
+# some backends. The rest arrive as GenericError text, in two shapes: "non-2xx
+# status code: 401 ..." from the backend response, and "Client error with status
+# 403 ..." from the retry layer. An Azure service principal whose secret the
+# identity provider refuses is the first shape, raised from the token request,
+# so without the text match it read as a transient and the probe failed open.
+_HTTP_STATUS_RE = re.compile(r"status(?: code:)?\s*(\d{3})\b")
+
+
 async def _read_object_store(raw: dict[str, Any], prefix: str, key: str) -> bool:
     """Make the cheapest authenticated call that proves the spec is readable.
 
@@ -185,17 +195,22 @@ def _classify_store_failure(exc: BaseException) -> AppError | None:
     seen: set[int] = set()
     while current is not None and id(current) not in seen:
         seen.add(id(current))
-        if isinstance(current, ObstoreUnauthenticatedError):
+        status = _HTTP_STATUS_RE.search(str(current))
+        http_status = int(status.group(1)) if status else None
+        if isinstance(current, ObstoreUnauthenticatedError) or http_status == 401:
             return CloudSpecCredentialRejectedError(
                 message="the object store rejected the configured credential",
                 suggested_action=(
-                    "Check the object-store credential on this connection: for a "
-                    "role-based setup confirm the role ARN is correct and its "
-                    "trust policy still permits Atlan to assume it."
+                    "Check the object-store credential on this connection. For a "
+                    "role-based setup, confirm the role ARN is correct and its "
+                    "trust policy still permits Atlan to assume it. For an Azure "
+                    "service principal, confirm the client secret is current and "
+                    "is the secret value, not the secret ID. For an access key, "
+                    "confirm it is active."
                 ),
                 cause=current,
             )
-        if isinstance(current, ObstorePermissionDeniedError):
+        if isinstance(current, ObstorePermissionDeniedError) or http_status == 403:
             return CloudSpecAccessDeniedError(
                 message="the credential authenticated but cannot read the spec location",
                 suggested_action=(
