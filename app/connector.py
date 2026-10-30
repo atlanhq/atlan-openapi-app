@@ -145,119 +145,131 @@ async def _extract_spec_async(
 
     spec_file_path = out_dir / "api_spec.jsonl"
     path_file_path = out_dir / "api_path.jsonl"
-    spec_count = 0
-    path_count = 0
+    from application_sdk.execution.heartbeat import run_in_thread
 
-    with spec_file_path.open("wb") as spec_f, path_file_path.open("wb") as path_f:
-        for spec in specs:
-            info = spec.get("info", {})
-            title = info.get("title", "")
-            if not title:
-                logger.warning("skipping spec with missing 'info.title'")
-                continue
+    def _write_spec_records() -> tuple[int, int]:
+        """Build and write APISpec + APIPath JSONL files off the event loop."""
+        spec_count = 0
+        path_count = 0
 
-            spec_qn = build_api_spec_qn(connection_qualified_name, title)
-
-            # --- Write APISpec record ---
-            spec_record = OpenAPISpecRecord(
-                title=title,
-                openapi_version=spec.get("openapi", spec.get("swagger", "")),
-                description=info.get("description", ""),
-                terms_of_service=info.get("termsOfService", ""),
-                contact_name=info.get("contact", {}).get("name", "")
-                if info.get("contact")
-                else "",
-                contact_email=info.get("contact", {}).get("email", "")
-                if info.get("contact")
-                else "",
-                contact_url=info.get("contact", {}).get("url", "")
-                if info.get("contact")
-                else "",
-                license_name=info.get("license", {}).get("name", "")
-                if info.get("license")
-                else "",
-                license_url=info.get("license", {}).get("url", "")
-                if info.get("license")
-                else "",
-                spec_version=info.get("version", ""),
-                external_docs_url=spec.get("externalDocs", {}).get("url", "")
-                if spec.get("externalDocs")
-                else "",
-                external_docs_description=spec.get("externalDocs", {}).get(
-                    "description", ""
-                )
-                if spec.get("externalDocs")
-                else "",
-                spec_url=spec_url,
-            )
-            spec_f.write(_encoder.encode(spec_record) + b"\n")
-            spec_count += 1
-
-            # --- Write APIPath records ---
-            # `spec.get("paths") or {}` handles both absent key and `"paths": null`.
-            # OAS 3.1 specs may use `webhooks` instead of (or alongside) `paths`;
-            # merge both so enterprise specs that moved to webhooks-only still produce
-            # APIPath assets.
-            paths: dict = spec.get("paths") or {}
-            webhooks: dict = spec.get("webhooks") or {}
-            all_path_items = {**paths, **webhooks}
-            for path_url, path_item in all_path_items.items():
-                if not isinstance(path_item, dict):
+        with spec_file_path.open("wb") as spec_f, path_file_path.open("wb") as path_f:
+            for spec in specs:
+                info = spec.get("info", {})
+                title = info.get("title", "")
+                if not title:
+                    logger.warning("skipping spec with missing 'info.title'")
                     continue
 
-                # Collect available operations (uppercase methods) — matches Kotlin's addOperationDetails
-                # sorted() matches SPEC.md §4.3 hashable content for stable change detection.
-                operations: list[str] = sorted(
-                    m.upper() for m in _TRACKED_METHODS if path_item.get(m) is not None
+                spec_qn = build_api_spec_qn(connection_qualified_name, title)
+
+                # --- Write APISpec record ---
+                spec_record = OpenAPISpecRecord(
+                    title=title,
+                    openapi_version=spec.get("openapi", spec.get("swagger", "")),
+                    description=info.get("description", ""),
+                    terms_of_service=info.get("termsOfService", ""),
+                    contact_name=info.get("contact", {}).get("name", "")
+                    if info.get("contact")
+                    else "",
+                    contact_email=info.get("contact", {}).get("email", "")
+                    if info.get("contact")
+                    else "",
+                    contact_url=info.get("contact", {}).get("url", "")
+                    if info.get("contact")
+                    else "",
+                    license_name=info.get("license", {}).get("name", "")
+                    if info.get("license")
+                    else "",
+                    license_url=info.get("license", {}).get("url", "")
+                    if info.get("license")
+                    else "",
+                    spec_version=info.get("version", ""),
+                    external_docs_url=spec.get("externalDocs", {}).get("url", "")
+                    if spec.get("externalDocs")
+                    else "",
+                    external_docs_description=spec.get("externalDocs", {}).get(
+                        "description", ""
+                    )
+                    if spec.get("externalDocs")
+                    else "",
+                    spec_url=spec_url,
                 )
+                spec_f.write(_encoder.encode(spec_record) + b"\n")
+                spec_count += 1
 
-                # Build markdown description from path-item and operation details
-                description_parts: list[str] = []
+                # --- Write APIPath records ---
+                # `spec.get("paths") or {}` handles both absent key and `"paths": null`.
+                # OAS 3.1 specs may use `webhooks` instead of (or alongside) `paths`;
+                # merge both so enterprise specs that moved to webhooks-only still produce
+                # APIPath assets.
+                paths: dict = spec.get("paths") or {}
+                webhooks: dict = spec.get("webhooks") or {}
+                all_path_items = {**paths, **webhooks}
+                for path_url, path_item in all_path_items.items():
+                    if not isinstance(path_item, dict):
+                        continue
 
-                # Include path-item level description if present
-                path_description = (
-                    path_item.get("description", "")
-                    if isinstance(path_item, dict)
-                    else ""
-                )
-                if path_description:
-                    description_parts.append(path_description)
+                    # Collect available operations (uppercase methods) — matches Kotlin's addOperationDetails
+                    # sorted() matches SPEC.md §4.3 hashable content for stable change detection.
+                    operations: list[str] = sorted(
+                        m.upper()
+                        for m in _TRACKED_METHODS
+                        if path_item.get(m) is not None
+                    )
 
-                # Build operations summary table
-                if operations:
-                    rows = ["| Method | Summary|", "|---|---|"]
+                    # Build markdown description from path-item and operation details
+                    description_parts: list[str] = []
+
+                    # Include path-item level description if present
+                    path_description = (
+                        path_item.get("description", "")
+                        if isinstance(path_item, dict)
+                        else ""
+                    )
+                    if path_description:
+                        description_parts.append(path_description)
+
+                    # Build operations summary table
+                    if operations:
+                        rows = ["| Method | Summary|", "|---|---|"]
+                        for method in _TRACKED_METHODS:
+                            op = path_item.get(method)
+                            if op is not None:
+                                op_summary = (
+                                    op.get("summary", "")
+                                    if isinstance(op, dict)
+                                    else ""
+                                )
+                                rows.append(f"| `{method.upper()}` |{op_summary} |")
+                        description_parts.append("\n".join(rows))
+
+                    # Append operation-level descriptions
                     for method in _TRACKED_METHODS:
                         op = path_item.get(method)
-                        if op is not None:
-                            op_summary = (
-                                op.get("summary", "") if isinstance(op, dict) else ""
-                            )
-                            rows.append(f"| `{method.upper()}` |{op_summary} |")
-                    description_parts.append("\n".join(rows))
+                        if op is not None and isinstance(op, dict):
+                            op_desc = op.get("description", "")
+                            if op_desc:
+                                description_parts.append(
+                                    f"**{method.upper()}**\n\n{op_desc}"
+                                )
 
-                # Append operation-level descriptions
-                for method in _TRACKED_METHODS:
-                    op = path_item.get(method)
-                    if op is not None and isinstance(op, dict):
-                        op_desc = op.get("description", "")
-                        if op_desc:
-                            description_parts.append(
-                                f"**{method.upper()}**\n\n{op_desc}"
-                            )
+                    description = "\n\n".join(description_parts)
 
-                description = "\n\n".join(description_parts)
+                    path_record = OpenAPIPathRecord(
+                        path_url=path_url,
+                        spec_title=title,
+                        spec_qualified_name=spec_qn,
+                        summary=path_item.get("summary", ""),
+                        available_operations=operations,
+                        description=description,
+                        is_templated="{" in path_url and "}" in path_url,
+                    )
+                    path_f.write(_encoder.encode(path_record) + b"\n")
+                    path_count += 1
 
-                path_record = OpenAPIPathRecord(
-                    path_url=path_url,
-                    spec_title=title,
-                    spec_qualified_name=spec_qn,
-                    summary=path_item.get("summary", ""),
-                    available_operations=operations,
-                    description=description,
-                    is_templated="{" in path_url and "}" in path_url,
-                )
-                path_f.write(_encoder.encode(path_record) + b"\n")
-                path_count += 1
+        return spec_count, path_count
+
+    spec_count, path_count = await run_in_thread(_write_spec_records)
 
     if spec_count == 0:
         # CONNECT-812 EP-03 class: every fetched document was skipped, so
