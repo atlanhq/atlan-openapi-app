@@ -441,25 +441,34 @@ class OpenAPIApiClient:
         # Local file path (from CLOUD download) — read directly
         import os
 
-        if "://" not in spec_url and os.path.isfile(spec_url):
-            logger.info("reading OpenAPI spec from local file=%s", spec_url)
-            with open(spec_url, "rb") as f:
-                content = f.read()
-            content_type = ""
-            is_zip = spec_url.endswith(".zip")
-            if is_zip:
-                return self._parse_zip(content, spec_url)
-            spec = self._parse_body(content, content_type, spec_url)
-            path_count = len(spec.get("paths") or {})
-            title = spec.get("info", {}).get("title", "<unknown>")
-            openapi_version = spec.get("openapi", spec.get("swagger", "?"))
-            logger.info(
-                "spec read from file title=%s openapi=%s paths=%d",
-                title,
-                openapi_version,
-                path_count,
-            )
-            return [spec]
+        from application_sdk.execution.heartbeat import run_in_thread
+
+        def _read_local_spec(file_path: str) -> bytes | None:
+            """Read a local spec file in the blocking worker, if it exists."""
+            if not os.path.isfile(file_path):
+                return None
+            with open(file_path, "rb") as f:
+                return f.read()
+
+        if "://" not in spec_url:
+            content = await run_in_thread(_read_local_spec, spec_url)
+            if content is not None:
+                logger.info("reading OpenAPI spec from local file=%s", spec_url)
+                content_type = ""
+                is_zip = spec_url.endswith(".zip")
+                if is_zip:
+                    return self._parse_zip(content, spec_url)
+                spec = self._parse_body(content, content_type, spec_url)
+                path_count = len(spec.get("paths") or {})
+                title = spec.get("info", {}).get("title", "<unknown>")
+                openapi_version = spec.get("openapi", spec.get("swagger", "?"))
+                logger.info(
+                    "spec read from file title=%s openapi=%s paths=%d",
+                    title,
+                    openapi_version,
+                    path_count,
+                )
+                return [spec]
 
         # HTTP URL — fetch remotely. Every network failure is re-raised typed
         # (CONNECT-812 PF-20 class): a raw httpx exception crossing the

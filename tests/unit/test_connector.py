@@ -129,6 +129,47 @@ async def _run(spec_url: str, tmp_path: Path):
     )
 
 
+async def test_local_spec_file_io_runs_off_event_loop_thread(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import threading
+    from collections.abc import Callable
+    from typing import Any
+
+    import application_sdk.execution.heartbeat as heartbeat
+    from application_sdk.execution.heartbeat import run_in_thread as sdk_run_in_thread
+
+    event_loop_thread = threading.get_ident()
+    offload_threads: dict[str, list[int]] = {}
+
+    async def observe_offload(
+        func: Callable[..., Any], *args: Any, **kwargs: Any
+    ) -> Any:
+        def invoke() -> Any:
+            offload_threads.setdefault(func.__name__, []).append(threading.get_ident())
+            return func(*args, **kwargs)
+
+        return await sdk_run_in_thread(invoke)
+
+    monkeypatch.setattr(heartbeat, "run_in_thread", observe_offload)
+    spec_url = await sdk_run_in_thread(
+        _write_spec,
+        tmp_path,
+        {"openapi": "3.0.4", "info": {"title": "Offloaded", "version": "1.0"}},
+    )
+
+    result = await _run(spec_url, tmp_path)
+
+    assert result[2:] == (1, 0)
+    assert offload_threads["_read_local_spec"]
+    assert offload_threads["_write_spec_records"]
+    assert all(
+        thread_id != event_loop_thread
+        for thread_ids in offload_threads.values()
+        for thread_id in thread_ids
+    )
+
+
 # ---------------------------------------------------------------------------
 # paths: null should not raise AttributeError
 # ---------------------------------------------------------------------------
