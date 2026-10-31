@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.7.7 (October 31, 2026)
+
+Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.7.6...v0.7.7
+
+### Bug Fixes
+
+- classify object-store 401/403 carried only in status text (FND-4409) (#808) (by @vaibhavatlan in [45fcf54](https://github.com/atlanhq/atlan-openapi-app/commit/45fcf54))
+
+### Chores
+
+- lock file maintenance (#802) (by @atlan-app-fleet[bot] in [b636e01](https://github.com/atlanhq/atlan-openapi-app/commit/b636e01))
+- lock file maintenance (#804) (by @atlan-app-fleet[bot] in [7dc1fe4](https://github.com/atlanhq/atlan-openapi-app/commit/7dc1fe4))
+- lock file maintenance (#805) (by @atlan-app-fleet[bot] in [f038b49](https://github.com/atlanhq/atlan-openapi-app/commit/f038b49))
+- lock file maintenance (#806) (by @atlan-app-fleet[bot] in [44c9001](https://github.com/atlanhq/atlan-openapi-app/commit/44c9001))
+- lock file maintenance (#807) (by @atlan-app-fleet[bot] in [c7fea77](https://github.com/atlanhq/atlan-openapi-app/commit/c7fea77))
+- update dependency atlan-application-sdk to v3.53.0 (#809) (by @atlan-app-fleet[bot] in [2738fde](https://github.com/atlanhq/atlan-openapi-app/commit/2738fde))
+- lock file maintenance (#810) (by @atlan-app-fleet[bot] in [463fa27](https://github.com/atlanhq/atlan-openapi-app/commit/463fa27))
+- lock file maintenance (#811) (by @atlan-app-fleet[bot] in [84f9f5f](https://github.com/atlanhq/atlan-openapi-app/commit/84f9f5f))
+- lock file maintenance (#812) (by @atlan-app-fleet[bot] in [17cc777](https://github.com/atlanhq/atlan-openapi-app/commit/17cc777))
+- lock file maintenance (#813) (by @atlan-app-fleet[bot] in [f17c44f](https://github.com/atlanhq/atlan-openapi-app/commit/f17c44f))
+- lock file maintenance (#814) (by @atlan-app-fleet[bot] in [b682df0](https://github.com/atlanhq/atlan-openapi-app/commit/b682df0))
+- update dependency atlan-application-sdk to v3.53.1 (#815) (by @atlan-app-fleet[bot] in [f8306e6](https://github.com/atlanhq/atlan-openapi-app/commit/f8306e6))
+- update dependency atlan-application-sdk-conformance to v0.53.0 (#816) (by @atlan-app-fleet[bot] in [bd57d47](https://github.com/atlanhq/atlan-openapi-app/commit/bd57d47))
+- lock file maintenance (#817) (by @atlan-app-fleet[bot] in [d93a672](https://github.com/atlanhq/atlan-openapi-app/commit/d93a672))
+- lock file maintenance (#818) (by @atlan-app-fleet[bot] in [be2aa78](https://github.com/atlanhq/atlan-openapi-app/commit/be2aa78))
+- lock file maintenance (#820) (by @atlan-app-fleet[bot] in [5075778](https://github.com/atlanhq/atlan-openapi-app/commit/5075778))
+- lock file maintenance (#821) (by @atlan-app-fleet[bot] in [b44184e](https://github.com/atlanhq/atlan-openapi-app/commit/b44184e))
+- lock file maintenance (#822) (by @atlan-app-fleet[bot] in [6a8a047](https://github.com/atlanhq/atlan-openapi-app/commit/6a8a047))
+- lock file maintenance (#823) (by @atlan-app-fleet[bot] in [bcae5d2](https://github.com/atlanhq/atlan-openapi-app/commit/bcae5d2))
+
+
 ## v0.7.6 (October 25, 2026)
 
 Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.7.5...v0.7.6
