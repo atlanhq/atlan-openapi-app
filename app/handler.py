@@ -503,6 +503,10 @@ class OpenAPIConnectorHandler(DefaultHandler):
                     source_type="object_store",
                     cause=exc,
                 ) from None
+            logger.debug(
+                "cloud_spec_credential_valid failed: %s",
+                sanitize_cause_repr(exc),
+            )
             return PreflightCheck(
                 name=check_name,
                 passed=False,
