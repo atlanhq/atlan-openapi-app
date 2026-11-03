@@ -405,6 +405,17 @@ class TestCloudCredentialProbe:
         import obstore.exceptions as obstore_exceptions
 
         raised = getattr(obstore_exceptions, exc)("store said no")
+        debug_calls: list[tuple[object, ...]] = []
+        sanitized_cause = "sanitized cause"
+        monkeypatch.setattr(
+            "app.handler.sanitize_cause_repr", lambda _exc: sanitized_cause
+        )
+
+        class _CaptureLogger:
+            def debug(self, *args: object) -> None:
+                debug_calls.append(args)
+
+        monkeypatch.setattr("app.handler.logger", _CaptureLogger())
 
         async def _fail(raw: dict, prefix: str, key: str) -> None:
             raise raised
@@ -418,6 +429,9 @@ class TestCloudCredentialProbe:
         assert row.passed is False
         assert row.error is not None
         assert row.error.code == code
+        assert debug_calls == [
+            ("cloud_spec_credential_valid failed: %s", sanitized_cause)
+        ]
 
     @pytest.mark.asyncio
     async def test_generic_status_401_blocks_as_rejected_credential(
