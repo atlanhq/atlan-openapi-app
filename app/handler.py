@@ -42,7 +42,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import re
 import time
 from typing import Any
 
@@ -61,14 +60,16 @@ from application_sdk.handler import (
 from application_sdk.observability.logger_adaptor import get_logger
 
 from app.api_client import OpenAPIApiClient, redact_url
-from app.cloud_store import CLOUD_SPEC_SUFFIXES, extra_is_malformed, has_valid_auth
+from app.cloud_store import (
+    CLOUD_SPEC_SUFFIXES,
+    classify_store_failure,
+    extra_is_malformed,
+    has_valid_auth,
+)
 from app.errors import (
-    CloudSpecAccessDeniedError,
-    CloudSpecCredentialRejectedError,
     CloudSpecLocationRequiredError,
     CloudSpecNotFoundError,
     CloudSpecStoreTransientError,
-    ObjectStoreCredentialError,
     SpecFetchClientError,
     SpecSourceTransientError,
     SpecSourceUnavailableError,
@@ -122,15 +123,6 @@ _TRANSIENT_NETWORK_ERRORS = frozenset(
 )
 
 
-# obstore only types a denial as UnauthenticatedError / PermissionDeniedError on
-# some backends. The rest arrive as GenericError text, in two shapes: "non-2xx
-# status code: 401 ..." from the backend response, and "Client error with status
-# 403 ..." from the retry layer. An Azure service principal whose secret the
-# identity provider refuses is the first shape, raised from the token request,
-# so without the text match it read as a transient and the probe failed open.
-_HTTP_STATUS_RE = re.compile(r"status(?: code:)?\s*(\d{3})\b")
-
-
 async def _read_object_store(raw: dict[str, Any], prefix: str, key: str) -> bool:
     """Make the cheapest authenticated call that proves the spec is readable.
 
@@ -167,83 +159,6 @@ async def _read_object_store(raw: dict[str, Any], prefix: str, key: str) -> bool
         for obj in listing["objects"]
         for suffix in CLOUD_SPEC_SUFFIXES
     )
-
-
-def _classify_store_failure(exc: BaseException) -> AppError | None:
-    """Type an object-store failure, or ``None`` when it is not attributable.
-
-    The SDK wraps every object-store failure in ``StorageError``, whose leaf is
-    DEPENDENCY_UNAVAILABLE/PLATFORM. That is right for an outage and wrong for a
-    credential the store rejected, so classification reads the obstore cause
-    rather than the SDK wrapper — otherwise a bad role token is filed against the
-    platform and the probe fails open on the one case it exists to catch.
-
-    ``None`` means "could not attribute", which the caller raises as a retryable
-    transient. Guessing here would make the gate fail closed on an outage.
-    """
-    from obstore.exceptions import (  # noqa: PLC0415 — native module, lazy
-        NotFoundError as ObstoreNotFoundError,
-        PermissionDeniedError as ObstorePermissionDeniedError,
-        UnauthenticatedError as ObstoreUnauthenticatedError,
-    )
-
-    from application_sdk.storage.errors import (  # noqa: PLC0415
-        StorageConfigError,
-    )
-
-    current: BaseException | None = exc
-    seen: set[int] = set()
-    while current is not None and id(current) not in seen:
-        seen.add(id(current))
-        status = _HTTP_STATUS_RE.search(str(current))
-        http_status = int(status.group(1)) if status else None
-        if isinstance(current, ObstoreUnauthenticatedError) or http_status == 401:
-            return CloudSpecCredentialRejectedError(
-                message="the object store rejected the configured credential",
-                suggested_action=(
-                    "Check the object-store credential on this connection. For a "
-                    "role-based setup, confirm the role ARN is correct and its "
-                    "trust policy still permits Atlan to assume it. For an Azure "
-                    "service principal, confirm the client secret is current and "
-                    "is the secret value, not the secret ID. For an access key, "
-                    "confirm it is active."
-                ),
-                cause=current,
-            )
-        if isinstance(current, ObstorePermissionDeniedError) or http_status == 403:
-            return CloudSpecAccessDeniedError(
-                message="the credential authenticated but cannot read the spec location",
-                suggested_action=(
-                    "Grant the credential read access to the configured prefix "
-                    "and object key."
-                ),
-                cause=current,
-            )
-        if isinstance(current, ObstoreNotFoundError | FileNotFoundError):
-            return CloudSpecNotFoundError(
-                message="the configured spec location does not exist in the object store",
-                suggested_action="Check the prefix and object key on this connection.",
-                cause=current,
-            )
-        if isinstance(current, StorageConfigError):
-            return ObjectStoreCredentialError(
-                message="the resolved object-store credential is not usable",
-                suggested_action=(
-                    "Check the object-store provider and its fields on this "
-                    "connection's credential."
-                ),
-                cause=current,
-            )
-        # Honour __suppress_context__: a `raise ... from None` upstream (the
-        # PF-17 severing this app does itself) means that context is not this
-        # failure's cause, and walking it misattributes an unrelated error.
-        if current.__cause__ is not None:
-            current = current.__cause__
-        elif current.__suppress_context__:
-            current = None
-        else:
-            current = current.__context__
-    return None
 
 
 def _as_gate_transient(error: AppError) -> AppError | None:
@@ -491,7 +406,7 @@ class OpenAPIConnectorHandler(DefaultHandler):
                 cause=exc,
             ) from None
         except Exception as exc:
-            failure = _classify_store_failure(exc)
+            failure = classify_store_failure(exc)
             if failure is None:
                 # Anything the classifier cannot attribute means "ask me again",
                 # the same retryable leaf as an overrun.

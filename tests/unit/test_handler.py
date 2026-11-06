@@ -34,10 +34,10 @@ from application_sdk.handler import (
     PreflightStatus,
 )
 
+from app.cloud_store import classify_store_failure
 from app.errors import CloudSpecAccessDeniedError, CloudSpecCredentialRejectedError
 from app.handler import (
     OpenAPIConnectorHandler,
-    _classify_store_failure,
     _probe_timeout,
     _read_object_store,
 )
@@ -591,14 +591,14 @@ class TestCloudCredentialProbe:
                 raise severed from None
             except RuntimeError as exc:
                 assert exc.__context__ is not None
-                assert _classify_store_failure(exc) is None
+                assert classify_store_failure(exc) is None
 
     def test_azure_token_401_is_a_rejected_credential(self) -> None:
         """An Azure secret the identity provider refuses arrives as a
         GenericError from the token request — only its text says 401."""
         from obstore.exceptions import GenericError
 
-        failure = _classify_store_failure(
+        failure = classify_store_failure(
             GenericError(
                 "Generic MicrosoftAzure error: Error performing token request: "
                 "Error performing POST https://login.microsoftonline.com/"
@@ -623,14 +623,14 @@ class TestCloudCredentialProbe:
             try:
                 raise ValueError("Failed to head key 'specs/a.json'") from driver
             except ValueError as exc:
-                failure = _classify_store_failure(exc)
+                failure = classify_store_failure(exc)
         assert isinstance(failure, CloudSpecAccessDeniedError)
         assert failure.effective_retryable is False
 
     def test_status_503_stays_unattributed(self) -> None:
         """An outage status is not the connection owner's to fix."""
         assert (
-            _classify_store_failure(
+            classify_store_failure(
                 RuntimeError("non-2xx status code: 503 Service Unavailable")
             )
             is None
@@ -639,7 +639,7 @@ class TestCloudCredentialProbe:
     def test_unknown_failure_stays_unattributed(self) -> None:
         """None is what reports a transient. Guessing here would make the gate
         fail closed on an object-store outage."""
-        assert _classify_store_failure(RuntimeError("who knows")) is None
+        assert classify_store_failure(RuntimeError("who knows")) is None
 
     @staticmethod
     def _no_probe(monkeypatch: pytest.MonkeyPatch) -> None:
