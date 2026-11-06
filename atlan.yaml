@@ -18,5 +18,13 @@ entrypoints:
 deploy:
   execution_mode: native
   splitDeploymentEnabled: true
+  dapr:
+    objectstore: true
+    secretstore: false
+    statestore: false
+    eventstore: false
+    subscription: false
+    configurationstore: false
+    lock: false
 release_model: semver
 app_id: 019d1f6b-6fea-7db3-96d8-e61e159d0351
