@@ -39,6 +39,8 @@ from app.contracts import (
     TransformOutput,
 )
 from app.errors import (
+    CloudSpecAccessDeniedError,
+    CloudSpecCredentialRejectedError,
     CloudSpecLocationRequiredError,
     CloudSpecNotFoundError,
     ConnectionRequiredError,
@@ -766,6 +768,217 @@ class TestDownloadCloudSpec:
             )
         )
         assert out.spec_files[0].local_path == "/tmp/w/spec.json"
+
+
+# ---------------------------------------------------------------------------
+# download_cloud_spec: typing a failed read (CONNECT-3893)
+# ---------------------------------------------------------------------------
+
+# Synthetic shape of the Azure token-request rejection: the identity provider
+# refuses the service principal's secret, and only the text carries the 401.
+_AZURE_TOKEN_401 = (
+    "Generic MicrosoftAzure error: Error performing token request: Error "
+    "performing POST https://login.microsoftonline.com/example-tenant/oauth2/"
+    "v2.0/token in 72ms - Server returned non-2xx status code: 401 "
+    'Unauthorized: {"error":"invalid_client","error_codes":[7000215]}'
+)
+
+# The two download shapes download_cloud_spec issues: a single key, or every
+# matching object under a prefix.
+_DOWNLOAD_MODES = [
+    pytest.param({"spec_prefix": "specs", "spec_key": "openapi.json"}, id="key"),
+    pytest.param({"spec_prefix": "specs", "spec_key": ""}, id="prefix"),
+]
+
+
+def _storage_error(driver: BaseException) -> Exception:
+    """The SDK's StorageError wrapping *driver*, chained as the SDK chains it."""
+    from application_sdk.storage.errors import StorageError
+
+    try:
+        raise driver
+    except BaseException as cause:
+        try:
+            raise StorageError(
+                "[AAF-STR-004] Failed to head key 'specs/openapi.json'"
+            ) from cause
+        except StorageError as wrapped:
+            return wrapped
+
+
+class TestDownloadCloudSpecFailureTyping:
+    """A failed read is typed with the classifier preflight uses.
+
+    ``CloudStore.from_credentials`` builds its client lazily, so a credential
+    the store rejects first fails on ``download``. A secret that expires after
+    preflight passed fails a scheduled run there, so extraction must report it
+    as the customer's credential, not as a platform outage.
+    """
+
+    @staticmethod
+    def _connector(
+        monkeypatch: pytest.MonkeyPatch, failure: Exception, *, external: bool = True
+    ) -> OpenAPIConnector:
+        fake_store = SimpleNamespace(download=AsyncMock(side_effect=failure))
+        if external:
+            fake_cls: object = SimpleNamespace(
+                from_credentials=lambda creds: fake_store
+            )
+            credential = {
+                "authType": "adls",
+                "username": "client-id",
+                "password": "client-secret",
+                "extra": {},
+            }
+        else:
+
+            def fake_cls(*args: object, **kwargs: object) -> SimpleNamespace:
+                return fake_store
+
+            credential = {"username": "", "password": "", "extra": {}}
+        monkeypatch.setattr("application_sdk.storage.cloud.CloudStore", fake_cls)
+        connector = OpenAPIConnector()
+        connector._context = SimpleNamespace(  # type: ignore[attr-defined]
+            logger=_LOGGER,
+            run_id="test-run",
+            app_name="openapi",
+            storage=object(),
+            resolve_credential_raw=AsyncMock(return_value=credential),
+        )
+        return connector
+
+    @staticmethod
+    async def _download(connector: OpenAPIConnector, location: dict) -> None:
+        await connector.download_cloud_spec(
+            DownloadCloudSpecInput(
+                openapi_credential=CredentialRef(credential_guid="g1"), **location
+            )
+        )
+
+    @pytest.mark.parametrize("location", _DOWNLOAD_MODES)
+    async def test_azure_token_401_is_a_rejected_credential(
+        self, monkeypatch: pytest.MonkeyPatch, location: dict
+    ) -> None:
+        from obstore.exceptions import GenericError
+
+        connector = self._connector(
+            monkeypatch, _storage_error(GenericError(_AZURE_TOKEN_401))
+        )
+        with pytest.raises(CloudSpecCredentialRejectedError) as excinfo:
+            await self._download(connector, location)
+        error = excinfo.value
+        assert error.code == "AUTH_OPENAPI_CLOUD_SPEC_CREDENTIAL"
+        assert error.audience.name == "USER"
+        assert error.effective_retryable is False
+        assert "secret value, not the secret ID" in (error.suggested_action or "")
+        # PF-17: the chain is severed, as on the from_credentials branch; the
+        # cause survives only as the sanitized summary on the envelope.
+        assert error.__cause__ is None
+        assert error.__suppress_context__ is True
+
+    @pytest.mark.parametrize("location", _DOWNLOAD_MODES)
+    async def test_obstore_unauthenticated_is_a_rejected_credential(
+        self, monkeypatch: pytest.MonkeyPatch, location: dict
+    ) -> None:
+        from obstore.exceptions import UnauthenticatedError
+
+        connector = self._connector(
+            monkeypatch, _storage_error(UnauthenticatedError("token expired"))
+        )
+        with pytest.raises(CloudSpecCredentialRejectedError):
+            await self._download(connector, location)
+
+    async def test_sdk_auth_leaf_is_a_rejected_credential(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """What SDK >= 3.53.1 raises for a 401 on download: AUTH_STORAGE. The
+        app re-types it to its own code and suggested action."""
+        from application_sdk.storage.errors import StorageAuthError
+
+        connector = self._connector(
+            monkeypatch, StorageAuthError("Authentication failed reading specs")
+        )
+        with pytest.raises(CloudSpecCredentialRejectedError):
+            await self._download(connector, {"spec_key": "openapi.json"})
+
+    @pytest.mark.parametrize("location", _DOWNLOAD_MODES)
+    async def test_status_403_is_access_denied(
+        self, monkeypatch: pytest.MonkeyPatch, location: dict
+    ) -> None:
+        connector = self._connector(
+            monkeypatch,
+            _storage_error(
+                RuntimeError(
+                    "Generic GCS error: Client error with status 403 Forbidden"
+                )
+            ),
+        )
+        with pytest.raises(CloudSpecAccessDeniedError) as excinfo:
+            await self._download(connector, location)
+        assert excinfo.value.code == "PERMISSION_OPENAPI_CLOUD_SPEC"
+        assert excinfo.value.audience.name == "USER"
+        assert excinfo.value.effective_retryable is False
+
+    async def test_missing_key_is_not_found(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from obstore.exceptions import NotFoundError
+
+        connector = self._connector(
+            monkeypatch, _storage_error(NotFoundError("specs/openapi.json"))
+        )
+        with pytest.raises(CloudSpecNotFoundError) as excinfo:
+            await self._download(
+                connector, {"spec_prefix": "specs", "spec_key": "openapi.json"}
+            )
+        assert excinfo.value.code == "NOT_FOUND_OPENAPI_CLOUD_SPEC"
+        assert excinfo.value.audience.name == "USER"
+        assert excinfo.value.effective_retryable is False
+
+    @pytest.mark.parametrize("location", _DOWNLOAD_MODES)
+    async def test_unattributable_failure_is_reraised_unchanged(
+        self, monkeypatch: pytest.MonkeyPatch, location: dict
+    ) -> None:
+        """An outage keeps the SDK's retryable PLATFORM error, untouched."""
+        original = _storage_error(
+            RuntimeError("non-2xx status code: 503 Service Unavailable")
+        )
+        connector = self._connector(monkeypatch, original)
+        with pytest.raises(type(original)) as excinfo:
+            await self._download(connector, location)
+        assert excinfo.value is original
+        # Still the SDK's retryable platform leaf: a wrong non-retryable
+        # verdict here would kill the run on an outage.
+        assert excinfo.value.code == "DEPENDENCY_UNAVAILABLE_STORAGE"
+        assert excinfo.value.effective_retryable is True
+
+    async def test_tenant_store_failure_is_not_retyped(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """On the tenant store a 401 is Atlan's to fix, not the connection
+        owner's: it must not be reported as their credential."""
+        from obstore.exceptions import GenericError
+
+        original = _storage_error(GenericError(_AZURE_TOKEN_401))
+        connector = self._connector(monkeypatch, original, external=False)
+        with pytest.raises(type(original)) as excinfo:
+            await self._download(connector, {"spec_prefix": "specs"})
+        assert excinfo.value is original
+
+    async def test_gateway_auth_unavailable_is_not_retyped(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The blobstorage gateway's own 401 is a retryable platform leaf. Its
+        text carries a 401, but the customer's credential is fine."""
+        from application_sdk.storage.errors import StorageGatewayAuthUnavailableError
+
+        original = StorageGatewayAuthUnavailableError(
+            "gateway rejected request: non-2xx status code: 401 Invalid Client"
+        )
+        connector = self._connector(monkeypatch, original)
+        with pytest.raises(StorageGatewayAuthUnavailableError) as excinfo:
+            await self._download(connector, {"spec_key": "openapi.json"})
+        assert excinfo.value is original
 
 
 # ---------------------------------------------------------------------------

@@ -39,7 +39,12 @@ from app.asset_mapper import (
     map_api_spec,
     map_connection,
 )
-from app.cloud_store import CLOUD_SPEC_SUFFIXES, extra_is_malformed, has_valid_auth
+from app.cloud_store import (
+    CLOUD_SPEC_SUFFIXES,
+    classify_store_failure,
+    extra_is_malformed,
+    has_valid_auth,
+)
 from app.contracts import (
     DownloadCloudSpecInput,
     DownloadCloudSpecOutput,
@@ -489,6 +494,7 @@ class OpenAPIConnector(App):
                 or credential_data.get("auth_type")
                 or "unknown",
             )
+            external_store = True
             try:
                 store = CloudStore.from_credentials(credential_data)
             except AppError:
@@ -571,19 +577,40 @@ class OpenAPIConnector(App):
                     ),
                 )
             store = CloudStore(self.context.storage, provider="tenant")
+            external_store = False
 
         tmp_dir = tempfile.mkdtemp(prefix="openapi-cloud-")
         prefix = input.spec_prefix.strip("/") if input.spec_prefix else ""
         key = input.spec_key.strip("/") if input.spec_key else ""
-        if key:
-            full_key = f"{prefix}/{key}" if prefix else key
-            local_paths = await store.download(key=full_key, output_dir=tmp_dir)
-        else:
-            local_paths = await store.download(
-                prefix=prefix,
-                output_dir=tmp_dir,
-                suffix_filter=set(CLOUD_SPEC_SUFFIXES),
-            )
+        try:
+            if key:
+                full_key = f"{prefix}/{key}" if prefix else key
+                local_paths = await store.download(key=full_key, output_dir=tmp_dir)
+            else:
+                local_paths = await store.download(
+                    prefix=prefix,
+                    output_dir=tmp_dir,
+                    suffix_filter=set(CLOUD_SPEC_SUFFIXES),
+                )
+        except Exception as exc:
+            # CONNECT-3893: from_credentials builds the client lazily, so a
+            # rejected credential first fails here, on the call that
+            # authenticates. Scheduled runs hit it whenever a secret expires
+            # after preflight passed. Type it with the classifier preflight
+            # uses, so both surfaces report the same app error and suggested
+            # action.
+            #
+            # Only the customer's own store: on the tenant store a 401/403 is
+            # Atlan's problem, not the connection owner's.
+            failure = classify_store_failure(exc) if external_store else None
+            if failure is None:
+                # Unattributable (an outage, a timeout): keep the SDK's error and
+                # its retry/audience semantics untouched.
+                raise
+            # PF-17: sever the chain as the from_credentials branch does. The
+            # typed error carries the sanitized cause summary on its envelope;
+            # the raw driver message is not chained into the traceback.
+            raise failure from None
         return DownloadCloudSpecOutput(
             spec_files=[
                 FileReference(local_path=str(p), tier=StorageTier.RETAINED)
