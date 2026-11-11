@@ -34,7 +34,20 @@ metadata {
 // matches every other native app in the fleet. Note it was previously left to
 // the Heracles default rather than pinned here, so it is now explicit where it
 // was implicit — worth an eyeball on the first deploy.
-deploy = new DeployConfig {}
+//
+// CONNECT-4059: the toolkit's DaprComponents default `secretstore` to false, so
+// the empty DeployConfig above rendered `secretstore: false` and the 0.7.8
+// sidecar loaded no openapi-secretstore component. Every credential lookup
+// (preflight, download_cloud_spec -> resolve_credential_raw) then got HTTP 500
+// from /v1.0/secrets/openapi-secretstore/<guid>. This app resolves credentials
+// (hasCredentialConfig = true), so the secret store must be enabled here;
+// objectstore is pinned explicitly because the app reads/writes files through it.
+deploy = new DeployConfig {
+  dapr {
+    objectstore = true
+    secretstore = true
+  }
+}
 
 // CONNECT-55: replace the auto-generated publish node to add assertion-only
 // mode. Defining a "publish" key here REPLACES the default node (it does not
