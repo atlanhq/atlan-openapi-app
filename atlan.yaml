@@ -20,7 +20,7 @@ deploy:
   splitDeploymentEnabled: true
   dapr:
     objectstore: true
-    secretstore: false
+    secretstore: true
     statestore: false
     eventstore: false
     subscription: false
