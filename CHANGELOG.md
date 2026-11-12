@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.7.10 (November 12, 2026)
+
+Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.7.9...v0.7.10
+
+### Bug Fixes
+
+- enable the Dapr secret store so credential lookups work (CONNECT-4059) (#860) (by @mothership-ai[bot] in [86c572c](https://github.com/atlanhq/atlan-openapi-app/commit/86c572c))
+
+### Chores
+
+- update atlan framework dependencies (#862) (by @atlan-app-fleet[bot] in [12fc2d2](https://github.com/atlanhq/atlan-openapi-app/commit/12fc2d2))
+
+
 ## v0.7.9 (November 11, 2026)
 
 Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.7.8...v0.7.9
