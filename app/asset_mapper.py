@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from app.api_types import OpenAPIPathRecord, OpenAPISpecRecord
 
 from application_sdk.contracts.types import ConnectionRef
+from msgspec import UNSET
 
 from pyatlan_v9.model.assets import APIPath, APISpec, Connection
 
@@ -97,6 +98,12 @@ def map_connection(connection: ConnectionRef) -> Connection:
     _name = connection.attributes.name
     conn_name: str = _name if _name else conn_qn.rsplit("/", 1)[-1]
     native: Connection = connection.to_connection()
+    # Initial creation owns administrators. Per-run upserts must not replay the
+    # workflow's saved snapshot over live access controls. UNSET omits the fields,
+    # whereas None or [] would send explicit values that can clear administrators.
+    native.admin_users = UNSET
+    native.admin_groups = UNSET
+    native.admin_roles = UNSET
     native.connector_name = connection.attributes.connector_name or CONNECTOR_NAME
     native.connection_qualified_name = conn_qn
     native.name = conn_name
