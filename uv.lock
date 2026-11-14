@@ -9,6 +9,9 @@ resolution-markers = [
     "python_full_version < '3.12'",
 ]
 
+[options]
+exclude-newer-span = "P3D"  # refusal: window-empty
+
 [[package]]
 name = "annotated-doc"
 version = "0.0.6"
