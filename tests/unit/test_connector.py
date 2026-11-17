@@ -952,6 +952,16 @@ class TestDownloadCloudSpecFailureTyping:
         assert excinfo.value.code == "DEPENDENCY_UNAVAILABLE_STORAGE"
         assert excinfo.value.effective_retryable is True
 
+    @pytest.mark.parametrize("location", _DOWNLOAD_MODES)
+    async def test_unclassified_failure_is_reraised_unchanged(
+        self, monkeypatch: pytest.MonkeyPatch, location: dict
+    ) -> None:
+        original = RuntimeError("unexpected object-store failure")
+        connector = self._connector(monkeypatch, original)
+        with pytest.raises(RuntimeError) as excinfo:
+            await self._download(connector, location)
+        assert excinfo.value is original
+
     async def test_tenant_store_failure_is_not_retyped(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
