@@ -437,6 +437,14 @@ class OpenAPIConnector(App):
     ) -> DownloadCloudSpecOutput:
         """Download OpenAPI spec from cloud storage. Runs as activity (has I/O)."""
         from application_sdk.storage.cloud import CloudStore
+        from application_sdk.storage.errors import (
+            StorageAuthError,
+            StorageConfigError,
+            StorageError,
+            StorageGatewayAuthUnavailableError,
+            StorageNotFoundError,
+            StoragePermissionError,
+        )
 
         credential_data = None
         if input.openapi_credential is not None:
@@ -592,7 +600,15 @@ class OpenAPIConnector(App):
                     output_dir=tmp_dir,
                     suffix_filter=set(CLOUD_SPEC_SUFFIXES),
                 )
-        except Exception as exc:
+        except (
+            FileNotFoundError,
+            StorageAuthError,
+            StorageConfigError,
+            StorageError,
+            StorageGatewayAuthUnavailableError,
+            StorageNotFoundError,
+            StoragePermissionError,
+        ) as exc:
             # CONNECT-3893: from_credentials builds the client lazily, so a
             # rejected credential first fails here, on the call that
             # authenticates. Scheduled runs hit it whenever a secret expires
