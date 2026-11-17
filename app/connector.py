@@ -602,7 +602,9 @@ class OpenAPIConnector(App):
             #
             # Only the customer's own store: on the tenant store a 401/403 is
             # Atlan's problem, not the connection owner's.
-            failure = classify_store_failure(exc) if external_store else None
+            if not external_store:
+                raise
+            failure = classify_store_failure(exc)
             if failure is None:
                 # Unattributable (an outage, a timeout): keep the SDK's error and
                 # its retry/audience semantics untouched.
