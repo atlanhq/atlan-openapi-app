@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.7.13 (November 21, 2026)
+
+Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.7.12...v0.7.13
+
+### Chores
+
+- lock file maintenance (#882) (by @atlan-app-fleet[bot] in [04a1dc6](https://github.com/atlanhq/atlan-openapi-app/commit/04a1dc6))
+- lock file maintenance (#884) (by @atlan-app-fleet[bot] in [51ff228](https://github.com/atlanhq/atlan-openapi-app/commit/51ff228))
+- lock file maintenance (#885) (by @atlan-app-fleet[bot] in [44aab22](https://github.com/atlanhq/atlan-openapi-app/commit/44aab22))
+- lock file maintenance (#886) (by @atlan-app-fleet[bot] in [19381ea](https://github.com/atlanhq/atlan-openapi-app/commit/19381ea))
+- lock file maintenance (#887) (by @atlan-app-fleet[bot] in [1e46d7a](https://github.com/atlanhq/atlan-openapi-app/commit/1e46d7a))
+- lock file maintenance (#888) (by @atlan-app-fleet[bot] in [7b9faa5](https://github.com/atlanhq/atlan-openapi-app/commit/7b9faa5))
+- lock file maintenance (#889) (by @atlan-app-fleet[bot] in [bf3786c](https://github.com/atlanhq/atlan-openapi-app/commit/bf3786c))
+
+
 ## v0.7.12 (November 17, 2026)
 
 Full Changelog: https://github.com/atlanhq/atlan-openapi-app/compare/v0.7.11...v0.7.12
