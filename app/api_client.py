@@ -383,7 +383,7 @@ class OpenAPIApiClient:
         self._client = httpx.AsyncClient(
             headers=headers,
             timeout=timeout,
-            follow_redirects=False,
+            follow_redirects=True,
         )
 
     async def close(self) -> None:
