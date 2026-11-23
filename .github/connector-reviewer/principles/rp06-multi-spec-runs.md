@@ -9,8 +9,8 @@ files. `run()` transforms each one and delivers every output through `upload_ref
 label. The first label stays `openapi_metadata.json`, and only the first output carries the
 Connection row.
 Why: The transform loop once overwrote its output reference on each pass, so only the last spec
-reached publish. On a CREATE connection, full-diff publish then archived every asset from the
-other specs while the run stayed green.
+reached publish. Every other document's assets were missing from the catalog while the run
+stayed green, and on a CREATE connection a full diff archives any of them published before.
 Ask:
 - Does a loop over specs or transform results assign a single variable where it should append, or deliver only the first or last element?
 - Does every output keep a distinct label, with the first unchanged, and is the Connection row still emitted exactly once across all outputs?
