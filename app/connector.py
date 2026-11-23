@@ -166,6 +166,9 @@ async def _extract_spec_async(
                     continue
 
                 spec_qn = build_api_spec_qn(connection_qualified_name, title)
+                contact = info.get("contact") or {}
+                license_info = info.get("license") or {}
+                external_docs = spec.get("externalDocs") or {}
 
                 # --- Write APISpec record ---
                 spec_record = OpenAPISpecRecord(
@@ -173,30 +176,14 @@ async def _extract_spec_async(
                     openapi_version=spec.get("openapi", spec.get("swagger", "")),
                     description=info.get("description", ""),
                     terms_of_service=info.get("termsOfService", ""),
-                    contact_name=info.get("contact", {}).get("name", "")
-                    if info.get("contact")
-                    else "",
-                    contact_email=info.get("contact", {}).get("email", "")
-                    if info.get("contact")
-                    else "",
-                    contact_url=info.get("contact", {}).get("url", "")
-                    if info.get("contact")
-                    else "",
-                    license_name=info.get("license", {}).get("name", "")
-                    if info.get("license")
-                    else "",
-                    license_url=info.get("license", {}).get("url", "")
-                    if info.get("license")
-                    else "",
+                    contact_name=contact.get("name", ""),
+                    contact_email=contact.get("email", ""),
+                    contact_url=contact.get("url", ""),
+                    license_name=license_info.get("name", ""),
+                    license_url=license_info.get("url", ""),
                     spec_version=info.get("version", ""),
-                    external_docs_url=spec.get("externalDocs", {}).get("url", "")
-                    if spec.get("externalDocs")
-                    else "",
-                    external_docs_description=spec.get("externalDocs", {}).get(
-                        "description", ""
-                    )
-                    if spec.get("externalDocs")
-                    else "",
+                    external_docs_url=external_docs.get("url", ""),
+                    external_docs_description=external_docs.get("description", ""),
                     spec_url=spec_url,
                 )
                 spec_f.write(_encoder.encode(spec_record) + b"\n")
@@ -210,9 +197,10 @@ async def _extract_spec_async(
                 paths: dict = spec.get("paths") or {}
                 webhooks: dict = spec.get("webhooks") or {}
                 all_path_items = {**paths, **webhooks}
-                for path_url, path_item in all_path_items.items():
+                for raw_path_url, path_item in all_path_items.items():
                     if not isinstance(path_item, dict):
                         continue
+                    path_url = raw_path_url.rstrip("/") or "/"
 
                     # Collect available operations (uppercase methods) — matches Kotlin's addOperationDetails
                     # sorted() matches SPEC.md §4.3 hashable content for stable change detection.

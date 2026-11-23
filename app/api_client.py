@@ -279,7 +279,7 @@ def _classify_http_status(status: int, spec_url: str, exc: Exception) -> AppErro
             suggested_action="Retry later, or reduce request frequency to the endpoint.",
             cause=safe_cause,
         )
-    if status >= 500:
+    if status > 500:
         return SpecSourceUnavailableError(
             message=f"spec endpoint returned HTTP {status} (server error) for {safe_url}",
             endpoint=safe_url,
@@ -556,6 +556,7 @@ class OpenAPIApiClient:
                     or name.endswith(".yaml")
                     or name.endswith(".yml")
                 ):
+                    logger.debug("ignoring non-spec entry in ZIP file=%s", name)
                     continue
                 with zf.open(name) as f:
                     raw = f.read()

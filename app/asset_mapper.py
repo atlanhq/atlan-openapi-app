@@ -30,9 +30,9 @@ def apply_sync_metadata(
     """Stamp sync metadata fields onto a pyatlan Asset instance."""
     asset.status = "ACTIVE"
     asset.tenant_id = "default"
-    asset.last_sync_run = workflow_id
+    asset.last_sync_workflow_name = workflow_id
+    asset.last_sync_run = workflow_type
     asset.last_sync_run_at = workflow_run_at_ms
-    asset.last_sync_workflow_name = workflow_type
 
 
 # Connector name constant — matches connector_name in the Connection asset
