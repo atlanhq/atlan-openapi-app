@@ -119,7 +119,7 @@ wheels = [
 
 [[package]]
 name = "atlan-application-sdk-conformance"
-version = "0.60.0"
+version = "0.57.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jinja2" },
