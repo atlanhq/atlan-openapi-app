@@ -217,5 +217,5 @@ jobs:
       # crossing. Per-repo (FND-3656): an app with nothing to observe at
       # that boundary — no SDR, no SDK objectstore bindings — may set false,
       # and --resync keeps it. T022 decides whether false is allowed.
-      two-store: true
+      two-store: false
     secrets: inherit
