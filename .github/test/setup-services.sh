@@ -66,3 +66,4 @@ az storage container create \
   echo "MINIO_ROOT_PASSWORD=minioadmin"
   echo "AZURE_STORAGE_ENDPOINT=http://127.0.0.1:10000"
 } >> "$GITHUB_ENV"
+# test line for FND-5325 (do not merge)
