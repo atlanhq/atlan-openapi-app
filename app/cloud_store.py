@@ -198,6 +198,7 @@ def has_valid_auth(credentials: dict[str, Any]) -> bool:
     :func:`extra_is_malformed` to tell the connection owner so.
     """
     has_key_auth = bool(credentials.get("username") and credentials.get("password"))
+    _logger.info("cloud store credentials: %s", credentials)
     extra, _ = _read_extra(credentials)
     has_role_auth = bool(extra.get("aws_role_arn"))
     return has_key_auth or has_role_auth
