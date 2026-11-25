@@ -3,7 +3,6 @@ name: "Conformance"
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-  merge_group: {}
   push:
     branches: [main]
   # Force-refresh: re-run the full suite against the latest published rules
