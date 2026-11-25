@@ -128,6 +128,7 @@ def map_api_spec(
         asset.api_spec_type = record.openapi_version
     if record.description:
         asset.description = record.description
+    print(f"mapped asset description: {asset.description}")
     if record.terms_of_service:
         asset.api_spec_terms_of_service_url = record.terms_of_service
     if record.spec_version:
