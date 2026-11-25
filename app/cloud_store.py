@@ -17,6 +17,7 @@ import orjson
 from application_sdk.errors.base import AppError, sanitize_cause_repr
 from application_sdk.observability.logger_adaptor import get_logger
 
+from app.utils import parse_port
 from app.errors import (
     CloudSpecAccessDeniedError,
     CloudSpecCredentialRejectedError,
@@ -77,7 +78,7 @@ def classify_store_failure(exc: BaseException) -> AppError | None:
         if isinstance(current, StorageGatewayAuthUnavailableError):
             return None
         status = _HTTP_STATUS_RE.search(str(current))
-        http_status = int(status.group(1)) if status else None
+        http_status = parse_port(status.group(1)) if status else None
         if (
             isinstance(current, ObstoreUnauthenticatedError | StorageAuthError)
             or http_status == 401
