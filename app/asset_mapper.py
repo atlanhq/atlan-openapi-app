@@ -127,7 +127,7 @@ def map_api_spec(
     if record.openapi_version:
         asset.api_spec_type = record.openapi_version
     if record.description:
-        asset.description = record.spec_url
+        asset.description = record.description
     if record.terms_of_service:
         asset.api_spec_terms_of_service_url = record.terms_of_service
     if record.spec_version:
